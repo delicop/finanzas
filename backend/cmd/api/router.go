@@ -43,7 +43,13 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: cfg.CORSOrigins, // lista explicita, NUNCA "*" con auth
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type"},
+		// La lista es explícita: un header que no esté aquí lo bloquea el
+		// navegador en el preflight, aunque el backend lo entienda
+		// perfectamente. Por eso X-Ver-Como tiene que estar nombrado — con
+		// curl funciona sin él, que es justo lo que hace el fallo difícil de
+		// ver: el panel de administración pediría datos y el navegador ni
+		// siquiera mandaría la petición.
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", auth.CabeceraVerComo},
 		ExposedHeaders: []string{"Content-Disposition"}, // para descargar facturas
 		// false porque el token viaja en el header Authorization, no en cookies.
 		AllowCredentials: false,
