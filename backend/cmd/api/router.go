@@ -10,7 +10,9 @@ import (
 	"github.com/go-chi/cors"
 
 	"finanzas/internal/admin"
+	"finanzas/internal/agente"
 	"finanzas/internal/auth"
+	"finanzas/internal/avisos"
 	"finanzas/internal/categorias"
 	"finanzas/internal/config"
 	"finanzas/internal/medios"
@@ -24,7 +26,28 @@ import (
 // Usamos chi en vez del ServeMux estandar por dos cosas que vamos a necesitar
 // ya: parametros en la URL (/categorias/{id}) y grupos de rutas con
 // middlewares distintos (publicas vs. protegidas por JWT).
-func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenFacturas, registroStore *registro.Store) http.Handler {
+// dependencias son las piezas que main construye y este archivo solo conecta.
+//
+// Van en una struct y no como siete parametros sueltos porque varias las
+// necesita tambien main para sus tareas de fondo (limpiar la bitacora, generar
+// avisos), y con una lista posicional larga es cuestion de tiempo que dos
+// punteros del mismo tipo se crucen sin que el compilador diga nada.
+type dependencias struct {
+	cfg     *config.Config
+	pool    *sql.DB
+	almacen *movimientos.AlmacenFacturas
+
+	registro *registro.Store
+	avisos   *avisos.Store
+
+	// agente y proveedor son nil cuando no hay modelo configurado: entonces
+	// el chat no se monta y la app funciona igual, sin asistente.
+	agente    *agente.Store
+	proveedor agente.Proveedor
+}
+
+func nuevoRouter(d dependencias) http.Handler {
+	cfg, pool := d.cfg, d.pool
 	r := chi.NewRouter()
 
 	// --- Middlewares globales (se aplican a TODA request, en este orden) ---
@@ -64,11 +87,27 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 	authHandler := auth.NewHandler(authStore, tokens)
 
 	mediosStore := medios.NewStore(pool)
+	categoriasStore := categorias.NewStore(pool)
+	movimientosStore := movimientos.NewStore(pool)
 
-	categoriasHandler := categorias.NewHandler(categorias.NewStore(pool))
+	categoriasHandler := categorias.NewHandler(categoriasStore)
 	mediosHandler := medios.NewHandler(mediosStore)
-	movimientosHandler := movimientos.NewHandler(movimientos.NewStore(pool), almacen)
-	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, almacen)
+	movimientosHandler := movimientos.NewHandler(movimientosStore, d.almacen)
+	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, d.almacen)
+	// El chat con el asistente. Se arma solo si hay llave del modelo: sin
+	// ella la ruta no se monta y la app funciona exactamente igual, sin chat.
+	// Mismo criterio que el token de mantenimiento.
+	var agenteHandler *agente.Handler
+	if d.agente != nil {
+		// El catalogo reusa los MISMOS stores que los endpoints: las
+		// herramientas no tienen una puerta propia a la base, y cualquier
+		// filtro que proteja la API protege tambien al agente.
+		catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore)
+		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario)
+	}
+
+	avisosHandler := avisos.NewHandler(d.avisos)
+
 	// El lado negocio: planes, cobros y el tablero del dueno. Va bajo /admin
 	// porque es lo mismo que administrar el servidor, no una seccion aparte.
 	negocioHandler := suscripciones.NewHandler(suscripciones.NewStore(pool))
@@ -86,7 +125,7 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 		// Va con su propio token (no con el login del cliente) y solo existe
 		// si TOKEN_MANTENIMIENTO está configurado.
 		if cfg.TokenMantenimiento != "" {
-			api.Mount("/mantenimiento/errores", registro.NewHandler(registroStore, cfg.TokenMantenimiento).Rutas())
+			api.Mount("/mantenimiento/errores", registro.NewHandler(d.registro, cfg.TokenMantenimiento).Rutas())
 		}
 
 		// Publicas: login (y el preflight de CORS, que resuelve el middleware).
@@ -110,6 +149,18 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 			priv.Mount("/movimientos", movimientosHandler.Rutas())
 			priv.Get("/dashboard", movimientosHandler.Dashboard)
 
+			// Va dentro del grupo privado como todo lo demas. El propio
+			// handler rechaza ademas las peticiones en modo "ver como": el
+			// chat de alguien no es un dato de negocio que el admin revise.
+			if agenteHandler != nil {
+				priv.Mount("/agente", agenteHandler.Rutas())
+			}
+
+			// Los avisos existen siempre: no dependen del modelo. Sin el
+			// salen con el texto que arma la app, que es el que lleva las
+			// cifras de todos modos.
+			priv.Mount("/notificaciones", avisosHandler.Rutas())
+
 			// Administracion: un solo Group con RequireAdmin puesto una vez.
 			// Igual que arriba con el token, aqui no hay forma de agregar una
 			// ruta de admin y olvidarse de protegerla.
@@ -131,7 +182,7 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 					// La bitacora de errores. Sigue existiendo aparte en
 					// /api/mantenimiento/errores con su token propio: eso es
 					// para revisar el servidor por curl sin entrar a la app.
-					a.Mount("/errores", registro.NewHandlerSesion(registroStore).Rutas())
+					a.Mount("/errores", registro.NewHandlerSesion(d.registro).Rutas())
 				})
 			})
 		})

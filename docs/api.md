@@ -212,6 +212,126 @@ medio, está con la persona. La suma de los saldos da exactamente el balance
 general, y hay una fila **"Sin registrar"** para los movimientos sin medio —
 sin ella los números no cuadrarían.
 
+## Avisos
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/notificaciones` | Tus avisos (máx. 30) y cuántos sin leer |
+| POST | `/api/notificaciones/leidas` | Marca todos como leídos (204) |
+
+```json
+{ "avisos": [
+    { "id": 4, "tipo": "resumen_semanal",
+      "titulo": "Tu semana: pagaste $45.000",
+      "cuerpo": "Del 7 al 13 de septiembre registraste 2 movimientos...",
+      "leida_en": null, "creada_en": "2026-09-14T08:00:00Z" }
+  ],
+  "sin_leer": 1 }
+```
+
+`tipo` es `resumen_semanal`, `prestamos_pendientes` o `cobros_del_mes` (este
+último solo le llega al administrador). Los genera una tarea del servidor cada
+6 horas; ver [avisos.md](avisos.md).
+
+Igual que el chat, son privados: en modo "ver como" responden 403.
+
+## Asistente
+
+Estas rutas **solo existen si el servidor tiene configurada la llave del
+modelo** (`LLM_API_KEY`); si no, responden 404. Ver
+[agente.md](agente.md).
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/agente` | Tu conversación con sus mensajes |
+| POST | `/api/agente/mensajes` | Escribirle al asistente |
+| DELETE | `/api/agente` | Borrar la conversación (204) |
+| POST | `/api/agente/propuestas/{id}/confirmar` | Ejecuta lo que el agente preparó |
+| DELETE | `/api/agente/propuestas/{id}` | Descarta la propuesta (204) |
+
+`GET /api/agente` devuelve el hilo abierto. Nunca 404 por no tener
+conversación: la primera visita es un hilo vacío, que es un estado normal y no
+un error.
+
+```json
+{
+  "id": 12,
+  "mensajes": [
+    { "id": 30, "rol": "usuario", "contenido": "¿cómo registro un préstamo?",
+      "creado_en": "2026-09-16T14:02:11Z" },
+    { "id": 31, "rol": "agente", "contenido": "En Movimientos...",
+      "creado_en": "2026-09-16T14:02:14Z", "herramientas": ["resumen"] }
+  ],
+  "restantes": 47
+}
+```
+
+`POST /api/agente/mensajes` recibe `{"texto": "..."}` (máx. 2000 caracteres) y
+devuelve la respuesta ya guardada:
+
+```json
+{ "conversacion_id": 12,
+  "mensaje": { "id": 31, "rol": "agente", "contenido": "En Movimientos...",
+               "creado_en": "2026-09-16T14:02:14Z" },
+  "restantes": 46 }
+```
+
+`herramientas` son las que el agente consultó para armar esa respuesta
+(`resumen`, `listar_movimientos`, `listar_categorias`, `listar_medios_pago`).
+Solo aparece en los mensajes del agente que consultaron algo; la app lo muestra
+debajo del mensaje.
+
+`restantes` son los mensajes que le quedan al usuario en las próximas 24 horas.
+Viene en las dos respuestas para que la app pueda avisar **antes** de que el
+usuario se choque con el 429.
+
+No hay ningún id de conversación en la entrada, a propósito: el hilo es siempre
+el de quien tiene la sesión. Así no existe un número que se pueda cambiar a
+mano para leer el chat de otro.
+
+### Propuestas
+
+Cuando el agente prepara un movimiento, la respuesta trae una propuesta
+**pendiente**: en la base del dinero todavía no ha pasado nada.
+
+```json
+{ "conversacion_id": 12,
+  "mensaje": { "...": "..." },
+  "propuestas": [
+    { "id": 8, "tipo": "movimiento", "creada_en": "2026-09-16T14:02:14Z",
+      "datos": { "tipo": "pague", "monto": "45000", "fecha": "2026-09-16",
+                 "descripcion": "almuerzo",
+                 "categoria_id": 3, "categoria": "Negocio 1",
+                 "medio_pago_id": 2, "medio_pago": "Efectivo" } }
+  ],
+  "restantes": 46 }
+```
+
+`GET /api/agente` devuelve en `propuestas` las pendientes y no caducadas, para
+que una tarjeta sobreviva a recargar la página.
+
+`POST /api/agente/propuestas/{id}/confirmar` recibe los datos **finales** —los
+que el usuario tenga en la tarjeta, que puede haber editado— y responde 201 con
+el movimiento creado:
+
+- tipo `movimiento`: mismos campos que `POST /api/movimientos`, mismas
+  validaciones, mismos errores por campo.
+- tipo `marcar_pagado`: `{"medio_cobro_id": 2}` (0 = sin registrar). Responde
+  200 con el préstamo ya cobrado. Cuál préstamo es lo dice la propuesta, no el
+  cuerpo.
+
+Una propuesta caduca a las 24 horas, y solo se puede resolver una vez: la
+segunda confirmación responde 409 sin crear nada.
+
+Códigos propios de estas rutas:
+
+| Código | Significa |
+|---|---|
+| 403 | Se intentó leer el chat en modo "ver como": es privado |
+| 409 | La propuesta ya se resolvió o caducó |
+| 429 | Se acabaron los mensajes de las últimas 24 horas |
+| 503 | El proveedor del modelo no respondió — se puede reintentar |
+
 ## Formato de los datos
 
 - **Montos**: siempre string (`"150000.50"`). Columna `NUMERIC(14,2)`; todas

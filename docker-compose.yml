@@ -40,6 +40,12 @@ services:
       TOKEN_MANTENIMIENTO: ${TOKEN_MANTENIMIENTO:-}
       CORS_ORIGINS: ${CORS_ORIGINS}
       UPLOADS_DIR: /app/uploads
+      # El asistente. Sin LLM_API_KEY el backend arranca sin chat.
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com/v1}
+      LLM_MODELO: ${LLM_MODELO:-deepseek-chat}
+      LLM_TIMEOUT_SEGUNDOS: ${LLM_TIMEOUT_SEGUNDOS:-25}
+      LLM_LIMITE_DIARIO: ${LLM_LIMITE_DIARIO:-50}
     ports:
       - "${API_PORT_HOST:-8080}:8080"
     volumes:

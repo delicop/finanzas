@@ -147,7 +147,14 @@ func (h *Handler) Obtener(w http.ResponseWriter, r *http.Request) {
 
 // ---------------------------------------------------------------- crear / editar
 
-type movimientoRequest struct {
+// Entrada es un movimiento tal como llega de afuera, sin validar todavia.
+//
+// Esta exportada porque el formulario no es la unica puerta: el asistente
+// prepara movimientos a partir de lo que el usuario le dicta, y tiene que
+// pasar por las MISMAS reglas. Si la validacion viviera solo dentro del
+// handler, la segunda puerta terminaria con su propia copia — y el dia que
+// cambie una regla, con su propio bug.
+type Entrada struct {
 	CategoriaID int64 `json:"categoria_id"`
 	// MedioPagoID es opcional: 0 o ausente significa "sin registrar".
 	MedioPagoID int64  `json:"medio_pago_id"`
@@ -244,12 +251,26 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 
 // leerDatos decodifica y valida el body. Devuelve false si ya respondio error.
 func (h *Handler) leerDatos(w http.ResponseWriter, r *http.Request) (Datos, bool) {
-	var req movimientoRequest
+	var req Entrada
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return Datos{}, false
 	}
 
+	datos, campos := Validar(req)
+	if len(campos) > 0 {
+		httpx.ErrorCampos(w, campos)
+		return Datos{}, false
+	}
+	return datos, true
+}
+
+// Validar aplica las reglas del movimiento y devuelve los datos listos para el
+// store, o el mapa de errores por campo (vacio si todo esta bien).
+//
+// No sabe nada de HTTP a proposito: asi la usan tanto el handler como el
+// asistente, y las reglas del dinero viven en un solo sitio.
+func Validar(req Entrada) (Datos, map[string]string) {
 	req.Tipo = strings.TrimSpace(req.Tipo)
 	req.Fecha = strings.TrimSpace(req.Fecha)
 	req.Descripcion = strings.TrimSpace(req.Descripcion)
@@ -316,11 +337,10 @@ func (h *Handler) leerDatos(w http.ResponseWriter, r *http.Request) (Datos, bool
 	}
 
 	if !v.Valido() {
-		httpx.ErrorCampos(w, v.Campos)
-		return Datos{}, false
+		return Datos{}, v.Campos
 	}
 
-	return datos, true
+	return datos, nil
 }
 
 // CambiarEstado marca un prestamo como pagado o pendiente de un solo clic

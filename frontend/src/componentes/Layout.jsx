@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { notificacionesApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useTema } from '../lib/TemaContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import ModalPassword from './ModalPassword'
+import Notificaciones from './Notificaciones'
 
 const SECCIONES = [
   { a: '/', etiqueta: 'Resumen', icono: '◉', exacta: true },
   { a: '/movimientos', etiqueta: 'Movimientos', icono: '⇅' },
+  { a: '/agente', etiqueta: 'Asistente', icono: '✦' },
   { a: '/categorias', etiqueta: 'Categorías', icono: '◫' },
   { a: '/medios-pago', etiqueta: 'Medios', icono: '▤' },
 ]
@@ -28,6 +31,38 @@ export default function Layout({ children }) {
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
   const [cambiandoPassword, setCambiandoPassword] = useState(false)
+  const [viendoAvisos, setViendoAvisos] = useState(false)
+  const [sinLeer, setSinLeer] = useState(0)
+
+  // El contador de la campana. Se consulta al entrar y cada cinco minutos:
+  // los avisos los genera una tarea del servidor cada varias horas, así que
+  // preguntar más seguido sería gastar peticiones para nada.
+  //
+  // Mientras se observa la cuenta de un cliente no se pregunta: sus avisos son
+  // suyos y el backend responde 403, igual que con el chat del asistente.
+  useEffect(() => {
+    if (verComo) {
+      setSinLeer(0)
+      return
+    }
+
+    const control = new AbortController()
+    const consultar = () =>
+      notificacionesApi
+        .listar(control.signal)
+        .then((datos) => setSinLeer(datos.sin_leer))
+        // Un fallo aquí no puede romper la barra entera: la app sirve
+        // perfectamente sin el contador.
+        .catch(() => {})
+
+    consultar()
+    const cadaRato = setInterval(consultar, 5 * 60 * 1000)
+
+    return () => {
+      control.abort()
+      clearInterval(cadaRato)
+    }
+  }, [verComo])
 
   // El menú tiene que decir lo mismo que las rutas (ver App.jsx): un admin no
   // tiene finanzas propias, así que solo ve el panel. Mientras observa a otro
@@ -35,8 +70,10 @@ export default function Layout({ children }) {
   const secciones = esAdmin
     ? verComo
       ? // Observando: las secciones de dinero son las del cliente observado, y
-        // "Negocio" es la salida de vuelta al panel.
-        [...SECCIONES, SECCIONES_ADMIN[0]]
+        // "Negocio" es la salida de vuelta al panel. El asistente se queda
+        // fuera: el chat de una persona no es un dato que el panel revise, y
+        // el backend responde 403 si se intenta.
+        [...SECCIONES.filter((s) => s.a !== '/agente'), SECCIONES_ADMIN[0]]
       : SECCIONES_ADMIN
     : SECCIONES
 
@@ -80,6 +117,18 @@ export default function Layout({ children }) {
           >
             {tema === 'claro' ? '🌙' : '☀️'}
           </button>
+
+          {!verComo && (
+            <button
+              className="boton-tema campana"
+              onClick={() => setViendoAvisos(true)}
+              title="Avisos"
+              aria-label={sinLeer > 0 ? `Avisos (${sinLeer} sin leer)` : 'Avisos'}
+            >
+              🔔
+              {sinLeer > 0 && <span className="campana-punto">{sinLeer > 9 ? '9+' : sinLeer}</span>}
+            </button>
+          )}
 
           <button
             className="boton-tema"
@@ -137,6 +186,10 @@ export default function Layout({ children }) {
       )}
 
       {cambiandoPassword && <ModalPassword onCerrar={() => setCambiandoPassword(false)} />}
+
+      {viendoAvisos && (
+        <Notificaciones onCerrar={() => setViendoAvisos(false)} onLeidos={() => setSinLeer(0)} />
+      )}
     </div>
   )
 }

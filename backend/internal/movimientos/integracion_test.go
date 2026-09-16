@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -60,22 +62,39 @@ func nuevoEntorno(t *testing.T) *entorno {
 	pool := abrirBasePrueba(t)
 	ctx := context.Background()
 
-	// Borramos todo antes de cada prueba. El orden importa por las llaves
-	// foráneas: primero lo que apunta, después lo apuntado.
-	for _, tabla := range []string{"movimientos", "categorias", "medios_pago", "usuarios"} {
-		if _, err := pool.ExecContext(ctx, "DELETE FROM "+tabla); err != nil {
-			t.Fatalf("limpiando %s: %v", tabla, err)
-		}
-	}
-
 	hash, err := auth.HashPassword("ClaveDePrueba123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
-	usuario, err := auth.NewStore(pool).Crear(ctx, "prueba@finanzas.local", "Prueba", auth.RolUsuario, hash)
+
+	// Un usuario nuevo por prueba, con correo único, y al terminar se borra
+	// solo lo suyo.
+	//
+	// Antes esto vaciaba las tablas enteras, y funcionó mientras este fue el
+	// único paquete con pruebas de integración. `go test ./...` corre los
+	// paquetes en PARALELO contra la misma base: una limpieza global le
+	// arranca los datos al paquete de al lado a mitad de prueba. Como todas
+	// las consultas filtran por usuario_id, un usuario nuevo ya es un
+	// compartimento limpio.
+	email := fmt.Sprintf("prueba-%d-%d@finanzas.local", time.Now().UnixNano(), contador.Add(1))
+	usuario, err := auth.NewStore(pool).Crear(ctx, email, "Prueba", auth.RolUsuario, hash)
 	if err != nil {
 		t.Fatalf("creando usuario: %v", err)
 	}
+
+	// El orden importa por las llaves foráneas: primero lo que apunta. Los
+	// movimientos van antes que las categorías porque esa FK es RESTRICT.
+	t.Cleanup(func() {
+		limpieza := context.Background()
+		for _, tabla := range []string{"movimientos", "categorias", "medios_pago"} {
+			if _, err := pool.ExecContext(limpieza, "DELETE FROM "+tabla+" WHERE usuario_id = $1", usuario.ID); err != nil {
+				t.Errorf("limpiando %s: %v", tabla, err)
+			}
+		}
+		if _, err := pool.ExecContext(limpieza, "DELETE FROM usuarios WHERE id = $1", usuario.ID); err != nil {
+			t.Errorf("limpiando usuarios: %v", err)
+		}
+	})
 
 	cat, err := categorias.NewStore(pool).Crear(ctx, usuario.ID, "Negocio")
 	if err != nil {
@@ -124,6 +143,10 @@ func (e *entorno) resumen(t *testing.T) *movimientos.Resumen {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// contador da correos únicos: el índice de usuarios no deja repetirlos y estas
+// pruebas se corren muchas veces contra la misma base.
+var contador atomic.Int64
 
 // --------------------------------------------------------------------------
 // Las reglas de "presté" viven en un CHECK de la base de datos, no solo en Go.

@@ -66,14 +66,23 @@ func UsarRegistrador(r Registrador) { registrador = r }
 // Nunca le exponemos al cliente el detalle de un error de base de datos:
 // eso filtra nombres de tablas y ayuda a un atacante.
 func ErrorInterno(w http.ResponseWriter, r *http.Request, err error, contexto string) {
+	RegistrarFallo(r, err, contexto)
+	Error(w, http.StatusInternalServerError, "Error interno del servidor")
+}
+
+// RegistrarFallo deja el error en la bitacora SIN responder nada.
+//
+// Existe para los fallos que no son un 500: cuando un servicio ajeno se cae,
+// al usuario le corresponde un 503 con un mensaje suyo ("intenta en un
+// momento"), pero el dueno del servidor igual tiene que poder verlo en la
+// bitacora para saber que fue lo que pasó.
+func RegistrarFallo(r *http.Request, err error, contexto string) {
 	slog.Error(contexto, "error", err)
 
 	// Ademas del log, queda en la base para poder leerlo desde la app.
 	if registrador != nil {
 		registrador.GuardarError(r, err, contexto, false, "")
 	}
-
-	Error(w, http.StatusInternalServerError, "Error interno del servidor")
 }
 
 // RegistrarPanico deja constancia de un panico recuperado por el middleware.

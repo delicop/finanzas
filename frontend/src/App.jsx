@@ -7,6 +7,7 @@ import Dashboard from './paginas/Dashboard'
 import Categorias from './paginas/Categorias'
 import MediosPago from './paginas/MediosPago'
 import Movimientos from './paginas/Movimientos'
+import Agente from './paginas/Agente'
 import Negocio from './paginas/Negocio'
 import Clientes from './paginas/Clientes'
 import Planes from './paginas/Planes'
@@ -39,6 +40,7 @@ function Ruteo() {
           <>
             <Route path="/" element={<Dashboard />} />
             <Route path="/movimientos" element={<Movimientos />} />
+            <Route path="/agente" element={<Agente />} />
             <Route path="/categorias" element={<Categorias />} />
             <Route path="/medios-pago" element={<MediosPago />} />
           </>

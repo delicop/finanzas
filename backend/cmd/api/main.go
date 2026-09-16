@@ -10,11 +10,14 @@ import (
 	"syscall"
 	"time"
 
+	"finanzas/internal/agente"
+	"finanzas/internal/avisos"
 	"finanzas/internal/config"
 	"finanzas/internal/db"
 	"finanzas/internal/httpx"
 	"finanzas/internal/movimientos"
 	"finanzas/internal/registro"
+	"finanzas/internal/suscripciones"
 )
 
 func main() {
@@ -59,6 +62,28 @@ func run() error {
 	}
 	slog.Info("carpeta de facturas lista", "ruta", cfg.UploadsDir)
 
+	// El chat solo existe si hay llave del modelo. Sin ella la app funciona
+	// igual: no se monta la ruta ni se arranca su limpieza.
+	var agenteStore *agente.Store
+	var proveedor agente.Proveedor
+	var redactor avisos.Redactor
+
+	if cfg.LLM.Habilitado() {
+		agenteStore = agente.NewStore(pool)
+		proveedor = agente.NuevoProveedorHTTP(cfg.LLM.BaseURL, cfg.LLM.APIKey, cfg.LLM.Modelo, cfg.LLM.Timeout)
+		// El mismo proveedor redacta los avisos automaticos. Es un adaptador,
+		// no un cliente nuevo: una sola llave, un solo pool de conexiones.
+		redactor = agente.NuevoRedactor(proveedor)
+		slog.Info("agente conversacional activo", "modelo", cfg.LLM.Modelo, "limite_diario", cfg.LLM.LimiteDiario)
+	} else {
+		slog.Info("agente conversacional apagado: falta LLM_API_KEY")
+	}
+
+	// Los avisos NO dependen del modelo: sus cifras las calcula Postgres y el
+	// texto base lo arma la app. El modelo, cuando esta, solo lo redacta mejor.
+	avisosStore := avisos.NewStore(pool)
+	generador := avisos.NuevoGenerador(avisosStore, suscripciones.NewStore(pool), redactor)
+
 	if cfg.TokenMantenimiento == "" {
 		slog.Warn("TOKEN_MANTENIMIENTO no configurado: la bitácora de errores solo se podrá leer con psql")
 	}
@@ -69,8 +94,20 @@ func run() error {
 	httpx.UsarRegistrador(registro.NuevoAdaptador(registroStore))
 
 	go limpiarErroresPeriodicamente(ctx, registroStore)
+	go generarAvisosPeriodicamente(ctx, generador, avisosStore)
+	if agenteStore != nil {
+		go limpiarConsumoPeriodicamente(ctx, agenteStore)
+	}
 
-	router := nuevoRouter(cfg, pool, almacen, registroStore)
+	router := nuevoRouter(dependencias{
+		cfg:       cfg,
+		pool:      pool,
+		almacen:   almacen,
+		registro:  registroStore,
+		avisos:    avisosStore,
+		agente:    agenteStore,
+		proveedor: proveedor,
+	})
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -138,6 +175,82 @@ func limpiarErroresPeriodicamente(ctx context.Context, store *registro.Store) {
 			return
 		case <-ticker.C:
 			limpiar()
+		}
+	}
+}
+
+// limpiarConsumoPeriodicamente borra las marcas de uso que ya salieron de la
+// ventana del limite. Es una fila por mensaje: sin esto, la tabla crece para
+// siempre guardando datos que nadie vuelve a consultar.
+func limpiarConsumoPeriodicamente(ctx context.Context, store *agente.Store) {
+	limpiar := func() {
+		borrados, err := store.LimpiarConsumoViejo(ctx)
+		if err != nil {
+			slog.Error("no se pudo limpiar el consumo del agente", "error", err)
+			return
+		}
+		if borrados > 0 {
+			slog.Info("consumo del agente limpiado", "borrados", borrados)
+		}
+	}
+
+	limpiar()
+
+	ticker := time.NewTicker(12 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			limpiar()
+		}
+	}
+}
+
+// generarAvisosPeriodicamente arma los resumenes y recordatorios.
+//
+// Es una goroutine dentro del propio servidor y no un cron del sistema: una
+// pieza menos que instalar, que configurar y que se puede olvidar al mover la
+// app de maquina. Cada aviso lleva su clave de periodo, asi que correr cada
+// pocas horas no significa repetirlos — y si el servidor estuvo apagado tres
+// dias, al volver genera lo que falte sin llevar ninguna cuenta aparte.
+func generarAvisosPeriodicamente(ctx context.Context, generador *avisos.Generador, store *avisos.Store) {
+	trabajar := func() {
+		creados, err := generador.Correr(ctx, time.Now())
+		if err != nil {
+			// Un fallo con un usuario no impide los avisos de los demas: el
+			// generador los junta y los reporta todos aqui.
+			slog.Error("fallos generando avisos", "error", err)
+		}
+		if creados > 0 {
+			slog.Info("avisos generados", "cantidad", creados)
+		}
+
+		borrados, err := store.LimpiarViejos(ctx)
+		if err != nil {
+			slog.Error("no se pudieron limpiar los avisos viejos", "error", err)
+			return
+		}
+		if borrados > 0 {
+			slog.Info("avisos viejos limpiados", "borrados", borrados, "retencion_dias", avisos.RetencionDias)
+		}
+	}
+
+	trabajar()
+
+	// Cada 6 horas: el resumen semanal no tiene por que salir a las 3 de la
+	// manana en punto, y con este intervalo el del lunes llega temprano.
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			trabajar()
 		}
 	}
 }

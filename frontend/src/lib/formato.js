@@ -25,6 +25,26 @@ export function formatearFecha(iso) {
   return `${dia}/${mes}/${anio}`
 }
 
+// Las marcas de tiempo del chat si vienen completas (timestamptz), asi que
+// aqui Date es seguro: la cadena trae su zona horaria.
+const horaCorta = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' })
+
+export function formatearHora(iso) {
+  if (!iso) return ''
+  const fecha = new Date(iso)
+  return Number.isNaN(fecha.getTime()) ? '' : horaCorta.format(fecha)
+}
+
+const fechaCorta = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short' })
+
+// "16 sept · 14:03". Para los avisos, donde importa cuándo llegó pero no el año.
+export function formatearFechaHora(iso) {
+  if (!iso) return ''
+  const fecha = new Date(iso)
+  if (Number.isNaN(fecha.getTime())) return ''
+  return `${fechaCorta.format(fecha)} · ${horaCorta.format(fecha)}`
+}
+
 export function hoyISO() {
   const ahora = new Date()
   const mes = String(ahora.getMonth() + 1).padStart(2, '0')

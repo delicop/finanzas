@@ -35,6 +35,12 @@ tablas antes de empezar, así que **no uses la base de producción**.
 | `auth` | JWT, contraseñas y límite de intentos |
 | `movimientos` | Facturas (tipos, rutas, nombres) y **toda la matemática del dinero** |
 | `registro` | Que un pánico no tumbe el servidor y que no se filtren detalles al cliente |
+| `agente` | El contrato con el proveedor del modelo y que el chat de cada quien sea suyo |
+| `avisos` | Que las cifras de los resúmenes salgan de la base y no se repita un aviso |
+
+Las del `agente` no necesitan internet: levantan un servidor de mentiras que
+responde como respondería DeepSeek. El resto del chat se prueba con un
+proveedor falso, que es para lo que `Proveedor` es una interfaz.
 
 Las que más valen:
 
@@ -51,6 +57,12 @@ Las que más valen:
 - **`TestLosCentavosNoSePierden`** — que `0.10 + 0.20` dé `0.30` exacto.
 - **`TestBusquedaNoEsVulnerableAInyeccion`** — que un `'; DROP TABLE` en el
   buscador no haga nada.
+- **`TestUnUsuarioIdInventadoNoTieneEfecto`** — que el agente lea los datos de
+  quien pregunta aunque el modelo se invente el id de otro.
+- **`TestProponerNoEscribeNada`** — que el asistente prepare un movimiento sin
+  crear ni una fila.
+- **`TestElModeloPuedeRedactarPeroNoInventarCifras`** — que un aviso nunca
+  salga con un número que el modelo se imaginó.
 - **`TestNoSeVenDatosDeOtroUsuario`** — que adivinar un id ajeno no sirva.
 
 ## Comandos útiles

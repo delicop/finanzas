@@ -21,6 +21,8 @@ backend/
 └── internal/
     ├── auth/         login, JWT, contraseñas, roles, límite de intentos
     ├── admin/        panel del dueño: usuarios, claves, activar/desactivar
+    ├── agente/       el chat con el asistente (ver agente.md)
+    ├── avisos/       resúmenes y recordatorios automáticos (ver avisos.md)
     ├── suscripciones/ el negocio: planes, cobros y el tablero del dueño
     ├── categorias/   CRUD de categorías
     ├── medios/       CRUD de medios de pago
@@ -35,6 +37,15 @@ backend/
 `internal/` es una carpeta especial de Go: **ningún proyecto externo puede
 importar lo que esté ahí dentro**. Para un monolito eso significa que el
 compilador ayuda a mantener el orden.
+
+`agente` agrega tres archivos a ese patrón: `proveedor.go`, que es lo único que
+habla con la API del modelo; `prompt.go`, con las instrucciones del sistema; y
+`herramientas.go`, el catálogo de lo que el agente puede consultar. La
+separación es lo que permite probar el chat entero sin red — y cambiar de
+DeepSeek a OpenRouter sin tocar un handler.
+
+Las herramientas **no abren una puerta propia a la base**: envuelven los mismos
+`Store` que usan los endpoints, que ya filtran por `usuario_id`.
 
 Cada paquete de dominio sigue el mismo patrón de tres archivos:
 
@@ -64,6 +75,8 @@ Los middlewares van en grupos anidados, y el orden importa:
 ├── /mantenimiento/errores             token propio del .env
 └── Group: RequireAuth → VerComo       todo lo privado
     ├── /categorias, /medios-pago, /movimientos, /dashboard
+    ├── /agente                         solo si hay llave del modelo
+    ├── /notificaciones                 los avisos automáticos
     └── Group: RequireAdmin
         └── /admin/
             ├── /usuarios              clientes del servidor
@@ -78,6 +91,17 @@ usuario observado sin enterarse de nada.
 
 Cada grupo pone su middleware **una sola vez**. Agregar una ruta dentro de un
 grupo la deja protegida sin tener que acordarse: no hay forma de olvidarlo.
+
+Además de servir HTTP, `main` arranca tres tareas de fondo con su propia
+goroutine: limpiar la bitácora de errores, limpiar el consumo del agente y
+**generar los avisos** cada 6 horas. Son goroutines y no entradas de cron para
+no depender de nada instalado en la máquina; lo que evita que se repitan es la
+clave de periodo de cada aviso, no que la tarea lleve la cuenta.
+
+Las piezas que `main` construye y el router solo conecta viajan en una struct
+`dependencias`: varias las necesitan las dos partes, y con una lista posicional
+larga es cuestión de tiempo que dos punteros del mismo tipo se crucen sin que
+el compilador diga nada.
 
 ```
 main.go

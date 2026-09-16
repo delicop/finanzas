@@ -391,7 +391,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   background: var(--superficie-2);
   border: 1px solid var(--borde);
@@ -1410,4 +1411,262 @@ td.acciones .acciones-fila button {
     font-size: 11px;
     max-height: 200px;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Asistente
+   Un hilo que crece hacia abajo con el cajón de escribir fijo debajo. El alto
+   se limita con max-height y no con una cuenta sobre 100vh: la barra del
+   navegador en el teléfono cambia de alto al hacer scroll y cualquier resta
+   contra la altura de la ventana termina bailando.
+   -------------------------------------------------------------------------*/
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-hilo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 60vh;
+  min-height: 240px;
+  /* Espacio para que la última burbuja no quede pegada al cajón. */
+  padding-right: 4px;
+}
+
+.burbuja {
+  max-width: 78%;
+  padding: 10px 13px;
+  border-radius: 12px;
+  border: 1px solid var(--borde);
+  background: var(--superficie-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.burbuja p {
+  margin: 0;
+  /* El salto de línea que escribió el usuario (o el modelo) se respeta, y una
+     URL larguísima parte en vez de estirar la burbuja fuera de la pantalla. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.burbuja-usuario {
+  align-self: flex-end;
+  border-color: var(--acento);
+  background: rgba(79, 140, 255, 0.12);
+}
+
+.burbuja-agente {
+  align-self: flex-start;
+}
+
+/* La línea de "consultó tu resumen": visible pero sin competir con la
+   respuesta. */
+.burbuja-fuente {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--tenue);
+  font-style: italic;
+}
+
+.burbuja-hora {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--tenue);
+}
+
+.chat-vacio {
+  margin: auto 0;
+  color: var(--tenue);
+  font-size: 14px;
+}
+
+.chat-sugerencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chat-escribir {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.chat-escribir textarea {
+  /* Arranca de una línea y crece hasta un tope; de ahí en adelante hace
+     scroll adentro en vez de empujar el botón fuera de la pantalla. */
+  min-height: 40px;
+  max-height: 140px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.chat-escribir button {
+  flex-shrink: 0;
+}
+
+.chat-restantes {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Visible solo para lectores de pantalla: el cajón necesita su etiqueta, pero
+   en pantalla el placeholder ya dice lo mismo. */
+.sr-solo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Las tarjetas del asistente (lo que preparó y falta confirmar)
+   Se distinguen del hilo a propósito: no son parte de la conversación, son
+   algo que espera una decisión.
+   -------------------------------------------------------------------------*/
+.propuesta {
+  border: 1px solid var(--acento);
+  border-radius: 12px;
+  background: var(--superficie-2);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.propuesta-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.propuesta-encabezado .tenue {
+  font-size: 12px;
+}
+
+.propuesta-resumen {
+  margin: 0;
+  font-size: 14px;
+}
+
+.propuesta-campos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Base fija para que en escritorio quepan varios campos por fila y en el
+   teléfono cada uno ocupe el ancho completo, sin media queries. */
+.propuesta-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.propuesta-campo.crece {
+  flex-basis: 100%;
+}
+
+.propuesta-campo label {
+  font-size: 12px;
+  color: var(--tenue);
+}
+
+.propuesta-acciones {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-guardado {
+  margin: 0;
+  align-self: flex-start;
+  font-size: 13px;
+  color: var(--verde);
+}
+
+/* ---------------------------------------------------------------------------
+   Avisos: la campana y su panel
+   -------------------------------------------------------------------------*/
+.campana {
+  position: relative;
+}
+
+/* El número de avisos sin leer, pegado a la campana. Se sale un poco del
+   botón a propósito: es lo que hace que se lea como una insignia y no como
+   parte del icono. */
+.campana-punto {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--rojo);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.lista-avisos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lista-avisos li {
+  border: 1px solid var(--borde);
+  border-left: 3px solid var(--acento);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--superficie-2);
+}
+
+/* Los ya leídos siguen ahí pero dejan de pedir atención. */
+.lista-avisos .aviso-leido {
+  border-left-color: var(--borde);
+}
+
+.aviso-arriba {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.aviso-arriba .tenue {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.lista-avisos p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--tenue);
 }

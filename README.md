@@ -106,6 +106,13 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | GET    | `/api/movimientos/{id}/factura`  | Descargar/ver la factura                      |
 | DELETE | `/api/movimientos/{id}/factura`  | Quitar la factura                             |
 | GET    | `/api/dashboard`                 | Resumen: totales, saldo por medio de pago, por categoría y préstamos pendientes |
+| GET    | `/api/notificaciones`            | Tus avisos (resumen semanal, préstamos sin cobrar) |
+| POST   | `/api/notificaciones/leidas`     | Marcarlos como leídos                         |
+| GET    | `/api/agente`                    | Tu conversación con el asistente              |
+| POST   | `/api/agente/mensajes`           | Escribirle al asistente                       |
+| DELETE | `/api/agente`                    | Borrar la conversación y empezar de cero      |
+| POST   | `/api/agente/propuestas/{id}/confirmar` | Guardar lo que preparó el asistente    |
+| DELETE | `/api/agente/propuestas/{id}`    | Descartar lo que preparó                      |
 | GET    | `/api/admin/usuarios`            | *(admin)* Lista de cuentas con rol, estado y conteos |
 | POST   | `/api/admin/usuarios`            | *(admin)* Crear una cuenta                    |
 | PATCH  | `/api/admin/usuarios/{id}`       | *(admin)* Cambiar nombre, rol o activo        |
@@ -142,6 +149,49 @@ usuario los renombra, los borra o agrega los suyos. Sin ese sembrado la app
 abriría con la lista vacía y no habría por dónde registrar el primer
 movimiento. `medio_pago_id` puede ser `null`
 ("sin registrar"): los movimientos viejos no lo tienen y no siempre se sabe.
+
+### El asistente
+
+Un chat dentro de la app, en la sección **Asistente**. Le preguntas en español
+por tus movimientos, tus saldos o quién te debe, y consulta tus datos para
+responder: *"¿cuánto llevo gastado este mes?"*, *"¿dónde tengo la plata?"*.
+Debajo de cada respuesta dice qué consultó para darla.
+
+También registra: le dices *"pagué 45 mil de almuerzo con Nequi"* y **prepara**
+el movimiento en una tarjeta que puedes corregir antes de guardar. Hasta que no
+le das a Guardar no se escribe nada — el modelo propone, tú confirmas. Lo mismo
+para cobrar un préstamo: *"ya me pagó Juan"*.
+
+Las cifras las suma Postgres, nunca el modelo: sus herramientas solo leen lo
+que la app ya calcula, y está hecho para decir "no lo tengo" en vez de
+inventarse un número.
+
+Solo existe si el servidor tiene configurada la llave del modelo
+(`LLM_API_KEY` en el `.env`): sin ella la app funciona igual y la pantalla lo
+avisa. Sirve cualquier API compatible con la de OpenAI — DeepSeek u OpenRouter,
+por ejemplo.
+
+Cada usuario tiene su propio hilo y solo ve el suyo. El del administrador es
+suyo también: mientras revisa la cuenta de un cliente, la sección desaparece,
+porque una conversación no es un registro de dinero sino algo que esa persona
+escribió creyendo que era privado.
+
+Hay un tope de mensajes por usuario cada 24 horas (`LLM_LIMITE_DIARIO`, 50 por
+omisión): cada mensaje le cuesta plata a quien paga el servidor.
+
+Todo el detalle está en [`docs/agente.md`](docs/agente.md).
+
+### Avisos
+
+En la campana de arriba llegan solos: tu **resumen de cada semana**, los
+**préstamos que llevas más de un mes sin cobrar** y, si eres el dueño del
+servidor, **a quién te falta cobrarle** este mes.
+
+Las cifras las calcula Postgres. El asistente, cuando está configurado, solo
+redacta el párrafo — y si se inventa un número, su versión se descarta y sale
+el texto de la app. Sin modelo configurado los avisos funcionan igual.
+
+Detalle en [`docs/avisos.md`](docs/avisos.md).
 
 ### Planes y cobros
 
@@ -321,5 +371,40 @@ tar czf facturas.tar.gz backend/uploads/
 - [x] Bitácora de errores dentro de la app (sin curl)
 - [x] Planes de suscripción con precio mensual
 - [x] Cobros por cliente y mes, con tablero de esperado / cobrado / por cobrar
-- [ ] Tests automatizados
-- [ ] Ajustes finales de despliegue en la Raspberry
+- [x] Asistente: chat dentro de la app
+- [x] Asistente: preguntarle por tus movimientos y saldos
+- [x] Asistente: registrar movimientos hablando (con confirmación)
+- [x] Asistente: resúmenes y avisos automáticos
+- [x] Tests automáticos del dominio (dinero, auth, movimientos, agente, avisos)
+- [ ] Ajustes finales de despliegue
+
+## Lo que falta
+
+Lo pendiente de verdad, para no tener que reconstruirlo de memoria en un mes:
+
+**Por hacer**
+
+- **Probar el asistente contra el proveedor real.** Todo se desarrolló y se
+  probó con un modelo de mentiras (un servidor local que responde el formato de
+  DeepSeek). El contrato está cubierto por pruebas, pero nadie ha visto todavía
+  cómo se comporta el modelo de verdad: si elige bien las herramientas, si
+  pregunta cuando le falta la categoría, cuánto tarda.
+- **Arreglar `TestRutaSeguraBloqueaSalidas`** (`internal/movimientos`). Una ruta
+  de factura con barras invertidas (`..\..\windows\system.ini`) no se
+  bloquea. En Linux no es explotable —esa cadena es un nombre de archivo
+  válido, no un salto de directorio—, pero la prueba dice lo que debería pasar
+  y hoy no pasa.
+- **Ajustes de despliegue**: `target: prod` en el frontend, quitar el puerto
+  expuesto de Postgres y un secreto JWT nuevo.
+
+**Decidido dejar afuera (por ahora)**
+
+- El asistente no edita ni borra movimientos: solo consulta y propone crear.
+- No lee facturas: mandarle la foto de un recibo para que saque el monto sería
+  el siguiente paso natural.
+- El chat no va apareciendo palabra por palabra (sin streaming): la respuesta
+  llega completa.
+- Entre un mensaje y otro el modelo no recuerda lo que consultó; si hace falta,
+  vuelve a consultarlo.
+- Los avisos solo llegan dentro de la app. Nada de correo ni notificaciones al
+  teléfono.

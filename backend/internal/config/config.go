@@ -24,7 +24,33 @@ type Config struct {
 	// TokenMantenimiento protege las rutas para revisar la bitacora de
 	// errores desde afuera. Si queda vacio, esas rutas NO se montan.
 	TokenMantenimiento string
+
+	// LLM configura el agente conversacional. Sin llave no se monta: la app
+	// entera funciona igual, simplemente no tiene chat.
+	LLM LLMConfig
 }
+
+// LLMConfig apunta a cualquier API compatible con la de OpenAI. Hoy DeepSeek,
+// manana OpenRouter u otra: se cambian dos variables y no se toca codigo.
+type LLMConfig struct {
+	BaseURL string
+	APIKey  string
+	Modelo  string
+
+	// Timeout de la llamada al proveedor. Tiene que quedar POR DEBAJO del
+	// middleware.Timeout del router (30s): si no, el request se corta antes y
+	// el usuario ve un error generico en vez del "no está disponible" nuestro.
+	Timeout time.Duration
+
+	// LimiteDiario son los mensajes que puede mandar cada usuario en 24 horas.
+	LimiteDiario int
+}
+
+// Habilitado: sin llave el chat no existe. Es el mismo criterio que
+// TOKEN_MANTENIMIENTO — una funcionalidad opcional se apaga sola cuando no
+// esta configurada, en vez de arrancar a medias y fallar en la primera
+// peticion.
+func (l LLMConfig) Habilitado() bool { return l.APIKey != "" }
 
 // Load lee el .env (si existe) y luego las variables de entorno reales.
 //
@@ -71,6 +97,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("TOKEN_MANTENIMIENTO debe tener al menos 24 caracteres (tiene %d)", len(cfg.TokenMantenimiento))
 	}
 
+	if cfg.LLM, err = cargarLLM(); err != nil {
+		return nil, err
+	}
+
 	origins := getEnv("CORS_ORIGINS", "http://localhost:5173")
 	for _, o := range strings.Split(origins, ",") {
 		if o = strings.TrimSpace(o); o != "" {
@@ -82,6 +112,37 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// cargarLLM lee la configuracion del agente. Si no hay llave devuelve la
+// estructura vacia sin validar nada mas: el chat queda apagado y punto.
+func cargarLLM() (LLMConfig, error) {
+	llm := LLMConfig{APIKey: os.Getenv("LLM_API_KEY")}
+	if !llm.Habilitado() {
+		return llm, nil
+	}
+
+	llm.BaseURL = getEnv("LLM_BASE_URL", "https://api.deepseek.com/v1")
+	if !strings.HasPrefix(llm.BaseURL, "http://") && !strings.HasPrefix(llm.BaseURL, "https://") {
+		return llm, fmt.Errorf("LLM_BASE_URL debe empezar por http:// o https:// (es %q)", llm.BaseURL)
+	}
+
+	llm.Modelo = getEnv("LLM_MODELO", "deepseek-chat")
+
+	segundos, err := strconv.Atoi(getEnv("LLM_TIMEOUT_SEGUNDOS", "25"))
+	// El techo de 25s no es arbitrario: el router corta toda peticion a los
+	// 30s. Un timeout mayor nunca llegaria a cumplirse.
+	if err != nil || segundos < 5 || segundos > 25 {
+		return llm, fmt.Errorf("LLM_TIMEOUT_SEGUNDOS debe ser un entero entre 5 y 25")
+	}
+	llm.Timeout = time.Duration(segundos) * time.Second
+
+	llm.LimiteDiario, err = strconv.Atoi(getEnv("LLM_LIMITE_DIARIO", "50"))
+	if err != nil || llm.LimiteDiario <= 0 {
+		return llm, fmt.Errorf("LLM_LIMITE_DIARIO debe ser un entero positivo")
+	}
+
+	return llm, nil
 }
 
 func (c *Config) IsProduction() bool { return c.Env == "production" }

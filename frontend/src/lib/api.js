@@ -57,7 +57,10 @@ function cabeceras(auth) {
   return headers
 }
 
-export async function apiFetch(ruta, { metodo = 'GET', body, auth = true } = {}) {
+// `senal` es un AbortSignal opcional: sirve para cancelar una peticion cuando
+// el componente que la pidio se desmonta. Sin eso, una respuesta que llega
+// tarde intenta pintar en una pantalla que ya no existe.
+export async function apiFetch(ruta, { metodo = 'GET', body, auth = true, senal } = {}) {
   const headers = cabeceras(auth)
   const esFormData = body instanceof FormData
 
@@ -72,8 +75,12 @@ export async function apiFetch(ruta, { metodo = 'GET', body, auth = true } = {})
       method: metodo,
       headers,
       body: body === undefined ? undefined : esFormData ? body : JSON.stringify(body),
+      signal: senal,
     })
-  } catch {
+  } catch (err) {
+    // Una peticion cancelada NO es el servidor caido: se propaga tal cual
+    // para que quien la cancelo la ignore en silencio.
+    if (err.name === 'AbortError') throw err
     throw new ApiError('No se pudo conectar con el servidor', 0)
   }
 
@@ -222,4 +229,34 @@ export const negocioApi = {
   // no del formulario: así un dedazo no puede descuadrar los ingresos.
   registrarPago: (datos) => apiFetch('/api/admin/pagos', { metodo: 'POST', body: datos }),
   eliminarPago: (id) => apiFetch(`/api/admin/pagos/${id}`, { metodo: 'DELETE' }),
+}
+
+// El asistente. Solo existe si el servidor tiene configurada la llave del
+// modelo; si no, estas rutas responden 404 y la pantalla lo dice.
+//
+// No hay un id de conversacion en ninguna llamada a proposito: el hilo es
+// siempre el de quien tiene la sesion, y lo resuelve el backend con el id del
+// token. Asi no hay un id que se pueda cambiar a mano para leer otro chat.
+export const agenteApi = {
+  conversacion: (senal) => apiFetch('/api/agente', { senal }),
+  enviar: (texto, senal) =>
+    apiFetch('/api/agente/mensajes', { metodo: 'POST', body: { texto }, senal }),
+  borrar: () => apiFetch('/api/agente', { metodo: 'DELETE' }),
+
+  // Confirmar es la ÚNICA forma de que algo que preparó el asistente llegue a
+  // la base: la manda la tarjeta, con los datos que el usuario tenga en
+  // pantalla (que pueden no ser los que propuso el modelo, y está bien).
+  confirmarPropuesta: (id, datos) =>
+    apiFetch(`/api/agente/propuestas/${id}/confirmar`, { metodo: 'POST', body: datos }),
+  descartarPropuesta: (id) => apiFetch(`/api/agente/propuestas/${id}`, { metodo: 'DELETE' }),
+}
+
+// Los avisos que la app deja sin que nadie los pida: el resumen de la semana,
+// los préstamos sin cobrar y, para el dueño, a quién le falta pagarle.
+//
+// No dependen del asistente: existen aunque el servidor no tenga modelo
+// configurado, porque las cifras las calcula Postgres.
+export const notificacionesApi = {
+  listar: (senal) => apiFetch('/api/notificaciones', { senal }),
+  marcarLeidas: () => apiFetch('/api/notificaciones/leidas', { metodo: 'POST' }),
 }
