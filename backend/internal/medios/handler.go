@@ -1,0 +1,162 @@
+package medios
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"finanzas/internal/httpx"
+)
+
+type Handler struct {
+	store *Store
+}
+
+func NewHandler(store *Store) *Handler { return &Handler{store: store} }
+
+// Rutas devuelve el sub-router de /api/medios-pago.
+// Ojo: el middleware de auth NO se pone aqui, se pone al montarlo en el router
+// principal. Asi este paquete no depende del paquete auth.
+func (h *Handler) Rutas() chi.Router {
+	r := chi.NewRouter()
+	r.Get("/", h.Listar)
+	r.Post("/", h.Crear)
+	r.Put("/{id}", h.Actualizar)
+	r.Delete("/{id}", h.Eliminar)
+	return r
+}
+
+type medioRequest struct {
+	Nombre string `json:"nombre"`
+}
+
+func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
+	usuarioID, ok := httpx.UsuarioID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	lista, err := h.store.Listar(r.Context(), usuarioID)
+	if err != nil {
+		httpx.ErrorInterno(w, err, "medios: listando")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, lista)
+}
+
+func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
+	usuarioID, ok := httpx.UsuarioID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	nombre, listo := h.leerNombre(w, r)
+	if !listo {
+		return
+	}
+
+	medio, err := h.store.Crear(r.Context(), usuarioID, nombre)
+	if errors.Is(err, ErrNombreDuplicado) {
+		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe un medio de pago con ese nombre"})
+		return
+	}
+	if err != nil {
+		httpx.ErrorInterno(w, err, "medios: creando")
+		return
+	}
+
+	httpx.JSON(w, http.StatusCreated, medio)
+}
+
+func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
+	usuarioID, ok := httpx.UsuarioID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	id, err := idDeRuta(r)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "Id inválido")
+		return
+	}
+
+	nombre, listo := h.leerNombre(w, r)
+	if !listo {
+		return
+	}
+
+	medio, err := h.store.Actualizar(r.Context(), usuarioID, id, nombre)
+	switch {
+	case errors.Is(err, ErrNoEncontrado):
+		httpx.Error(w, http.StatusNotFound, "Medio de pago no encontrado")
+	case errors.Is(err, ErrNombreDuplicado):
+		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe un medio de pago con ese nombre"})
+	case err != nil:
+		httpx.ErrorInterno(w, err, "medios: actualizando")
+	default:
+		httpx.JSON(w, http.StatusOK, medio)
+	}
+}
+
+func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
+	usuarioID, ok := httpx.UsuarioID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	id, err := idDeRuta(r)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "Id inválido")
+		return
+	}
+
+	err = h.store.Eliminar(r.Context(), usuarioID, id)
+	switch {
+	case errors.Is(err, ErrNoEncontrado):
+		httpx.Error(w, http.StatusNotFound, "Medio de pago no encontrado")
+	case errors.Is(err, ErrTieneMovimientos):
+		// 409 Conflict: la peticion es valida pero choca con el estado actual.
+		// No borramos en cascada a proposito: se perderian registros de dinero.
+		httpx.Error(w, http.StatusConflict,
+			"No se puede eliminar: hay movimientos registrados con este medio de pago.")
+	case err != nil:
+		httpx.ErrorInterno(w, err, "medios: eliminando")
+	default:
+		// 204 No Content: borrado exitoso, no hay cuerpo que devolver.
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// leerNombre decodifica y valida el body. Devuelve false si ya respondio error.
+func (h *Handler) leerNombre(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var req medioRequest
+	if err := httpx.DecodeJSON(w, r, &req); err != nil {
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+		return "", false
+	}
+
+	nombre := strings.TrimSpace(req.Nombre)
+
+	v := httpx.NuevoValidador()
+	v.Requerido("nombre", nombre)
+	if nombre != "" {
+		v.MaxLargo("nombre", nombre, 40)
+	}
+	if !v.Valido() {
+		httpx.ErrorCampos(w, v.Campos)
+		return "", false
+	}
+
+	return nombre, true
+}
+
+func idDeRuta(r *http.Request) (int64, error) {
+	return strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+}

@@ -1,0 +1,75 @@
+# Los tres servicios de la app. Ningun valor sensible vive aqui:
+# todo sale del archivo .env de esta misma carpeta.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: finanzas-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Expuesto al host solo para conectarte con DBeaver/psql en desarrollo.
+      # En la Raspberry puedes borrar estas lineas y dejar la DB solo en la red interna.
+      - "${DB_PORT_HOST:-5436}:5432"
+    volumes:
+      # Volumen nombrado: los datos viven fuera del contenedor.
+      # Puedes borrar y recrear el contenedor sin perder nada.
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: finanzas-api
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV}
+      PORT: "8080"
+      # "db" es el nombre del servicio: dentro de la red de compose funciona
+      # como hostname. Desde el host seria localhost:5433.
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY_HOURS: ${JWT_EXPIRY_HOURS}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      UPLOADS_DIR: /app/uploads
+    ports:
+      - "${API_PORT_HOST:-8080}:8080"
+    volumes:
+      # Las facturas viven en el host: sobreviven a un rebuild de la imagen
+      # y se respaldan con un simple rsync de la carpeta.
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      db:
+        # No arranca hasta que Postgres responda de verdad, no solo "exista".
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev # en la Raspberry: cambiar a "prod" (nginx con el build estatico)
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: finanzas-web
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "${WEB_PORT_HOST:-5173}:5173"
+    volumes:
+      # Codigo montado desde el host -> hot reload al guardar un archivo.
+      - ./frontend:/app
+      # Volumen anonimo para que el node_modules del contenedor NO sea tapado
+      # por el del host (que en Windows ni siquiera existe).
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
