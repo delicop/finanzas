@@ -17,7 +17,7 @@ const SECCIONES = [
 // ya pagó. Ocultarlas a los demás es comodidad, no seguridad: quien escriba
 // /admin a mano llega a una pantalla que el backend deja vacía a punta de 403.
 const SECCIONES_ADMIN = [
-  { a: '/admin', etiqueta: 'Negocio', icono: '◉', exacta: true },
+  { a: '/admin', etiqueta: 'Negocio', icono: '◈', exacta: true },
   { a: '/admin/clientes', etiqueta: 'Clientes', icono: '☰' },
   { a: '/admin/planes', etiqueta: 'Planes', icono: '▤' },
   { a: '/admin/errores', etiqueta: 'Errores', icono: '⚠' },

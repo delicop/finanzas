@@ -156,7 +156,7 @@ export default function Planes() {
 
 function AccionesPlan({ plan, onEditar, onActivo, onEliminar }) {
   return (
-    <div className="tarjeta-mov-acciones">
+    <div className="acciones-fila">
       <button className="secundario" onClick={onEditar}>
         Editar
       </button>

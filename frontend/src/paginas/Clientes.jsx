@@ -275,7 +275,7 @@ function AccionesUsuario({ usuario, yo, onResetear, onRol, onActivo, onEliminar 
   const soyYo = usuario.id === yo.id
 
   return (
-    <div className="acciones-cliente">
+    <div className="acciones-fila">
       <button className="secundario" onClick={onResetear}>
         Resetear clave
       </button>
@@ -331,7 +331,7 @@ function FormularioUsuario({ onCerrar, onCreado }) {
   }
 
   return (
-    <Modal titulo="Nuevo usuario" onCerrar={onCerrar}>
+    <Modal titulo="Nuevo cliente" onCerrar={onCerrar}>
       <form onSubmit={onSubmit} noValidate>
         {error && <div className="alerta">{error}</div>}
 
@@ -385,7 +385,7 @@ function FormularioUsuario({ onCerrar, onCreado }) {
             Cancelar
           </button>
           <button type="submit" disabled={guardando}>
-            {guardando ? 'Creando...' : 'Crear usuario'}
+            {guardando ? 'Creando...' : 'Crear cliente'}
           </button>
         </div>
       </form>

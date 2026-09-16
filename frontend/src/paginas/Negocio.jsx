@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { negocioApi } from '../lib/api'
 import { formatearMonto, formatearFecha, hoyISO } from '../lib/formato'
@@ -13,13 +13,17 @@ function mesActual() {
   return `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, '0')}`
 }
 
-function nombreDelMes(periodo) {
+function nombreDelMes(periodo, conMayuscula = false) {
   const [anio, mes] = periodo.split('-')
   const nombres = [
     'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
     'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
   ]
-  return `${nombres[Number(mes) - 1]} de ${anio}`
+  const nombre = nombres[Number(mes) - 1]
+  // Solo la primera letra. Con `text-transform: capitalize` el navegador
+  // capitaliza cada palabra y sale "Septiembre De 2026".
+  const inicial = conMayuscula ? nombre[0].toUpperCase() + nombre.slice(1) : nombre
+  return `${inicial} de ${anio}`
 }
 
 function moverMes(periodo, meses) {
@@ -40,12 +44,16 @@ export default function Negocio() {
   const [cobrando, setCobrando] = useState(null) // el cliente pendiente elegido
   const esMovil = useEsMovil()
 
-  async function recargar(mes = periodo) {
+  // useCallback para que el efecto pueda declarar de verdad de qué depende.
+  // Antes esto llevaba un eslint-disable encima, que es la forma elegante de
+  // decir "sé que está mal": el día que la función pase a depender de otra
+  // cosa, el efecto no se enteraría y la pantalla mostraría datos viejos.
+  const recargar = useCallback(async () => {
     setError('')
     try {
       const [datos, listaPagos] = await Promise.all([
-        negocioApi.resumen(mes),
-        negocioApi.listarPagos(mes),
+        negocioApi.resumen(periodo),
+        negocioApi.listarPagos(periodo),
       ])
       setResumen(datos)
       setPagos(listaPagos)
@@ -54,15 +62,14 @@ export default function Negocio() {
     } finally {
       setCargando(false)
     }
-  }
-
-  useEffect(() => {
-    recargar(periodo)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodo])
 
-  function cambiarMes(delta) {
+  useEffect(() => {
     setCargando(true)
+    recargar()
+  }, [recargar])
+
+  function cambiarMes(delta) {
     setPeriodo((p) => moverMes(p, delta))
   }
 
@@ -80,20 +87,29 @@ export default function Negocio() {
   return (
     <>
       <div className="encabezado-pagina">
-        <div>
-          <h1>Negocio</h1>
-          <p className="subtitulo">{nombreDelMes(periodo)}</p>
-        </div>
-        <div className="paginacion-botones">
-          <button className="secundario" onClick={() => cambiarMes(-1)}>
-            ← Mes anterior
+        <h1>Negocio</h1>
+
+        {/* En el teléfono las flechas quedan a los lados y el mes en medio:
+            "← Mes anterior" y "Mes siguiente →" no caben en una línea de 360px
+            y partirse en dos renglones los vuelve dos botones enormes. */}
+        <div className="navegador-mes">
+          <button
+            className="secundario"
+            onClick={() => cambiarMes(-1)}
+            aria-label="Mes anterior"
+          >
+            ←{!esMovil && ' Mes anterior'}
           </button>
+
+          <span className="mes-actual">{nombreDelMes(periodo, true)}</span>
+
           <button
             className="secundario"
             onClick={() => cambiarMes(1)}
             disabled={periodo >= mesActual()}
+            aria-label="Mes siguiente"
           >
-            Mes siguiente →
+            {!esMovil && 'Mes siguiente '}→
           </button>
         </div>
       </div>
@@ -105,18 +121,18 @@ export default function Negocio() {
       ) : (
         <>
           <div className="fila-tarjetas">
-            <article className="metrica">
+            <article className="tarjeta metrica">
               <span>Esperado</span>
-              <strong className="monto-grande">{formatearMonto(resumen.esperado)}</strong>
+              <strong className="cifra-negocio">{formatearMonto(resumen.esperado)}</strong>
               <span className="metrica-nota">
                 {resumen.clientes_con_plan} cliente
                 {resumen.clientes_con_plan === 1 ? '' : 's'} con plan
               </span>
             </article>
 
-            <article className="metrica destacada">
+            <article className="tarjeta metrica destacada">
               <span>Cobrado</span>
-              <strong className="monto-grande positivo">
+              <strong className="cifra-negocio positivo">
                 {formatearMonto(resumen.cobrado)}
               </strong>
               <span className="metrica-nota">
@@ -124,9 +140,13 @@ export default function Negocio() {
               </span>
             </article>
 
-            <article className="metrica">
+            <article className="tarjeta metrica">
               <span>Por cobrar</span>
-              <strong className={`monto-grande ${Number(resumen.pendiente) > 0 ? 'advertencia' : ''}`}>
+              <strong
+                className={`cifra-negocio ${
+                  Number(resumen.pendiente) > 0 ? 'advertencia' : 'tenue'
+                }`}
+              >
                 {formatearMonto(resumen.pendiente)}
               </strong>
               <span className="metrica-nota">
@@ -144,7 +164,7 @@ export default function Negocio() {
           )}
 
           <section className="tarjeta">
-            <h2 className="subtitulo">Por cobrar</h2>
+            <h2 className="subtitulo">A quién falta cobrarle</h2>
             {resumen.pendientes.length === 0 ? (
               <p className="tenue">
                 {resumen.clientes_con_plan > 0
@@ -238,30 +258,63 @@ export default function Negocio() {
 
           <section className="tarjeta">
             <h2 className="subtitulo">Por plan</h2>
-            <div className="tabla-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Plan</th>
-                    <th className="num">Precio</th>
-                    <th className="num">Clientes</th>
-                    <th className="num">Esperado</th>
-                    <th className="num">Cobrado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {resumen.por_plan.map((p) => (
-                    <tr key={p.plan_id}>
-                      <td>{p.nombre}</td>
-                      <td className="num tenue">{formatearMonto(p.precio_mensual)}</td>
-                      <td className="num tenue">{p.clientes}</td>
-                      <td className="num">{formatearMonto(p.esperado)}</td>
-                      <td className="num positivo">{formatearMonto(p.cobrado)}</td>
+            {resumen.por_plan.length === 0 ? (
+              <p className="tenue">
+                Todavía no hay planes. Créalos en <Link to="/admin/planes">Planes</Link>.
+              </p>
+            ) : esMovil ? (
+              // Cinco columnas numéricas no caben en un teléfono: con scroll
+              // lateral hay que arrastrar para ver lo cobrado, que es justo el
+              // dato que se viene a mirar.
+              <div className="lista-movil">
+                {resumen.por_plan.map((p) => (
+                  <article className="tarjeta-cat" key={p.plan_id}>
+                    <div className="tarjeta-cat-arriba">
+                      <strong>{p.nombre}</strong>
+                      <span className="tenue">
+                        {p.clientes} cliente{p.clientes === 1 ? '' : 's'} ×{' '}
+                        {formatearMonto(p.precio_mensual)}
+                      </span>
+                    </div>
+                    <div className="par-cifras">
+                      <div>
+                        <span className="tenue">Esperado</span>
+                        <strong>{formatearMonto(p.esperado)}</strong>
+                      </div>
+                      <div>
+                        <span className="tenue">Cobrado</span>
+                        <strong className="positivo">{formatearMonto(p.cobrado)}</strong>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="tabla-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Plan</th>
+                      <th className="num">Precio</th>
+                      <th className="num">Clientes</th>
+                      <th className="num">Esperado</th>
+                      <th className="num">Cobrado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {resumen.por_plan.map((p) => (
+                      <tr key={p.plan_id}>
+                        <td>{p.nombre}</td>
+                        <td className="num tenue">{formatearMonto(p.precio_mensual)}</td>
+                        <td className="num tenue">{p.clientes}</td>
+                        <td className="num">{formatearMonto(p.esperado)}</td>
+                        <td className="num positivo">{formatearMonto(p.cobrado)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}

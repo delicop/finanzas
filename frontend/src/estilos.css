@@ -1145,6 +1145,24 @@ button.menor-peligro:hover:not(:disabled) {
   color: var(--tenue);
   border-top: 2px solid transparent;
   margin-top: -1px;
+
+  /* Sin esto, un rótulo largo ("Movimientos") estira su columna y desplaza
+     las demás. Pasa cuando el administrador está revisando una cuenta y la
+     barra llega a cinco pestañas. */
+  min-width: 0;
+}
+
+.barra-inferior a span:not(.icono-tab),
+.barra-inferior a {
+  max-width: 100%;
+}
+
+/* El rótulo se recorta antes que romper la fila. El icono sigue entero, que
+   es lo que de verdad se reconoce de un vistazo. */
+.barra-inferior a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .barra-inferior a:hover {
@@ -1281,10 +1299,11 @@ button.menor-peligro:hover:not(:disabled) {
   font-size: 16px;
 }
 
-/* En la tabla, las acciones van en una línea. (.tarjeta-mov-acciones, que es
-   lo que se usaba antes, apila en columna: está pensado para las tarjetas del
-   teléfono y en una celda deja la fila altísima.) */
-.acciones-cliente {
+/* Acciones de una fila de tabla: en una línea. (.tarjeta-mov-acciones apila en
+   columna — está pensado para las tarjetas del teléfono, y dentro de una celda
+   deja la fila altísima.) En el móvil esta misma clase vuelve a apilar, que es
+   donde el pulgar necesita los blancos. */
+.acciones-fila {
   display: inline-flex;
   gap: 6px;
   justify-content: flex-end;
@@ -1292,16 +1311,103 @@ button.menor-peligro:hover:not(:disabled) {
 }
 
 /* El margen suelto de "td.acciones button" sobra aquí: el gap ya separa. */
-td.acciones .acciones-cliente button {
+td.acciones .acciones-fila button {
   margin: 0;
 }
 
 /* En el teléfono sí se apilan, que es donde el pulgar necesita blancos. */
-.tarjeta-cat .acciones-cliente {
+.tarjeta-cat .acciones-fila {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--borde);
+}
+
+/* ---------- navegador de mes (panel del negocio) ---------- */
+
+.navegador-mes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mes-actual {
+  color: var(--tenue);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Cifra grande del tablero del negocio. A diferencia de .monto-grande, NO
+   trae color: el suyo lo pone el significado (verde lo cobrado, ámbar lo que
+   falta). Así una clase de tamaño no le gana a una de color por orden. */
+.cifra-negocio {
+  margin: 4px 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+/* Dos cifras enfrentadas dentro de una tarjeta del teléfono: esperado contra
+   cobrado, que es la comparación que se viene a hacer. */
+.par-cifras {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
+}
+
+.par-cifras > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.par-cifras span {
+  font-size: 12px;
+}
+
+.par-cifras strong {
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  /* El navegador ocupa el ancho completo bajo el título, con las flechas
+     pegadas a los bordes y el mes centrado. */
+  .navegador-mes {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .navegador-mes button {
+    min-width: 46px;
+    min-height: 44px;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .mes-actual {
+    font-size: 15px;
+    color: var(--texto);
+    font-weight: 600;
+  }
+
+  /* Tres métricas en dos columnas dejan la tercera sola y a media línea.
+     Ocupando el ancho entero, "por cobrar" queda destacada, que es la que
+     de verdad se viene a mirar. */
+  .fila-tarjetas > .metrica:nth-child(3):last-child {
+    grid-column: 1 / -1;
+  }
+
+  /* El selector de plan y las trazas tienen que caber sin empujar la página. */
+  .selector-plan {
+    min-width: 0;
+  }
+
+  .traza-error {
+    font-size: 11px;
+    max-height: 200px;
+  }
 }
