@@ -9,12 +9,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"finanzas/internal/admin"
 	"finanzas/internal/auth"
 	"finanzas/internal/categorias"
 	"finanzas/internal/config"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
 	"finanzas/internal/registro"
+	"finanzas/internal/suscripciones"
 )
 
 // nuevoRouter arma todas las rutas y middlewares de la API.
@@ -55,9 +57,15 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 	tokens := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiry)
 	authHandler := auth.NewHandler(authStore, tokens)
 
+	mediosStore := medios.NewStore(pool)
+
 	categoriasHandler := categorias.NewHandler(categorias.NewStore(pool))
-	mediosHandler := medios.NewHandler(medios.NewStore(pool))
+	mediosHandler := medios.NewHandler(mediosStore)
 	movimientosHandler := movimientos.NewHandler(movimientos.NewStore(pool), almacen)
+	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, almacen)
+	// El lado negocio: planes, cobros y el tablero del dueno. Va bajo /admin
+	// porque es lo mismo que administrar el servidor, no una seccion aparte.
+	negocioHandler := suscripciones.NewHandler(suscripciones.NewStore(pool))
 
 	// --- Rutas ---
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +80,7 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 		// Va con su propio token (no con el login del cliente) y solo existe
 		// si TOKEN_MANTENIMIENTO está configurado.
 		if cfg.TokenMantenimiento != "" {
-			api.Mount("/mantenimiento", registro.NewHandler(registroStore, cfg.TokenMantenimiento).Rutas())
+			api.Mount("/mantenimiento/errores", registro.NewHandler(registroStore, cfg.TokenMantenimiento).Rutas())
 		}
 
 		// Publicas: login (y el preflight de CORS, que resuelve el middleware).
@@ -82,12 +90,44 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 		// Si manana agregas un endpoint dentro de este bloque, queda protegido
 		// automaticamente; no hay forma de "olvidar" ponerle el middleware.
 		api.Group(func(priv chi.Router) {
-			priv.Use(auth.RequireAuth(tokens))
+			priv.Use(auth.RequireAuth(tokens, authStore))
+
+			// VerComo va JUSTO despues de la autenticacion y antes de todo lo
+			// demas: si el admin mando la cabecera X-Ver-Como, cambia el id
+			// del context y los handlers de abajo responden con los datos del
+			// usuario observado sin enterarse de nada. Solo lectura, y solo
+			// para un admin: lo verifica el propio middleware.
+			priv.Use(auth.VerComo(authStore))
 
 			priv.Mount("/categorias", categoriasHandler.Rutas())
 			priv.Mount("/medios-pago", mediosHandler.Rutas())
 			priv.Mount("/movimientos", movimientosHandler.Rutas())
 			priv.Get("/dashboard", movimientosHandler.Dashboard)
+
+			// Administracion: un solo Group con RequireAdmin puesto una vez.
+			// Igual que arriba con el token, aqui no hay forma de agregar una
+			// ruta de admin y olvidarse de protegerla.
+			priv.Group(func(adm chi.Router) {
+				adm.Use(auth.RequireAdmin)
+
+				// Dentro va tambien la bitacora de errores (/api/admin/errores).
+				// Sigue existiendo /api/mantenimiento/errores con su token
+				// propio: eso es para revisar el servidor por curl sin entrar
+				// a la app ni pedirle la clave a nadie.
+				// Toda la superficie de administracion, en un solo bloque:
+				// lo que no este aqui, no existe para el panel.
+				adm.Route("/admin", func(a chi.Router) {
+					a.Mount("/usuarios", adminHandler.Rutas())
+					a.Mount("/planes", negocioHandler.RutasPlanes())
+					a.Mount("/pagos", negocioHandler.RutasPagos())
+					a.Get("/negocio", negocioHandler.Negocio)
+
+					// La bitacora de errores. Sigue existiendo aparte en
+					// /api/mantenimiento/errores con su token propio: eso es
+					// para revisar el servidor por curl sin entrar a la app.
+					a.Mount("/errores", registro.NewHandlerSesion(registroStore).Rutas())
+				})
+			})
 		})
 	})
 

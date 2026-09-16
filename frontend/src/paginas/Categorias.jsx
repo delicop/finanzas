@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { categoriasApi } from '../lib/api'
+import { useAuth } from '../lib/AuthContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import Modal from '../componentes/Modal'
 
@@ -9,6 +10,9 @@ export default function Categorias() {
   const [error, setError] = useState('')
   const [editando, setEditando] = useState(null) // null = modal cerrado
   const esMovil = useEsMovil()
+  // Mirando la cuenta de otro no se ofrece nada que escriba: el backend
+  // rechaza cualquier método que no sea GET mientras dura la revisión.
+  const { soloLectura } = useAuth()
 
   async function recargar() {
     setError('')
@@ -40,7 +44,9 @@ export default function Categorias() {
     <>
       <div className="encabezado-pagina">
         <h1>Categorías</h1>
-        <button onClick={() => setEditando({ id: null, nombre: '' })}>Nueva categoría</button>
+        {!soloLectura && (
+          <button onClick={() => setEditando({ id: null, nombre: '' })}>Nueva categoría</button>
+        )}
       </div>
 
       {error && <div className="alerta">{error}</div>}
@@ -62,14 +68,16 @@ export default function Categorias() {
                     {c.movimientos} mov{c.movimientos === 1 ? '' : 's'}.
                   </span>
                 </div>
-                <div className="tarjeta-mov-acciones">
-                  <button className="secundario" onClick={() => setEditando(c)}>
-                    Editar
-                  </button>
-                  <button className="peligro" onClick={() => eliminar(c)}>
-                    Eliminar
-                  </button>
-                </div>
+                {!soloLectura && (
+                  <div className="tarjeta-mov-acciones">
+                    <button className="secundario" onClick={() => setEditando(c)}>
+                      Editar
+                    </button>
+                    <button className="peligro" onClick={() => eliminar(c)}>
+                      Eliminar
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>
@@ -89,12 +97,16 @@ export default function Categorias() {
                     <td>{c.nombre}</td>
                     <td className="num tenue">{c.movimientos}</td>
                     <td className="acciones">
-                      <button className="secundario" onClick={() => setEditando(c)}>
-                        Editar
-                      </button>
-                      <button className="peligro" onClick={() => eliminar(c)}>
-                        Eliminar
-                      </button>
+                      {!soloLectura && (
+                        <>
+                          <button className="secundario" onClick={() => setEditando(c)}>
+                            Editar
+                          </button>
+                          <button className="peligro" onClick={() => eliminar(c)}>
+                            Eliminar
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

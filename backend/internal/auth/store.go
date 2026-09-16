@@ -26,7 +26,7 @@ func NormalizarEmail(email string) string {
 
 func (s *Store) PorEmail(ctx context.Context, email string) (*Usuario, error) {
 	const q = `
-		SELECT id, email, nombre, password_hash, creado_en
+		SELECT id, email, nombre, rol, activo, password_hash, creado_en
 		FROM usuarios
 		WHERE email = $1`
 
@@ -34,7 +34,7 @@ func (s *Store) PorEmail(ctx context.Context, email string) (*Usuario, error) {
 	// $1 es un parametro preparado: el valor viaja aparte del SQL,
 	// por eso aqui no existe la inyeccion SQL.
 	err := s.db.QueryRowContext(ctx, q, NormalizarEmail(email)).
-		Scan(&u.ID, &u.Email, &u.Nombre, &u.PasswordHash, &u.CreadoEn)
+		Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo, &u.PasswordHash, &u.CreadoEn)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoEncontrado
@@ -47,13 +47,13 @@ func (s *Store) PorEmail(ctx context.Context, email string) (*Usuario, error) {
 
 func (s *Store) PorID(ctx context.Context, id int64) (*Usuario, error) {
 	const q = `
-		SELECT id, email, nombre, password_hash, creado_en
+		SELECT id, email, nombre, rol, activo, password_hash, creado_en
 		FROM usuarios
 		WHERE id = $1`
 
 	var u Usuario
 	err := s.db.QueryRowContext(ctx, q, id).
-		Scan(&u.ID, &u.Email, &u.Nombre, &u.PasswordHash, &u.CreadoEn)
+		Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo, &u.PasswordHash, &u.CreadoEn)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoEncontrado
@@ -64,15 +64,18 @@ func (s *Store) PorID(ctx context.Context, id int64) (*Usuario, error) {
 	return &u, nil
 }
 
-func (s *Store) Crear(ctx context.Context, email, nombre, passwordHash string) (*Usuario, error) {
+// Crear inserta un usuario. El rol se pasa explicito para que quien llama
+// tenga que decidirlo: un descuido con un valor por defecto aqui seria
+// repartir permisos de administrador sin querer.
+func (s *Store) Crear(ctx context.Context, email, nombre, rol, passwordHash string) (*Usuario, error) {
 	const q = `
-		INSERT INTO usuarios (email, nombre, password_hash)
-		VALUES ($1, $2, $3)
-		RETURNING id, email, nombre, password_hash, creado_en`
+		INSERT INTO usuarios (email, nombre, rol, password_hash)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, email, nombre, rol, activo, password_hash, creado_en`
 
 	var u Usuario
-	err := s.db.QueryRowContext(ctx, q, NormalizarEmail(email), nombre, passwordHash).
-		Scan(&u.ID, &u.Email, &u.Nombre, &u.PasswordHash, &u.CreadoEn)
+	err := s.db.QueryRowContext(ctx, q, NormalizarEmail(email), nombre, rol, passwordHash).
+		Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo, &u.PasswordHash, &u.CreadoEn)
 
 	if err != nil {
 		// 23505 = unique_violation. Traducimos el error de Postgres a un

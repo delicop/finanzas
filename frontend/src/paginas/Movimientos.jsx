@@ -9,6 +9,7 @@ import {
   formatearMonto,
 } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
+import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import VisorFactura from '../componentes/VisorFactura'
 import ModalCobro from '../componentes/ModalCobro'
@@ -20,6 +21,7 @@ export default function Movimientos() {
   // vista se pueda compartir, marcar y recargar sin perder el estado.
   const [params, setParams] = useSearchParams()
   const esMovil = useEsMovil()
+  const { soloLectura } = useAuth()
 
   const [movimientos, setMovimientos] = useState([])
   const [total, setTotal] = useState(0)
@@ -140,6 +142,9 @@ export default function Movimientos() {
   const acciones = {
     onEditar: setEditando,
     onEliminar: eliminar,
+    // Revisando la cuenta de otro, la lista se vuelve un informe: se puede
+    // abrir una factura, pero no marcar pagado, ni editar, ni borrar.
+    soloLectura,
     onVerFactura: setViendoFactura,
     onAlternarEstado: alternarEstado,
     cambiandoEstado,
@@ -149,9 +154,11 @@ export default function Movimientos() {
     <>
       <div className="encabezado-pagina">
         <h1>Movimientos</h1>
-        <button onClick={() => setEditando({})} disabled={categorias.length === 0}>
-          Nuevo movimiento
-        </button>
+        {!soloLectura && (
+          <button onClick={() => setEditando({})} disabled={categorias.length === 0}>
+            Nuevo movimiento
+          </button>
+        )}
       </div>
 
       {categorias.length === 0 && !cargando && (
@@ -390,8 +397,8 @@ function Monto({ m }) {
 
 // Acciones PRINCIPALES: las que se usan seguido y valen un botón grande.
 // "Marcar pagado" (solo si el préstamo está pendiente) y "Factura".
-function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, cambiandoEstado }) {
-  const pendiente = m.tipo === 'preste' && m.estado === 'pendiente'
+function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, cambiandoEstado, soloLectura }) {
+  const pendiente = m.tipo === 'preste' && m.estado === 'pendiente' && !soloLectura
   const ocupado = cambiandoEstado === m.id
 
   if (!pendiente && !m.factura) return null
@@ -419,9 +426,13 @@ function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, cambiandoEstad
 
 // Acciones SECUNDARIAS: se usan poco, así que van discretas a un lado.
 // "Marcar pendiente" vive aquí porque es deshacer, no la acción del día a día.
-function AccionesSecundarias({ m, onEditar, onEliminar, onAlternarEstado, cambiandoEstado }) {
+function AccionesSecundarias({ m, onEditar, onEliminar, onAlternarEstado, cambiandoEstado, soloLectura }) {
   const yaPagado = m.tipo === 'preste' && m.estado === 'pagado'
   const ocupado = cambiandoEstado === m.id
+
+  // Sin acciones que ofrecer, el contenedor tampoco: si no, quedan huecos
+  // vacíos alineando las filas de una lista que solo se está mirando.
+  if (soloLectura) return null
 
   return (
     <div className="acciones-secundarias">

@@ -22,7 +22,120 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ```json
 { "token": "eyJ...", "expira_en": "2026-09-17T03:32:07Z",
-  "usuario": { "id": 1, "email": "tu@correo.com", "nombre": "Tu Nombre" } }
+  "usuario": { "id": 1, "email": "tu@correo.com", "nombre": "Tu Nombre", "rol": "admin" } }
+```
+
+Una cuenta desactivada responde **403** al login, con el motivo explícito: ya
+demostró ser dueña del correo, así que no se le está revelando nada nuevo y se
+ahorra creer que olvidó la contraseña.
+
+## Administración
+
+Solo para `rol: "admin"`. Cualquier otro recibe **403** en todas estas rutas.
+El rol se lee de la base en cada petición, no del JWT: si no, quitárselo a
+alguien no surtiría efecto hasta que su token expirara (hasta 24 horas).
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/admin/usuarios` | Lista con rol, estado y cuántos datos tiene cada uno |
+| POST | `/api/admin/usuarios` | Crear (`email`, `nombre`, `password`, `rol`) |
+| PATCH | `/api/admin/usuarios/{id}` | Cambiar `nombre`, `rol` o `activo` (solo lo que mandes) |
+| POST | `/api/admin/usuarios/{id}/password` | Resetear la contraseña (`nueva`) |
+| DELETE | `/api/admin/usuarios/{id}?email=<correo>` | Eliminar la cuenta y todos sus datos |
+| GET | `/api/admin/errores` | La bitácora del servidor, sin el token de mantenimiento |
+
+### Eliminar una cuenta
+
+Se lleva por delante los movimientos, las categorías, los medios de pago y las
+**facturas del disco**. No hay papelera.
+
+Las filas las borra el `ON DELETE CASCADE`, pero a los archivos no llega
+ninguna llave foránea: el servidor lee las rutas de las facturas **antes** de
+borrar las filas y las elimina después. Sin eso, cada cliente eliminado dejaría
+sus archivos ocupando la tarjeta de la Raspberry para siempre, sin una sola fila
+que dijera de quién eran.
+
+El `email` no es opcional: tiene que coincidir exacto con el de la cuenta. Un id
+en una URL se equivoca fácil — se borra el 3 creyendo que era el 2 y se va el
+historial de otro cliente — y escribir el correo completo obliga a mirar a quién
+se está borrando. Si no coincide, **400**.
+
+Para cortarle el acceso a alguien sin destruir su historial está
+`PATCH {"activo": false}`, que es casi siempre lo que de verdad se quiere:
+surte efecto en la siguiente petición, porque el middleware lo revisa en todas.
+
+Cuatro reglas que el servidor no deja romper:
+
+- No puedes desactivar tu propia cuenta (409).
+- No puedes eliminar tu propia cuenta (409).
+- No puedes quitarte a ti mismo el rol de admin (409).
+- Nunca puede quedar el servidor sin ningún administrador activo (409). Esto
+  último se verifica dentro de una transacción con candado sobre las filas de
+  los admins: sin él, dos peticiones simultáneas que degradan a dos admins
+  distintos verían cada una que "todavía queda el otro" y pasarían las dos.
+
+### Planes y cobros
+
+El lado negocio. Estas tablas no llevan `usuario_id`: no son de nadie, son del
+servidor. Lo que las protege no es un filtro sino `RequireAdmin`.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/admin/planes` | Planes con su conteo de clientes |
+| POST | `/api/admin/planes` | Crear (`nombre`, `precio_mensual`) |
+| PUT | `/api/admin/planes/{id}` | Editar nombre, precio y `activo` |
+| DELETE | `/api/admin/planes/{id}` | Eliminar — **409** si tiene clientes |
+| PUT | `/api/admin/usuarios/{id}/plan` | Asignar el plan (`{"plan_id": 3}`) o quitarlo (`null`) |
+| GET | `/api/admin/negocio?periodo=AAAA-MM` | Tablero del mes |
+| GET | `/api/admin/pagos?periodo=AAAA-MM` | Cobros de ese mes |
+| POST | `/api/admin/pagos` | Registrar un cobro |
+| DELETE | `/api/admin/pagos/{id}` | Deshacerlo |
+
+Los precios y montos son **string**, igual que en el resto de la app: columna
+`NUMERIC(14,2)` y ninguna suma en Go.
+
+`periodo` siempre es `AAAA-MM` y se normaliza al día 1 antes de guardarlo. Es lo
+que permite que el índice único `(usuario_id, periodo)` impida de verdad cobrar
+dos veces el mismo mes: sin normalizar, `2026-03-01` y `2026-03-15` serían dos
+periodos distintos.
+
+```bash
+# El cobro normal: el monto sale del plan, no del cuerpo de la petición.
+curl -X POST http://localhost:8080/api/admin/pagos \
+  -H "Authorization: Bearer $TOKEN_DEL_ADMIN" \
+  -H "Content-Type: application/json" \
+  -d '{"usuario_id": 2, "periodo": "2026-09"}'
+```
+
+`monto` es opcional y solo se manda para cobrar algo distinto del precio de
+lista. Si viniera siempre del formulario, un dedazo registraría que alguien pagó
+$1 y los ingresos quedarían mal para siempre.
+
+Respuestas que conviene esperar:
+
+- **409** `"Ese cliente ya tiene un pago registrado en ese mes"` — el índice único.
+- **409** `"Ese cliente no tiene plan asignado"` — no hay nada que cobrarle.
+- **422** con `campos.periodo` si el periodo no es `AAAA-MM`.
+
+El tablero de `/api/admin/negocio` devuelve `esperado`, `cobrado` y `pendiente`.
+Ojo: **`pendiente` no es `esperado − cobrado`**. Se calcula aparte, sumando los
+planes de los clientes activos sin pago ese mes, porque la resta daría negativo
+con un sobrepago y escondería a quien sí debe.
+
+### Ver los datos de otro usuario
+
+Cabecera `X-Ver-Como: <id>` en cualquier ruta privada. El backend responde con
+los datos de ese usuario en vez de los tuyos, sin que los handlers se enteren.
+
+Es, literalmente, saltarse el filtro por `usuario_id` que impide el IDOR, así
+que está cerrado con tres llaves: solo un **admin**, solo en peticiones **GET**,
+y el observado tiene que existir. Un `POST`/`PUT`/`PATCH`/`DELETE` con la
+cabecera puesta responde 403 — el admin mira las cuentas ajenas, no las edita.
+
+```bash
+curl http://localhost:8080/api/dashboard \
+  -H "Authorization: Bearer $TOKEN_DEL_ADMIN" \
+  -H "X-Ver-Como: 2"
 ```
 
 ## Categorías y medios de pago

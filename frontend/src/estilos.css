@@ -1124,7 +1124,10 @@ button.menor-peligro:hover:not(:disabled) {
   bottom: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Columnas automáticas y no "repeat(4, 1fr)": al administrador le aparece
+     una quinta pestaña y la barra tiene que repartirse sola. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--superficie);
   border-top: 1px solid var(--borde);
   /* Respeta la franja del gesto de inicio en los iPhone sin botón. */
@@ -1161,4 +1164,144 @@ button.menor-peligro:hover:not(:disabled) {
 /* El contenido deja espacio para que la barra no tape el último elemento. */
 .con-barra-inferior .contenido {
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+/* ---------- administración ---------- */
+
+/* Aviso de "estás viendo la cuenta de otro". Va pegado arriba del contenido
+   y se queda ahí mientras dure la revisión: es el único recordatorio de que
+   las cifras en pantalla no son las tuyas. */
+.banner-observando {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.etiquetas-usuario {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Una cuenta desactivada se apaga en la lista, pero sigue legible: hay que
+   poder leer su correo para reactivarla. */
+.fila-inactiva td {
+  opacity: 0.55;
+}
+
+/* Campo de contraseña generada + su botón de "generar otra", en una línea. */
+.fila-clave {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fila-clave input {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+
+/* La clave recién generada se muestra UNA vez: tiene que poder copiarse de un
+   vistazo y sin confundir una l con un 1. */
+.clave-generada {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 15px;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--hover);
+  user-select: all;
+}
+
+/* Las trazas de pánico son largas y no se pueden cortar sin volverlas
+   inservibles: mejor scroll propio que reventar el ancho de la página. */
+.traza-error {
+  margin: 8px 0 0;
+  padding: 10px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--tenue);
+}
+
+/* El plan de cada cliente se cambia desde la propia fila: es un dato solo y se
+   toca seguido, así que abrir un modal para elegir de una lista corta sería
+   fricción sin ganancia. */
+.selector-plan {
+  width: auto;
+  min-width: 150px;
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+/* En el teléfono la fila es una tarjeta y el selector va a lo ancho. */
+.tarjeta-cat .selector-plan {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* ---------- la fila del cliente se abre ---------- */
+
+/* Entrar a la cuenta de un cliente es LA acción de esta pantalla, así que la
+   hace la fila entera y no un botón perdido entre otros cuatro. Los controles
+   de dentro (el selector de plan, las acciones) paran el evento. */
+.fila-abrible {
+  cursor: pointer;
+}
+
+.fila-abrible:hover {
+  background: var(--hover);
+}
+
+/* La flecha es lo único que avisa de que la fila lleva a alguna parte: sin
+   ella, que sea clicable no se adivina hasta que alguien la toca por error. */
+.flecha-abrir {
+  width: 1px;
+  padding-left: 0 !important;
+  color: var(--tenue);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.fila-abrible:hover .flecha-abrir {
+  color: var(--acento);
+}
+
+.tarjeta-cat-arriba .flecha-abrir {
+  font-size: 16px;
+}
+
+/* En la tabla, las acciones van en una línea. (.tarjeta-mov-acciones, que es
+   lo que se usaba antes, apila en columna: está pensado para las tarjetas del
+   teléfono y en una celda deja la fila altísima.) */
+.acciones-cliente {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* El margen suelto de "td.acciones button" sobra aquí: el gap ya separa. */
+td.acciones .acciones-cliente button {
+  margin: 0;
+}
+
+/* En el teléfono sí se apilan, que es donde el pulgar necesita blancos. */
+.tarjeta-cat .acciones-cliente {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--borde);
 }

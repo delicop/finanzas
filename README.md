@@ -1,6 +1,8 @@
 # Finanzas personales
 
-App de finanzas personales para un solo usuario. Todo corre en Docker.
+App de finanzas personales vendida por suscripción. Cada cliente ve **solo sus
+propios datos**; el administrador lleva el negocio: los planes, a quién le cobra
+y quién ya pagó el mes. Todo corre en Docker.
 
 > **Documentación completa en [`docs/`](docs/)** — arquitectura, decisiones
 > técnicas, API, [cómo revisar los errores del servidor](docs/errores.md),
@@ -25,15 +27,55 @@ docker compose up --build
 
 Las migraciones se aplican solas al arrancar el backend.
 
-### Crear el usuario
+### Crear el primer usuario
 
-No hay endpoint de registro: la app es de un solo usuario, así que se crea a mano.
+No hay endpoint público de registro: sería una puerta abierta a que cualquiera
+se cree una cuenta en el servidor. El primero se crea a mano y queda como
+**administrador**; desde ahí se crean los demás en la propia app.
 
 ```bash
 docker compose exec backend /app/createuser -email tu@correo.com -nombre "Tu Nombre"
 ```
 
 Pide la contraseña por teclado (no queda en el historial ni en los logs).
+La bandera `-admin` sirve para darle el rol a alguien más desde la terminal.
+
+### Usuarios y roles
+
+Cada usuario es su propio compartimento: sus categorías, sus medios de pago y
+sus movimientos. Todas las consultas filtran por el id que sale del JWT, nunca
+por uno que venga en la URL — eso es lo que cierra el IDOR de raíz.
+
+Hay dos roles, y son **dos aplicaciones distintas**:
+
+| | `usuario` (cliente) | `admin` (dueño del servidor) |
+|---|---|---|
+| Sus propias finanzas: resumen, movimientos, categorías, medios | ✅ | — |
+| Planes, cobros y el tablero del negocio | — | ✅ |
+| Crear clientes, resetear claves, activar/desactivar, eliminar | — | ✅ |
+| Ver los datos de un cliente | — | ✅ **solo lectura** |
+| Bitácora de errores del servidor | — | ✅ |
+
+El administrador **no lleva gastos personales**: su app es el panel. Las
+secciones de dinero solo le aparecen mientras revisa la cuenta de un cliente, y
+entonces son de esa persona. No están escondidas: para él esas rutas no existen.
+
+El rol se lee de la base **en cada petición**, no del JWT. Si viajara en el
+token, quitárselo a alguien no surtiría efecto hasta que expirara: hasta 24
+horas de administrador regalado.
+
+**Desactivar** corta el acceso de inmediato (lo revisa el middleware en cada
+petición) y deja el historial intacto: es lo que se quiere casi siempre.
+**Eliminar** existe para cuando de verdad hay que borrar, y se lleva por CASCADE
+los movimientos, las categorías y los medios, más las facturas del disco — que
+el servidor borra aparte, porque hasta ahí no llega ninguna llave foránea. Es
+definitivo y exige confirmar el correo exacto de la cuenta.
+
+Para revisar la cuenta de alguien, el panel usa la cabecera `X-Ver-Como`: la app
+entera pasa a mostrar los datos de esa persona, con un aviso permanente arriba y
+sin un solo botón que escriba. El servidor rechaza cualquier método que no sea
+GET mientras la cabecera esté puesta, así que ningún movimiento ajeno puede
+aparecer modificado sin que su dueño lo haya hecho.
 
 ## Endpoints
 
@@ -64,6 +106,21 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | GET    | `/api/movimientos/{id}/factura`  | Descargar/ver la factura                      |
 | DELETE | `/api/movimientos/{id}/factura`  | Quitar la factura                             |
 | GET    | `/api/dashboard`                 | Resumen: totales, saldo por medio de pago, por categoría y préstamos pendientes |
+| GET    | `/api/admin/usuarios`            | *(admin)* Lista de cuentas con rol, estado y conteos |
+| POST   | `/api/admin/usuarios`            | *(admin)* Crear una cuenta                    |
+| PATCH  | `/api/admin/usuarios/{id}`       | *(admin)* Cambiar nombre, rol o activo        |
+| POST   | `/api/admin/usuarios/{id}/password` | *(admin)* Resetear la contraseña           |
+| DELETE | `/api/admin/usuarios/{id}`       | *(admin)* Eliminar la cuenta y todos sus datos |
+| GET    | `/api/admin/errores`             | *(admin)* Bitácora de errores del servidor    |
+| PUT    | `/api/admin/usuarios/{id}/plan`  | *(admin)* Asignar o quitar el plan de un cliente |
+| GET    | `/api/admin/planes`              | *(admin)* Planes con su conteo de clientes    |
+| POST   | `/api/admin/planes`              | *(admin)* Crear                               |
+| PUT    | `/api/admin/planes/{id}`         | *(admin)* Editar nombre, precio y activo      |
+| DELETE | `/api/admin/planes/{id}`         | *(admin)* Eliminar (409 si tiene clientes)    |
+| GET    | `/api/admin/negocio`             | *(admin)* Tablero del mes: esperado, cobrado, por cobrar |
+| GET    | `/api/admin/pagos`               | *(admin)* Cobros de un mes (`?periodo=AAAA-MM`) |
+| POST   | `/api/admin/pagos`               | *(admin)* Registrar un cobro                  |
+| DELETE | `/api/admin/pagos/{id}`          | *(admin)* Deshacer un cobro                   |
 
 Filtros de `/api/movimientos`: `categoria_id`, `medio_pago_id`, `tipo`
 (`recibi`/`pague`/`preste`), `estado` (`pendiente`/`pagado`), `desde`, `hasta`
@@ -80,9 +137,42 @@ Responden preguntas diferentes, por eso son dos tablas y dos pantallas:
 Si fueran una sola lista habría que crear "Negocio 1 - efectivo",
 "Negocio 1 - transferencia", y se vuelve inmanejable.
 
-La migración deja creados **Efectivo**, **Transferencia** y **Otro**; el usuario
-los renombra, los borra o agrega los suyos. `medio_pago_id` puede ser `null`
+Toda cuenta nueva arranca con **Efectivo**, **Transferencia** y **Otro**; el
+usuario los renombra, los borra o agrega los suyos. Sin ese sembrado la app
+abriría con la lista vacía y no habría por dónde registrar el primer
+movimiento. `medio_pago_id` puede ser `null`
 ("sin registrar"): los movimientos viejos no lo tienen y no siempre se sabe.
+
+### Planes y cobros
+
+El negocio se lleva con dos tablas y una regla que vale la pena entender.
+
+**Planes** — nombre y precio mensual. Se asignan a cada cliente desde el panel.
+Un plan con clientes no se puede borrar (409): o los mueves a otro, o lo
+**desactivas**, que lo saca del catálogo sin tocar a los que ya lo tienen.
+
+**Pagos** — un renglón por cliente y mes. Un índice único `(usuario_id, periodo)`
+impide cobrar dos veces el mismo mes: un doble clic no puede inflar los ingresos.
+
+El monto y el nombre del plan se **copian** en el pago en vez de referenciarlos.
+Si mañana le subes el precio al plan Pro, los cobros viejos tienen que seguir
+diciendo lo que de verdad se cobró ese mes; con un JOIN al plan actual el
+histórico se reescribiría solo cada vez que cambias una tarifa. Por lo mismo,
+borrar a un cliente **no borra sus pagos** (`ON DELETE SET NULL`): un cliente se
+va, pero los ingresos de marzo siguen siendo los ingresos de marzo.
+
+El tablero muestra tres cifras por mes:
+
+```
+Esperado  = suma de los planes de todos los clientes activos que tienen uno
+Cobrado   = suma de los pagos registrados en ese mes
+Por cobrar= suma de los planes de los clientes activos SIN pago ese mes
+```
+
+"Por cobrar" **no** es `esperado − cobrado`. Si alguien te paga de más, o pagas
+un mes atrasado dentro de este periodo, esa resta daría un pendiente negativo o
+escondería a quien sí debe. Calculado aparte, la cifra responde a la pregunta
+real: *¿a quién me falta cobrarle?*
 
 ### Formato de los datos
 
@@ -180,6 +270,9 @@ docker compose up -d --build
 docker compose exec backend /app/createuser -email tu@correo.com -nombre "Tu Nombre"
 ```
 
+(El usuario que se crea así queda como administrador: es el único que puede
+abrir el panel y crear a los demás.)
+
 Para trabajar el backend sin Docker (compila más rápido mientras desarrollas):
 
 ```bash
@@ -222,5 +315,11 @@ tar czf facturas.tar.gz backend/uploads/
 - [x] Registro rápido desde el resumen y campos obligatorios
 - [x] Modo claro / oscuro (recuerda la preferencia)
 - [x] Cambio de contraseña desde la app
+- [x] Varios usuarios, cada uno con sus propios datos
+- [x] Panel de administración: crear usuarios, resetear claves, activar/desactivar, eliminar
+- [x] Ver la cuenta de otro usuario en modo lectura
+- [x] Bitácora de errores dentro de la app (sin curl)
+- [x] Planes de suscripción con precio mensual
+- [x] Cobros por cliente y mes, con tablero de esperado / cobrado / por cobrar
 - [ ] Tests automatizados
 - [ ] Ajustes finales de despliegue en la Raspberry

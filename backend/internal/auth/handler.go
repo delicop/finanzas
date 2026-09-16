@@ -36,7 +36,7 @@ func (h *Handler) Rutas() chi.Router {
 
 	// Todo lo que este dentro de este Group exige token valido.
 	r.Group(func(priv chi.Router) {
-		priv.Use(RequireAuth(h.tokens))
+		priv.Use(RequireAuth(h.tokens, h.store))
 		priv.Get("/me", h.Me)
 		priv.Post("/password", h.CambiarPassword)
 	})
@@ -55,10 +55,19 @@ type loginResponse struct {
 	Usuario  usuarioJSON `json:"usuario"`
 }
 
+// usuarioJSON es lo que ve el frontend de si mismo. Incluye el rol porque de
+// ahi sale si se pinta o no el menu de administracion. Ojo: eso es cosmetico.
+// Quien de verdad decide es RequireAdmin en el servidor; un usuario que edite
+// su propio localStorage vera el menu y recibira 403 en cuanto lo toque.
 type usuarioJSON struct {
 	ID     int64  `json:"id"`
 	Email  string `json:"email"`
 	Nombre string `json:"nombre"`
+	Rol    string `json:"rol"`
+}
+
+func fichaDe(u *Usuario) usuarioJSON {
+	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol}
 }
 
 // POST /api/auth/login
@@ -114,6 +123,16 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// La clave es correcta pero el admin cerro la cuenta. Aqui SI se dice el
+	// motivo real: ya demostro ser el dueno del correo, asi que no le estamos
+	// revelando nada que no sepa, y en cambio se ahorra llamar a soporte
+	// creyendo que olvido la contrasena.
+	if !usuario.Activo {
+		httpx.Error(w, http.StatusForbidden,
+			"Tu cuenta está desactivada. Habla con el administrador.")
+		return
+	}
+
 	token, expira, err := h.tokens.Generar(usuario)
 	if err != nil {
 		httpx.ErrorInterno(w, r, err, "login: generando token")
@@ -125,11 +144,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, loginResponse{
 		Token:    token,
 		ExpiraEn: expira,
-		Usuario: usuarioJSON{
-			ID:     usuario.ID,
-			Email:  usuario.Email,
-			Nombre: usuario.Nombre,
-		},
+		Usuario:  fichaDe(usuario),
 	})
 }
 
@@ -154,11 +169,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, usuarioJSON{
-		ID:     usuario.ID,
-		Email:  usuario.Email,
-		Nombre: usuario.Nombre,
-	})
+	httpx.JSON(w, http.StatusOK, fichaDe(usuario))
 }
 
 type cambiarPasswordRequest struct {

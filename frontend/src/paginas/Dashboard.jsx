@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { categoriasApi, dashboardApi, mediosApi } from '../lib/api'
 import { formatearMonto } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
+import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 
 export default function Dashboard() {
@@ -10,6 +11,7 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
   const esMovil = useEsMovil()
+  const { soloLectura } = useAuth()
 
   // Para el botón de registro rápido: el formulario necesita las dos listas
   // completas. Van con otro nombre para no chocar con las del resumen, que
@@ -46,9 +48,11 @@ export default function Dashboard() {
         <h1>Resumen</h1>
         {/* Registro rápido: el movimiento se crea sin salir del resumen,
             que es la pantalla donde uno entra. */}
-        <button onClick={() => setRegistrando(true)} disabled={!listo}>
-          Nuevo movimiento
-        </button>
+        {!soloLectura && (
+          <button onClick={() => setRegistrando(true)} disabled={!listo}>
+            Nuevo movimiento
+          </button>
+        )}
       </div>
 
       {!listo && !cargando && (

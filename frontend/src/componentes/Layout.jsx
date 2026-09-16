@@ -12,14 +12,38 @@ const SECCIONES = [
   { a: '/medios-pago', etiqueta: 'Medios', icono: '▤' },
 ]
 
+// Las secciones del administrador. Son OTRA app: el dueño del servidor no
+// lleva gastos personales, lleva el negocio — a quién le cobra, cuánto y quién
+// ya pagó. Ocultarlas a los demás es comodidad, no seguridad: quien escriba
+// /admin a mano llega a una pantalla que el backend deja vacía a punta de 403.
+const SECCIONES_ADMIN = [
+  { a: '/admin', etiqueta: 'Negocio', icono: '◉', exacta: true },
+  { a: '/admin/clientes', etiqueta: 'Clientes', icono: '☰' },
+  { a: '/admin/planes', etiqueta: 'Planes', icono: '▤' },
+  { a: '/admin/errores', etiqueta: 'Errores', icono: '⚠' },
+]
+
 export default function Layout({ children }) {
-  const { usuario, logout } = useAuth()
+  const { usuario, logout, esAdmin, verComo, dejarDeObservar } = useAuth()
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
   const [cambiandoPassword, setCambiandoPassword] = useState(false)
 
+  // El menú tiene que decir lo mismo que las rutas (ver App.jsx): un admin no
+  // tiene finanzas propias, así que solo ve el panel. Mientras observa a otro
+  // sí aparecen las secciones de dinero, porque son las de esa persona.
+  const secciones = esAdmin
+    ? verComo
+      ? // Observando: las secciones de dinero son las del cliente observado, y
+        // "Negocio" es la salida de vuelta al panel.
+        [...SECCIONES, SECCIONES_ADMIN[0]]
+      : SECCIONES_ADMIN
+    : SECCIONES
+
+  const hayMenu = secciones.length > 1
+
   return (
-    <div className={`app ${esMovil ? 'con-barra-inferior' : ''}`}>
+    <div className={`app ${esMovil && hayMenu ? 'con-barra-inferior' : ''}`}>
       <header className="barra">
         <div className="barra-izq">
           <strong className="marca">Finanzas</strong>
@@ -28,10 +52,10 @@ export default function Layout({ children }) {
               donde llega el pulgar, y así no compite por espacio con los
               botones de tema, contraseña y salir: con cuatro secciones
               arriba quedaban dos escondidas. */}
-          {!esMovil && (
+          {!esMovil && hayMenu && (
             <nav className="nav">
               {/* NavLink agrega la clase "activo" solo en la ruta actual */}
-              {SECCIONES.map((s) => (
+              {secciones.map((s) => (
                 <NavLink
                   key={s.a}
                   to={s.a}
@@ -72,11 +96,31 @@ export default function Layout({ children }) {
         </div>
       </header>
 
-      <main className="contenido">{children}</main>
+      <main className="contenido">
+        {/* Mientras el admin mira una cuenta ajena, la app entera muestra
+            datos que no son suyos. Sin un aviso permanente y difícil de
+            ignorar, es cuestión de tiempo que alguien lea el saldo de otro
+            creyendo que es el propio. */}
+        {verComo && (
+          <div className="alerta aviso banner-observando">
+            <span>
+              Estás viendo los datos de <strong>{verComo.nombre || verComo.email}</strong>. Es solo
+              lectura: no puedes crear ni modificar nada suyo.
+            </span>
+            {/* "Volver al panel" y no "a lo mío": quien observa es siempre un
+                administrador, y un administrador no tiene cuentas propias a
+                las que volver. */}
+            <button className="secundario" onClick={dejarDeObservar}>
+              Volver al panel
+            </button>
+          </div>
+        )}
+        {children}
+      </main>
 
-      {esMovil && (
+      {esMovil && hayMenu && (
         <nav className="barra-inferior">
-          {SECCIONES.map((s) => (
+          {secciones.map((s) => (
             <NavLink
               key={s.a}
               to={s.a}

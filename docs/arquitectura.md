@@ -17,9 +17,11 @@ y sus dependencias. No comparten código; hablan solo por HTTP/JSON.
 backend/
 ├── cmd/
 │   ├── api/          el servidor HTTP
-│   └── createuser/   comando para crear el usuario
+│   └── createuser/   comando para crear el primer administrador
 └── internal/
-    ├── auth/         login, JWT, contraseñas, límite de intentos
+    ├── auth/         login, JWT, contraseñas, roles, límite de intentos
+    ├── admin/        panel del dueño: usuarios, claves, activar/desactivar
+    ├── suscripciones/ el negocio: planes, cobros y el tablero del dueño
     ├── categorias/   CRUD de categorías
     ├── medios/       CRUD de medios de pago
     ├── movimientos/  movimientos, facturas y el resumen
@@ -43,11 +45,39 @@ Cada paquete de dominio sigue el mismo patrón de tres archivos:
 Los handlers nunca escriben SQL. Cuando haya que cambiar una consulta, se toca
 un solo archivo.
 
+`admin` es un paquete aparte de `auth` porque responden preguntas distintas:
+`auth` contesta *"¿quién eres y puedes entrar?"*; `admin`, *"¿quiénes existen y
+qué puede hacer cada uno?"*. Juntarlos dejaría las rutas de administración
+colgando del mismo sub-router que el login, que es público.
+
 ### Cómo se conecta todo
 
 En [router.go](../backend/cmd/api/router.go) se construyen los `Store`, el
 `TokenManager` y los `Handler` **una sola vez** y se inyectan hacia abajo. No
 hay variables globales: así cada pieza se puede probar por separado.
+
+Los middlewares van en grupos anidados, y el orden importa:
+
+```
+/api
+├── /auth/login                        público
+├── /mantenimiento/errores             token propio del .env
+└── Group: RequireAuth → VerComo       todo lo privado
+    ├── /categorias, /medios-pago, /movimientos, /dashboard
+    └── Group: RequireAdmin
+        └── /admin/
+            ├── /usuarios              clientes del servidor
+            ├── /planes, /pagos, /negocio   el lado negocio
+            └── /errores               la bitácora
+```
+
+`RequireAuth` valida el token y deja en el context el id y el rol. `VerComo` va
+justo después: si llegó la cabecera `X-Ver-Como` de un admin en una petición
+`GET`, cambia el id del context y todo lo de abajo responde con los datos del
+usuario observado sin enterarse de nada.
+
+Cada grupo pone su middleware **una sola vez**. Agregar una ruta dentro de un
+grupo la deja protegida sin tener que acordarse: no hay forma de olvidarlo.
 
 ```
 main.go

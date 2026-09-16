@@ -29,14 +29,27 @@ func NewHandler(store *Store, token string) *Handler {
 	return &Handler{store: store, token: token}
 }
 
+// NewHandlerSesion es la misma bitacora pero SIN el token propio, para colgarla
+// del panel de administracion. Ahi la puerta ya la cuida RequireAdmin: pedir
+// ademas el token de mantenimiento obligaria al dueno a copiarlo del .env cada
+// vez que quiere ver los errores desde su propia app.
+func NewHandlerSesion(store *Store) *Handler {
+	return &Handler{store: store}
+}
+
+// Rutas monta la bitacora. Cuando el handler se construyo con un token propio
+// (NewHandler) exige ese token; cuando se construyo para el panel
+// (NewHandlerSesion) confia en el middleware que lo envuelve.
 func (h *Handler) Rutas() chi.Router {
 	r := chi.NewRouter()
-	r.Use(h.exigirToken)
+	if h.token != "" {
+		r.Use(h.exigirToken)
+	}
 
-	r.Get("/errores", h.Listar)
-	r.Get("/errores/conteo", h.Conteo)
-	r.Patch("/errores/{id}", h.MarcarResuelto)
-	r.Delete("/errores/resueltos", h.BorrarResueltos)
+	r.Get("/", h.Listar)
+	r.Get("/conteo", h.Conteo)
+	r.Patch("/{id}", h.MarcarResuelto)
+	r.Delete("/resueltos", h.BorrarResueltos)
 
 	return r
 }

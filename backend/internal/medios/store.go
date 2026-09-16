@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -142,4 +143,42 @@ func (s *Store) Eliminar(ctx context.Context, usuarioID, id int64) error {
 func esViolacionUnica(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+// MediosPorDefecto son los que recibe toda cuenta nueva.
+//
+// Son los tres mas comunes para que la app sirva desde el primer minuto: sin
+// ningun medio, el formulario de movimientos arranca con una lista vacia y no
+// hay por donde registrar nada. El usuario los renombra, los borra o agrega
+// los suyos (Nequi, Daviplata, Bancolombia...).
+var MediosPorDefecto = []string{"Efectivo", "Transferencia", "Otro"}
+
+// SembrarPorDefecto crea los medios iniciales de un usuario recien creado.
+//
+// Vive aqui y no dentro de auth.Store.Crear para que el paquete de usuarios no
+// tenga que saber que existe la tabla medios_pago. La llaman los DOS caminos
+// que crean cuentas: el comando createuser y el panel de administracion.
+//
+// ON CONFLICT DO NOTHING: es idempotente. Si se llama dos veces sobre el mismo
+// usuario no falla ni duplica, solo no hace nada la segunda vez.
+func (s *Store) SembrarPorDefecto(ctx context.Context, usuarioID int64) error {
+	// La lista de VALUES se arma segun cuantos medios haya en la constante,
+	// pero los nombres siguen viajando como parametros ($2, $3...): lo que se
+	// concatena aqui son solo los marcadores, nunca el dato.
+	marcadores := make([]string, len(MediosPorDefecto))
+	args := make([]any, 0, len(MediosPorDefecto)+1)
+	args = append(args, usuarioID)
+	for i, nombre := range MediosPorDefecto {
+		marcadores[i] = fmt.Sprintf("($1, $%d)", i+2)
+		args = append(args, nombre)
+	}
+
+	q := `INSERT INTO medios_pago (usuario_id, nombre) VALUES ` +
+		strings.Join(marcadores, ", ") +
+		` ON CONFLICT DO NOTHING`
+
+	if _, err := s.db.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("sembrando medios por defecto: %w", err)
+	}
+	return nil
 }

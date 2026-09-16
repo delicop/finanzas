@@ -72,7 +72,7 @@ func nuevoEntorno(t *testing.T) *entorno {
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
-	usuario, err := auth.NewStore(pool).Crear(ctx, "prueba@finanzas.local", "Prueba", hash)
+	usuario, err := auth.NewStore(pool).Crear(ctx, "prueba@finanzas.local", "Prueba", auth.RolUsuario, hash)
 	if err != nil {
 		t.Fatalf("creando usuario: %v", err)
 	}

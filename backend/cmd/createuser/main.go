@@ -7,6 +7,10 @@
 //
 //	docker compose exec backend /app/createuser -email tu@correo.com -nombre "Tu Nombre"
 //
+// El primero que se crea queda como administrador y desde ahi puede crear a
+// los demas desde la propia app, sin volver a la terminal. La bandera -admin
+// sirve para darle el rol a alguien mas desde aqui.
+//
 // La contrasena se pide por teclado para que NO quede en el historial del shell
 // ni en los logs de Docker.
 package main
@@ -26,6 +30,7 @@ import (
 	"finanzas/internal/auth"
 	"finanzas/internal/config"
 	"finanzas/internal/db"
+	"finanzas/internal/medios"
 )
 
 func main() {
@@ -38,6 +43,7 @@ func main() {
 func run() error {
 	email := flag.String("email", "", "correo del usuario")
 	nombre := flag.String("nombre", "", "nombre para mostrar")
+	admin := flag.Bool("admin", false, "darle permisos de administrador")
 	flag.Parse()
 
 	if strings.TrimSpace(*email) == "" {
@@ -75,12 +81,26 @@ func run() error {
 
 	store := auth.NewStore(pool)
 
+	// El PRIMER usuario del servidor es administrador si o si, sin tener que
+	// acordarse de la bandera: si no, nadie podria abrir el panel y la unica
+	// salida seria un UPDATE a mano por psql. Del segundo en adelante hay que
+	// pedirlo con -admin.
+	existentes, err := store.Contar(ctx)
+	if err != nil {
+		return err
+	}
+
+	rol := auth.RolUsuario
+	if *admin || existentes == 0 {
+		rol = auth.RolAdmin
+	}
+
 	hash, err := auth.HashPassword(password)
 	if err != nil {
 		return err
 	}
 
-	usuario, err := store.Crear(ctx, *email, *nombre, hash)
+	usuario, err := store.Crear(ctx, *email, *nombre, rol, hash)
 	if errors.Is(err, auth.ErrEmailDuplicado) {
 		return fmt.Errorf("ya existe un usuario con el correo %s", *email)
 	}
@@ -88,7 +108,13 @@ func run() error {
 		return err
 	}
 
-	fmt.Printf("Usuario creado: id=%d email=%s\n", usuario.ID, usuario.Email)
+	// Efectivo, Transferencia y Otro. Sin esto la cuenta abre con la lista de
+	// medios vacia y no hay por donde registrar el primer movimiento.
+	if err := medios.NewStore(pool).SembrarPorDefecto(ctx, usuario.ID); err != nil {
+		return err
+	}
+
+	fmt.Printf("Usuario creado: id=%d email=%s rol=%s\n", usuario.ID, usuario.Email, usuario.Rol)
 	return nil
 }
 
