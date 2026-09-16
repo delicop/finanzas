@@ -48,12 +48,40 @@ func ErrorCampos(w http.ResponseWriter, campos map[string]string) {
 	})
 }
 
-// ErrorInterno registra el error real en el log y devuelve un mensaje generico.
+// Registrador guarda los errores para poder revisarlos despues.
+// Es una interfaz para que httpx no dependa del paquete que habla con la
+// base de datos (si no, tendriamos un ciclo de imports).
+type Registrador interface {
+	GuardarError(r *http.Request, err error, contexto string, esPanico bool, traza string)
+}
+
+// registrador se configura UNA vez al arrancar, desde main.
+// Es una variable de paquete porque ErrorInterno se llama como funcion suelta
+// desde decenas de sitios; pasarla por parametro a cada handler seria ruido.
+var registrador Registrador
+
+func UsarRegistrador(r Registrador) { registrador = r }
+
+// ErrorInterno registra el error real y devuelve un mensaje generico.
 // Nunca le exponemos al cliente el detalle de un error de base de datos:
 // eso filtra nombres de tablas y ayuda a un atacante.
-func ErrorInterno(w http.ResponseWriter, err error, contexto string) {
+func ErrorInterno(w http.ResponseWriter, r *http.Request, err error, contexto string) {
 	slog.Error(contexto, "error", err)
+
+	// Ademas del log, queda en la base para poder leerlo desde la app.
+	if registrador != nil {
+		registrador.GuardarError(r, err, contexto, false, "")
+	}
+
 	Error(w, http.StatusInternalServerError, "Error interno del servidor")
+}
+
+// RegistrarPanico deja constancia de un panico recuperado por el middleware.
+func RegistrarPanico(r *http.Request, err error, traza string) {
+	slog.Error("panico recuperado", "error", err, "ruta", r.URL.Path)
+	if registrador != nil {
+		registrador.GuardarError(r, err, "panico", true, traza)
+	}
 }
 
 // DecodeJSON lee el body en dst y devuelve un error ya legible para el usuario.
@@ -86,6 +114,10 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
 			return fmt.Errorf("El campo %q tiene un tipo incorrecto", typeErr.Field)
 		case errors.Is(err, io.EOF):
 			return errors.New("El body no puede estar vacío")
+		case errors.Is(err, io.ErrUnexpectedEOF):
+			// JSON cortado a la mitad: pasa cuando se cae la conexión
+			// o cuando el cliente arma mal el cuerpo.
+			return errors.New("JSON mal formado: se cortó antes de terminar")
 		case errors.As(err, &maxErr):
 			return errors.New("El body es demasiado grande")
 		case strings.HasPrefix(err.Error(), "json: unknown field "):

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -178,7 +179,23 @@ func (a *AlmacenFacturas) Eliminar(rutaRelativa string) error {
 // corrupta) pueda apuntar a un archivo fuera de /uploads.
 func (a *AlmacenFacturas) rutaSegura(rutaRelativa string) (string, error) {
 	limpia := filepath.Clean(filepath.FromSlash(rutaRelativa))
-	if filepath.IsAbs(limpia) || strings.HasPrefix(limpia, "..") {
+
+	// Las comprobaciones son explicitas y no dependen del sistema operativo.
+	// Ojo con esto: filepath.IsAbs("/etc/passwd") es TRUE en Linux pero FALSE
+	// en Windows (alli una ruta absoluta necesita letra de unidad). Si solo
+	// usaramos IsAbs, el mismo codigo protegeria distinto segun donde corra.
+	separador := string(os.PathSeparator)
+	invalida := limpia == "" ||
+		limpia == "." ||
+		filepath.IsAbs(limpia) ||
+		filepath.VolumeName(limpia) != "" ||
+		strings.HasPrefix(limpia, separador) ||
+		strings.HasPrefix(limpia, "/") ||
+		limpia == ".." ||
+		strings.HasPrefix(limpia, ".."+separador) ||
+		strings.HasPrefix(limpia, "../")
+
+	if invalida {
 		return "", errors.New("ruta de factura invalida")
 	}
 
@@ -222,7 +239,7 @@ func nombreAleatorio(extension string) (string, error) {
 // sanearNombre deja un nombre presentable para la descarga, sin rutas ni
 // caracteres que rompan el header Content-Disposition.
 func sanearNombre(nombre string) string {
-	nombre = filepath.Base(strings.ReplaceAll(nombre, `\`, "/"))
+	nombre = path.Base(strings.ReplaceAll(nombre, `\`, "/"))
 	nombre = strings.Map(func(r rune) rune {
 		if r < 32 || r == '"' || r == '/' || r == '\\' {
 			return '_'
@@ -230,6 +247,7 @@ func sanearNombre(nombre string) string {
 		return r
 	}, nombre)
 	nombre = strings.TrimSpace(nombre)
+	nombre = strings.Trim(nombre, "_")
 
 	if nombre == "" || nombre == "." || nombre == ".." {
 		return "factura"

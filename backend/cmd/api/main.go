@@ -12,7 +12,9 @@ import (
 
 	"finanzas/internal/config"
 	"finanzas/internal/db"
+	"finanzas/internal/httpx"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/registro"
 )
 
 func main() {
@@ -57,7 +59,18 @@ func run() error {
 	}
 	slog.Info("carpeta de facturas lista", "ruta", cfg.UploadsDir)
 
-	router := nuevoRouter(cfg, pool, almacen)
+	if cfg.TokenMantenimiento == "" {
+		slog.Warn("TOKEN_MANTENIMIENTO no configurado: la bitácora de errores solo se podrá leer con psql")
+	}
+
+	// El registro de errores se conecta ANTES de montar las rutas: desde aquí
+	// en adelante, todo 500 y todo panic queda guardado en la base.
+	registroStore := registro.NewStore(pool)
+	httpx.UsarRegistrador(registro.NuevoAdaptador(registroStore))
+
+	go limpiarErroresPeriodicamente(ctx, registroStore)
+
+	router := nuevoRouter(cfg, pool, almacen, registroStore)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -97,4 +110,34 @@ func run() error {
 	}
 	slog.Info("servidor apagado limpiamente")
 	return nil
+}
+
+// limpiarErroresPeriodicamente borra la bitácora vieja para que no crezca sin
+// control. En una Raspberry el disco es chico y una falla en bucle podría
+// llenarlo en cuestión de horas.
+func limpiarErroresPeriodicamente(ctx context.Context, store *registro.Store) {
+	limpiar := func() {
+		borrados, err := store.LimpiarViejos(ctx)
+		if err != nil {
+			slog.Error("no se pudo limpiar la bitácora de errores", "error", err)
+			return
+		}
+		if borrados > 0 {
+			slog.Info("bitácora de errores limpiada", "borrados", borrados, "retencion_dias", registro.RetencionDias)
+		}
+	}
+
+	limpiar()
+
+	ticker := time.NewTicker(12 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			limpiar()
+		}
+	}
 }

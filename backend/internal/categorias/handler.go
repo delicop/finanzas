@@ -42,7 +42,7 @@ func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
 
 	lista, err := h.store.Listar(r.Context(), usuarioID)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "categorias: listando")
+		httpx.ErrorInterno(w, r, err, "categorias: listando")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, lista)
@@ -66,7 +66,7 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "categorias: creando")
+		httpx.ErrorInterno(w, r, err, "categorias: creando")
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrNombreDuplicado):
 		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe una categoría con ese nombre"})
 	case err != nil:
-		httpx.ErrorInterno(w, err, "categorias: actualizando")
+		httpx.ErrorInterno(w, r, err, "categorias: actualizando")
 	default:
 		httpx.JSON(w, http.StatusOK, categoria)
 	}
@@ -127,7 +127,7 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict,
 			"No se puede eliminar: la categoría tiene movimientos. Muévelos o elimínalos primero.")
 	case err != nil:
-		httpx.ErrorInterno(w, err, "categorias: eliminando")
+		httpx.ErrorInterno(w, r, err, "categorias: eliminando")
 	default:
 		// 204 No Content: borrado exitoso, no hay cuerpo que devolver.
 		w.WriteHeader(http.StatusNoContent)

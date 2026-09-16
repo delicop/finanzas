@@ -53,7 +53,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	resumen, err := h.store.Resumen(r.Context(), usuarioID)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "dashboard: calculando resumen")
+		httpx.ErrorInterno(w, r, err, "dashboard: calculando resumen")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, resumen)
@@ -110,7 +110,7 @@ func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
 
 	lista, total, err := h.store.Listar(r.Context(), usuarioID, f)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "movimientos: listando")
+		httpx.ErrorInterno(w, r, err, "movimientos: listando")
 		return
 	}
 
@@ -139,7 +139,7 @@ func (h *Handler) Obtener(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "movimientos: obteniendo")
+		httpx.ErrorInterno(w, r, err, "movimientos: obteniendo")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, m)
@@ -181,7 +181,7 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "movimientos: creando")
+		httpx.ErrorInterno(w, r, err, "movimientos: creando")
 		return
 	}
 	httpx.JSON(w, http.StatusCreated, m)
@@ -207,7 +207,7 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrMedioInvalido):
 		httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
 	case err != nil:
-		httpx.ErrorInterno(w, err, "movimientos: actualizando")
+		httpx.ErrorInterno(w, r, err, "movimientos: actualizando")
 	default:
 		httpx.JSON(w, http.StatusOK, m)
 	}
@@ -225,7 +225,7 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "movimientos: eliminando")
+		httpx.ErrorInterno(w, r, err, "movimientos: eliminando")
 		return
 	}
 
@@ -366,7 +366,7 @@ func (h *Handler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrMedioInvalido):
 		httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": "El medio de pago no existe"})
 	case err != nil:
-		httpx.ErrorInterno(w, err, "movimientos: cambiando estado")
+		httpx.ErrorInterno(w, r, err, "movimientos: cambiando estado")
 	default:
 		httpx.JSON(w, http.StatusOK, m)
 	}
@@ -416,7 +416,7 @@ func (h *Handler) SubirFactura(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
 			return
 		}
-		httpx.ErrorInterno(w, err, "factura: verificando movimiento")
+		httpx.ErrorInterno(w, r, err, "factura: verificando movimiento")
 		return
 	}
 
@@ -429,7 +429,7 @@ func (h *Handler) SubirFactura(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorCampos(w, map[string]string{"factura": err.Error()})
 		return
 	case err != nil:
-		httpx.ErrorInterno(w, err, "factura: guardando archivo")
+		httpx.ErrorInterno(w, r, err, "factura: guardando archivo")
 		return
 	}
 
@@ -443,7 +443,7 @@ func (h *Handler) SubirFactura(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
 			return
 		}
-		httpx.ErrorInterno(w, err, "factura: asociando al movimiento")
+		httpx.ErrorInterno(w, r, err, "factura: asociando al movimiento")
 		return
 	}
 
@@ -456,7 +456,7 @@ func (h *Handler) SubirFactura(w http.ResponseWriter, r *http.Request) {
 
 	m, err := h.store.PorID(r.Context(), usuarioID, id)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "factura: releyendo movimiento")
+		httpx.ErrorInterno(w, r, err, "factura: releyendo movimiento")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, m)
@@ -480,20 +480,20 @@ func (h *Handler) DescargarFactura(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "El movimiento no tiene factura")
 		return
 	case err != nil:
-		httpx.ErrorInterno(w, err, "factura: consultando")
+		httpx.ErrorInterno(w, r, err, "factura: consultando")
 		return
 	}
 
 	archivo, err := h.almacen.Abrir(ruta)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "factura: abriendo archivo")
+		httpx.ErrorInterno(w, r, err, "factura: abriendo archivo")
 		return
 	}
 	defer archivo.Close()
 
 	info, err := archivo.Stat()
 	if err != nil {
-		httpx.ErrorInterno(w, err, "factura: leyendo archivo")
+		httpx.ErrorInterno(w, r, err, "factura: leyendo archivo")
 		return
 	}
 
@@ -526,7 +526,7 @@ func (h *Handler) EliminarFactura(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "El movimiento no tiene factura")
 		return
 	case err != nil:
-		httpx.ErrorInterno(w, err, "factura: quitando")
+		httpx.ErrorInterno(w, r, err, "factura: quitando")
 		return
 	}
 

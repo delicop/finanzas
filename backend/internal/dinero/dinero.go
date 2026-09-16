@@ -47,5 +47,18 @@ func Normalizar(entrada string) (string, error) {
 		return "", ErrCero
 	}
 
-	return s, nil
+	// Quitamos los ceros a la izquierda ("0100" -> "100") dejando siempre al
+	// menos un digito antes del punto ("0.50" sigue siendo "0.50").
+	// Postgres los descartaria igual al convertir a NUMERIC, pero devolver
+	// el valor ya limpio evita que dos montos iguales viajen escritos
+	// distinto por la API.
+	entero, decimales, tieneDecimales := strings.Cut(s, ".")
+	entero = strings.TrimLeft(entero, "0")
+	if entero == "" {
+		entero = "0"
+	}
+	if tieneDecimales {
+		return entero + "." + decimales, nil
+	}
+	return entero, nil
 }

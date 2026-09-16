@@ -20,6 +20,10 @@ type Config struct {
 	JWTExpiry   time.Duration
 	CORSOrigins []string
 	UploadsDir  string
+
+	// TokenMantenimiento protege las rutas para revisar la bitacora de
+	// errores desde afuera. Si queda vacio, esas rutas NO se montan.
+	TokenMantenimiento string
 }
 
 // Load lee el .env (si existe) y luego las variables de entorno reales.
@@ -60,6 +64,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_EXPIRY_HOURS debe ser un entero positivo")
 	}
 	cfg.JWTExpiry = time.Duration(hours) * time.Hour
+
+	// Opcional: sin el, las rutas de mantenimiento no existen.
+	cfg.TokenMantenimiento = os.Getenv("TOKEN_MANTENIMIENTO")
+	if cfg.TokenMantenimiento != "" && len(cfg.TokenMantenimiento) < 24 {
+		return nil, fmt.Errorf("TOKEN_MANTENIMIENTO debe tener al menos 24 caracteres (tiene %d)", len(cfg.TokenMantenimiento))
+	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:5173")
 	for _, o := range strings.Split(origins, ",") {

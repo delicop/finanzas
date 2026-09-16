@@ -42,7 +42,7 @@ func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
 
 	lista, err := h.store.Listar(r.Context(), usuarioID)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "medios: listando")
+		httpx.ErrorInterno(w, r, err, "medios: listando")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, lista)
@@ -66,7 +66,7 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "medios: creando")
+		httpx.ErrorInterno(w, r, err, "medios: creando")
 		return
 	}
 
@@ -98,7 +98,7 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, ErrNombreDuplicado):
 		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe un medio de pago con ese nombre"})
 	case err != nil:
-		httpx.ErrorInterno(w, err, "medios: actualizando")
+		httpx.ErrorInterno(w, r, err, "medios: actualizando")
 	default:
 		httpx.JSON(w, http.StatusOK, medio)
 	}
@@ -127,7 +127,7 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusConflict,
 			"No se puede eliminar: hay movimientos registrados con este medio de pago.")
 	case err != nil:
-		httpx.ErrorInterno(w, err, "medios: eliminando")
+		httpx.ErrorInterno(w, r, err, "medios: eliminando")
 	default:
 		// 204 No Content: borrado exitoso, no hay cuerpo que devolver.
 		w.WriteHeader(http.StatusNoContent)

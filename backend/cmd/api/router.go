@@ -14,6 +14,7 @@ import (
 	"finanzas/internal/config"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/registro"
 )
 
 // nuevoRouter arma todas las rutas y middlewares de la API.
@@ -21,14 +22,16 @@ import (
 // Usamos chi en vez del ServeMux estandar por dos cosas que vamos a necesitar
 // ya: parametros en la URL (/categorias/{id}) y grupos de rutas con
 // middlewares distintos (publicas vs. protegidas por JWT).
-func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenFacturas) http.Handler {
+func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenFacturas, registroStore *registro.Store) http.Handler {
 	r := chi.NewRouter()
 
 	// --- Middlewares globales (se aplican a TODA request, en este orden) ---
 	r.Use(middleware.RequestID) // un id unico por request, util en logs
 	r.Use(middleware.RealIP)    // resuelve la IP real detras del proxy
 	r.Use(middleware.Logger)    // loguea metodo, ruta, status y duracion
-	r.Use(middleware.Recoverer) // un panic devuelve 500 y no tumba el server
+	// Recuperador (nuestro, en vez del de chi): además de evitar que un panic
+	// tumbe el servidor, lo guarda en la base con su traza para poder buscarlo.
+	r.Use(registro.Recuperador)
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	// --- CORS ---
@@ -65,6 +68,13 @@ func nuevoRouter(cfg *config.Config, pool *sql.DB, almacen *movimientos.AlmacenF
 	})
 
 	r.Route("/api", func(api chi.Router) {
+		// Mantenimiento: la bitácora de errores, para revisarla desde afuera.
+		// Va con su propio token (no con el login del cliente) y solo existe
+		// si TOKEN_MANTENIMIENTO está configurado.
+		if cfg.TokenMantenimiento != "" {
+			api.Mount("/mantenimiento", registro.NewHandler(registroStore, cfg.TokenMantenimiento).Rutas())
+		}
+
 		// Publicas: login (y el preflight de CORS, que resuelve el middleware).
 		api.Mount("/auth", authHandler.Rutas())
 

@@ -102,7 +102,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	usuario, err := h.store.PorEmail(r.Context(), req.Email)
 	if err != nil && !errors.Is(err, ErrNoEncontrado) {
-		httpx.ErrorInterno(w, err, "login: consultando usuario")
+		httpx.ErrorInterno(w, r, err, "login: consultando usuario")
 		return
 	}
 
@@ -116,7 +116,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, expira, err := h.tokens.Generar(usuario)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "login: generando token")
+		httpx.ErrorInterno(w, r, err, "login: generando token")
 		return
 	}
 
@@ -150,7 +150,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "me: consultando usuario")
+		httpx.ErrorInterno(w, r, err, "me: consultando usuario")
 		return
 	}
 
@@ -204,7 +204,7 @@ func (h *Handler) CambiarPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		httpx.ErrorInterno(w, err, "password: consultando usuario")
+		httpx.ErrorInterno(w, r, err, "password: consultando usuario")
 		return
 	}
 
@@ -215,12 +215,12 @@ func (h *Handler) CambiarPassword(w http.ResponseWriter, r *http.Request) {
 
 	hash, err := HashPassword(req.Nueva)
 	if err != nil {
-		httpx.ErrorInterno(w, err, "password: generando hash")
+		httpx.ErrorInterno(w, r, err, "password: generando hash")
 		return
 	}
 
 	if err := h.store.ActualizarPassword(r.Context(), usuarioID, hash); err != nil {
-		httpx.ErrorInterno(w, err, "password: guardando")
+		httpx.ErrorInterno(w, r, err, "password: guardando")
 		return
 	}
 

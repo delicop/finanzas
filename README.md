@@ -2,6 +2,10 @@
 
 App de finanzas personales para un solo usuario. Todo corre en Docker.
 
+> **Documentación completa en [`docs/`](docs/)** — arquitectura, decisiones
+> técnicas, API, [cómo revisar los errores del servidor](docs/errores.md),
+> pruebas y despliegue en la Raspberry Pi.
+
 ```
 /backend    API en Go (monolito)
 /frontend   SPA en React + Vite
