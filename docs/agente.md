@@ -248,6 +248,28 @@ proveedor falla, sigue en pantalla en vez de perderse. Y el consumo se anota al
 aceptar el mensaje, no al responderlo: si solo se cobrara el éxito, un
 proveedor fallando en bucle sería un reintento infinito gratis contra la cuota.
 
+## Notas de voz
+
+Con el cajón vacío, el botón de enviar se vuelve un micrófono 🎤 (como en
+WhatsApp). Se toca, se habla ("pagué 20 mil de gasolina") y el texto aparece
+en el cajón; se toca ■ para parar antes. **No se envía solo**: lo dictado se
+revisa primero, porque un "18 mil" mal oído como "80 mil" es plata.
+
+Usa el reconocimiento de voz del propio navegador (Web Speech API,
+`frontend/src/lib/dictado.js`), en español de Colombia. No cuesta nada ni
+pasa por nuestro servidor: al backend llega el texto, igual que si se hubiera
+escrito. Ojo con la privacidad: Chrome manda el audio a Google para
+convertirlo.
+
+| Navegador | ¿Funciona? |
+|---|---|
+| Chrome / Edge (Android, computador) | Sí |
+| Safari (iPhone, Mac) | Sí |
+| Firefox | No: el micrófono no aparece |
+
+Necesita HTTPS (o `localhost`) y permiso de micrófono. Si el permiso está
+negado, el chat lo dice.
+
 ## Terminar y guardar la conversación
 
 Un chat que nunca se limpia tiene dos problemas: el usuario tiene que leer todo

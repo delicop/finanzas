@@ -1862,6 +1862,29 @@ button.wa-enviar:disabled {
   opacity: 0.45;
 }
 
+button.wa-microfono {
+  font-size: 19px;
+}
+
+/* Grabando: rojo y latiendo, para que no quede el micrófono abierto sin
+   darse cuenta. */
+button.wa-microfono.grabando {
+  background: var(--rojo);
+  animation: wa-grabando 1.2s infinite ease-in-out;
+}
+
+@keyframes wa-grabando {
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 107, 107, 0.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.wa-microfono.grabando {
+    animation: none;
+  }
+}
+
 /* ---------- la burbuja flotante y su panel ---------- */
 
 /* La única entrada al asistente, en la esquina como el botón de WhatsApp. */

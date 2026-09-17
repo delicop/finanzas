@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { agenteApi, categoriasApi, mediosApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { descargarConversacion } from '../lib/descargarChat'
+import { hayDictado, useDictado } from '../lib/dictado'
 import { formatearMonto } from '../lib/formato'
 import Burbuja from './BurbujaMensaje'
 import ConversacionesGuardadas from './ConversacionesGuardadas'
@@ -62,6 +63,13 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   const hilo = useRef(null)
   const campo = useRef(null)
 
+  // Notas de voz: lo dictado cae en el cajón para revisarlo antes de enviar.
+  // No se manda solo: un "18 mil" mal oído como "80 mil" es plata.
+  const dictado = useDictado((dicho) => {
+    setTexto(dicho.slice(0, MAX_CARACTERES))
+    ajustarAltura()
+  })
+
   useEffect(() => {
     // Mirando la cuenta de otro no hay nada que cargar: el backend responde
     // 403 porque el chat de alguien no es un dato que el panel revise.
@@ -120,6 +128,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
 
     const pregunta = texto.trim()
     if (!pregunta || enviando) return
+    dictado.parar()
 
     // Se pinta de una vez, sin esperar al servidor: el modelo puede tardar
     // unos segundos y ver tu propia frase en pantalla es lo que hace que la
@@ -168,9 +177,22 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   // El cajón crece con el texto hasta un tope, como en WhatsApp.
   function alEscribir(e) {
     setTexto(e.target.value)
-    const caja = e.target
-    caja.style.height = 'auto'
-    caja.style.height = `${Math.min(caja.scrollHeight, 120)}px`
+    ajustarAltura()
+  }
+
+  function ajustarAltura() {
+    // Después del render, cuando el texto nuevo ya está en el cajón.
+    requestAnimationFrame(() => {
+      const caja = campo.current
+      if (!caja) return
+      caja.style.height = 'auto'
+      caja.style.height = `${Math.min(caja.scrollHeight, 120)}px`
+    })
+  }
+
+  function alternarDictado() {
+    if (dictado.escuchando) dictado.parar()
+    else dictado.empezar(texto)
   }
 
   // Terminar deja el chat limpio: el asistente ya no relee lo anterior (más
@@ -362,6 +384,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
               </div>
             )}
             {error && <p className="wa-sistema wa-error">{error}</p>}
+            {dictado.error && <p className="wa-sistema wa-error">{dictado.error}</p>}
           </>
         )}
       </div>
@@ -385,19 +408,36 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
             value={texto}
             onChange={alEscribir}
             onKeyDown={alTeclear}
-            placeholder="Escribe un mensaje"
+            placeholder={dictado.escuchando ? 'Te escucho...' : 'Escribe un mensaje'}
             maxLength={MAX_CARACTERES}
             rows={1}
             disabled={cargando || enviando || restantes === 0}
           />
-          <button
-            type="submit"
-            className="wa-enviar"
-            disabled={cargando || enviando || texto.trim() === ''}
-            aria-label="Enviar"
-          >
-            ➤
-          </button>
+          {/* Como en WhatsApp: con el cajón vacío el botón es el micrófono, y
+              con texto es enviar. Mientras se dicta sigue siendo el micrófono
+              (en rojo) para poder pararlo. */}
+          {hayDictado && (dictado.escuchando || texto.trim() === '') ? (
+            <button
+              type="button"
+              className={`wa-enviar wa-microfono ${dictado.escuchando ? 'grabando' : ''}`}
+              onClick={alternarDictado}
+              disabled={cargando || enviando || restantes === 0}
+              aria-label={dictado.escuchando ? 'Dejar de dictar' : 'Dictar un mensaje'}
+              aria-pressed={dictado.escuchando}
+              title={dictado.escuchando ? 'Dejar de dictar' : 'Dictar un mensaje'}
+            >
+              {dictado.escuchando ? '■' : '🎤'}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="wa-enviar"
+              disabled={cargando || enviando || texto.trim() === ''}
+              aria-label="Enviar"
+            >
+              ➤
+            </button>
+          )}
         </form>
       )}
     </section>
