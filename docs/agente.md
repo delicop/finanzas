@@ -248,6 +248,29 @@ proveedor falla, sigue en pantalla en vez de perderse. Y el consumo se anota al
 aceptar el mensaje, no al responderlo: si solo se cobrara el éxito, un
 proveedor fallando en bucle sería un reintento infinito gratis contra la cuota.
 
+## Foto o PDF de la factura
+
+El clip 📎 del chat adjunta la foto (o el PDF) de la factura de un gasto:
+
+- Si ya hay una tarjeta de gasto esperando, la foto va directo a esa tarjeta.
+- Si no, queda "lista" encima del cajón y se pega a la próxima tarjeta de
+  gasto que prepare el asistente. El mensaje sale con "📎 (con la foto de la
+  factura)" para que el asistente sepa que ya la tiene.
+- Cada tarjeta de gasto tiene además su propio botón **📎 Adjuntar factura**,
+  y cuando el asistente prepara un "pagué" **pregunta si tienes la foto o el
+  PDF** (se lo indica la herramienta `proponer_movimiento`; a los préstamos e
+  ingresos no se les pide).
+- Al **Guardar**, primero se crea el movimiento y luego se sube la factura con
+  la misma ruta del formulario (`POST /api/movimientos/{id}/factura`), con sus
+  mismas validaciones (tipo real del archivo, 10 MB máximo). Si la subida
+  falla, el movimiento ya quedó y el chat avisa que la factura se puede
+  adjuntar desde Movimientos.
+
+**El asistente no lee la foto**: el modelo solo entiende texto, y el monto y
+el comercio los dice la persona. La foto es el soporte del gasto. Antes de
+subirla, el navegador la achica a 2000 px (`lib/imagen.js`): una foto de
+teléfono pasa de ~5 MB a unos cientos de KB.
+
 ## Notas de voz
 
 Con el cajón vacío, el botón de enviar se vuelve un micrófono 🎤 (como en

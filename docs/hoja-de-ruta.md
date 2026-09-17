@@ -7,7 +7,7 @@ Lo que se le podría agregar a la app, en orden de valor. Las marcadas
 
 | # | Idea | Estado |
 |---|---|---|
-| 1 | **Foto de la factura en el chat.** Mandarle la foto al asistente y que prepare el gasto con monto, fecha y comercio. Es lo que más tecleo ahorra. | En curso |
+| 1 | **Foto de la factura en el chat.** Adjuntar la foto o el PDF desde el chat y que quede como factura del gasto; el asistente la pide al preparar un "pagué". (Que el asistente *lea* la foto queda para después.) | Hecho ([agente.md](agente.md#foto-o-pdf-de-la-factura)) |
 | 2 | **Notas de voz.** Dictar "pagué 20 mil de gasolina" en vez de escribirlo, como en WhatsApp. | Hecho ([agente.md](agente.md#notas-de-voz)) |
 | 3 | **Presupuestos por categoría.** "Máximo $500.000 al mes en Personal", con aviso al llegar al 80%. | Después |
 | 4 | **Gastos que se repiten.** El arriendo o el internet se crean solos cada mes y solo se confirman. | Después |
@@ -15,6 +15,13 @@ Lo que se le podría agregar a la app, en orden de valor. Las marcadas
 | 6 | **Exportar a Excel o PDF** los movimientos de un rango de fechas, para el contador. | Hecho ([api.md](api.md#exportar-a-excel-o-pdf)) |
 | 7 | **Recordatorio de préstamos por WhatsApp.** Un botón que arma el mensaje ("Hola Carlos, te recuerdo los $200.000…") y abre WhatsApp listo para enviar. | Después |
 | 8 | **Instalar la app en el celular (PWA).** Ícono en la pantalla de inicio y sin barra del navegador. | Hecho ([despliegue.md](despliegue.md#instalar-la-app-en-el-celular-pwa)) |
+
+### Agregado por el camino
+
+- **Fecha de pago de los préstamos** y aviso el día del cobro
+  ([avisos.md](avisos.md#el-día-del-cobro)).
+- **Terminar y guardar conversaciones** del asistente, con la pregunta "¿Necesitas
+  algo más?" después de guardar ([agente.md](agente.md#terminar-y-guardar-la-conversación)).
 
 ## Para el dueño del servidor
 
@@ -34,6 +41,6 @@ Lo que se le podría agregar a la app, en orden de valor. Las marcadas
 
 ## Si hubiera que escoger tres
 
-1. **Foto de factura** (1): cambia el uso diario.
+1. **Que el asistente lea la foto** de la factura (monto y comercio solos).
 2. **Instalar en el celular** (8): casi no cuesta y la app se siente nativa.
 3. **Cobro en línea** (9): le quita trabajo al dueño cada mes.

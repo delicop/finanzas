@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext'
 import { descargarConversacion } from '../lib/descargarChat'
 import { hayDictado, useDictado } from '../lib/dictado'
 import { formatearMonto } from '../lib/formato'
+import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
 import Burbuja from './BurbujaMensaje'
 import ConversacionesGuardadas from './ConversacionesGuardadas'
 import PropuestaAgente from './PropuestaAgente'
@@ -59,6 +60,14 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   const [menuAbierto, setMenuAbierto] = useState(false)
   // Se muestra una vez al terminar, para que quede claro que no se perdió.
   const [recienTerminada, setRecienTerminada] = useState(false)
+
+  // La foto de la factura que el usuario adjuntó con el clip. Queda esperando
+  // hasta que el asistente prepare el gasto, y ahí pasa a esa tarjeta, que la
+  // sube como factura al guardar. El modelo no ve la foto: el monto y el
+  // comercio los sigue diciendo la persona.
+  const [fotoPendiente, setFotoPendiente] = useState(null)
+  // Qué foto va con qué tarjeta: { [id de la propuesta]: File }.
+  const [facturas, setFacturas] = useState({})
 
   const hilo = useRef(null)
   const campo = useRef(null)
@@ -126,9 +135,14 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   async function enviar(e) {
     e?.preventDefault()
 
-    const pregunta = texto.trim()
-    if (!pregunta || enviando) return
+    const escrito = texto.trim()
+    if (!escrito || enviando) return
     dictado.parar()
+
+    // Con una foto esperando, el mensaje lo dice: el modelo no ve la foto, y
+    // sin esto pediría una factura que el usuario ya adjuntó.
+    const pregunta = fotoPendiente ? `${escrito}
+📎 (con la foto de la factura)` : escrito
 
     // Se pinta de una vez, sin esperar al servidor: el modelo puede tardar
     // unos segundos y ver tu propia frase en pantalla es lo que hace que la
@@ -154,6 +168,13 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
       setRestantes(datos.restantes)
       if (datos.propuestas?.length) {
         setPropuestas((anteriores) => [...anteriores, ...datos.propuestas])
+
+        // La foto pendiente se va con el primer gasto que prepare.
+        const destino = datos.propuestas.find((p) => p.tipo === 'movimiento')
+        if (fotoPendiente && destino) {
+          setFacturas((anteriores) => ({ ...anteriores, [destino.id]: fotoPendiente }))
+          setFotoPendiente(null)
+        }
       }
     } catch (err) {
       // La pregunta se queda en pantalla: el backend ya la guardó, y borrarla
@@ -212,6 +233,18 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     }
   }
 
+  // La foto del clip va a la última tarjeta de gasto que aún no tenga factura;
+  // si no hay ninguna, queda esperando la próxima.
+  function adjuntarFoto(archivo) {
+    const tarjeta = propuestas.findLast((p) => p.tipo === 'movimiento' && !facturas[p.id])
+    if (tarjeta) {
+      setFacturas((anteriores) => ({ ...anteriores, [tarjeta.id]: archivo }))
+    } else {
+      setFotoPendiente(archivo)
+      campo.current?.focus()
+    }
+  }
+
   function seguir() {
     setGuardado('')
     campo.current?.focus()
@@ -248,11 +281,14 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   // Una tarjeta se fue: o se guardó (llega el movimiento creado) o se
   // descartó. El aviso es corto pero explícito — es el único momento en que
   // algo del asistente sí tocó las cuentas.
-  function propuestaResuelta(id, movimiento) {
+  function propuestaResuelta(id, movimiento, aviso) {
     setPropuestas((anteriores) => anteriores.filter((p) => p.id !== id))
+    setFacturas(({ [id]: _, ...resto }) => resto)
     if (movimiento) {
       const donde = movimiento.categoria_nombre ? ` en ${movimiento.categoria_nombre}` : ''
-      setGuardado(`Guardado: ${formatearMonto(movimiento.monto)}${donde}`)
+      const conFactura = movimiento.factura ? ', con su factura' : ''
+      setGuardado(`Guardado: ${formatearMonto(movimiento.monto)}${donde}${conFactura}`)
+      setError(aviso || '')
       onGuardado?.(movimiento)
     } else {
       setGuardado('')
@@ -358,6 +394,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
                 propuesta={p}
                 categorias={listas.categorias}
                 medios={listas.medios}
+                factura={facturas[p.id]}
                 onResuelta={propuestaResuelta}
               />
             ))}
@@ -397,8 +434,29 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
         </p>
       )}
 
+      {fotoPendiente && (
+        <div className="wa-adjunto-pendiente">
+          <VistaAdjunto
+            archivo={fotoPendiente}
+            texto="Factura lista"
+            onQuitar={() => setFotoPendiente(null)}
+          />
+          <p className="tenue">
+            Cuéntame de qué es y cuánto fue: la adjunto al gasto que te prepare.
+          </p>
+        </div>
+      )}
+
       {!soloLectura && !sinConfigurar && (
         <form className="wa-escribir" onSubmit={enviar}>
+          <BotonAdjuntar
+            onArchivo={adjuntarFoto}
+            className="wa-clip"
+            titulo="Adjuntar la foto de una factura"
+            disabled={cargando || enviando}
+          >
+            📎
+          </BotonAdjuntar>
           <label htmlFor="mensaje-asistente" className="sr-solo">
             Escribe un mensaje
           </label>

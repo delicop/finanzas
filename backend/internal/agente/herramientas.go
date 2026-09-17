@@ -635,12 +635,21 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		CobrarEl:    valor(datos.CobrarEl),
 	}
 
+	instruccion := "NO está registrado todavía. Al usuario le apareció una tarjeta con estos datos " +
+		"para que los revise y confirme. Dile en una frase qué preparaste (tipo, monto y de qué es) " +
+		"y pídele que confirme ahí. No digas que ya quedó guardado."
+	if datos.Tipo == movimientos.TipoPague {
+		// Un gasto con su soporte es un gasto que el contador acepta. La foto
+		// no la ve el modelo: la adjunta el usuario en la tarjeta.
+		instruccion += " Como es un gasto, pregúntale también si tiene la foto o el PDF de la factura: " +
+			"puede adjuntarla en la misma tarjeta con el botón 📎 Adjuntar factura antes de guardar. " +
+			"Si ya te dijo que la adjuntó, no se lo vuelvas a pedir."
+	}
+
 	confirmacion, err := aJSON(map[string]any{
-		"estado":    "pendiente de confirmación",
-		"preparado": propuesta,
-		"instruccion": "NO está registrado todavía. Al usuario le apareció una tarjeta con estos datos " +
-			"para que los revise y confirme. Dile en una frase qué preparaste (tipo, monto y de qué es) " +
-			"y pídele que confirme ahí. No digas que ya quedó guardado.",
+		"estado":      "pendiente de confirmación",
+		"preparado":   propuesta,
+		"instruccion": instruccion,
 	})
 	if err != nil {
 		return Resultado{}, err
@@ -751,6 +760,8 @@ func (c *Catalogo) CrearMovimiento(ctx context.Context, usuarioID int64, entrada
 		return nil, map[string]string{"categoria_id": "La categoría no existe"}, nil
 	case errors.Is(err, movimientos.ErrMedioInvalido):
 		return nil, map[string]string{"medio_pago_id": "El medio de pago no existe"}, nil
+	case errors.Is(err, movimientos.ErrCobroAntes):
+		return nil, map[string]string{"cobrar_el": "No puede ser antes del día en que prestaste"}, nil
 	case err != nil:
 		return nil, nil, fmt.Errorf("creando el movimiento propuesto: %w", err)
 	}

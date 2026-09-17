@@ -280,7 +280,10 @@ export default function MovimientoForm({ movimiento, categorias, medios, onCerra
           </div>
         )}
 
-        <label htmlFor="factura">Factura (opcional)</label>
+        <label htmlFor="factura">
+          {datos.tipo === 'pague' ? '¿Tienes la factura? Sube la foto o el PDF' : 'Factura'}{' '}
+          <span className="tenue">(opcional)</span>
+        </label>
         <input
           id="factura"
           type="file"

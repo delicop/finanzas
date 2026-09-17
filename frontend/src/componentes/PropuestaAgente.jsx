@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { agenteApi } from '../lib/api'
+import { agenteApi, movimientosApi } from '../lib/api'
 import { entradaAMonto, formatearMonto, montoAEntrada, ETIQUETAS_TIPO } from '../lib/formato'
+import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
 import InputMonto from './InputMonto'
 
 // La tarjeta que aparece cuando el asistente prepara algo.
@@ -10,7 +11,10 @@ import InputMonto from './InputMonto'
 // escriba 450.000 el usuario tiene que poder arreglarlo ANTES de guardar, no
 // descubrirlo cuadrando el mes. Hasta que no le dé a Guardar, en la base del
 // dinero no ha pasado nada.
-export default function PropuestaAgente({ propuesta, categorias, medios, onResuelta }) {
+//
+// `factura` es una foto que el usuario ya adjuntó en el chat: la tarjeta la
+// muestra y la sube como factura del movimiento al guardarlo.
+export default function PropuestaAgente({ propuesta, categorias, medios, factura, onResuelta }) {
   if (propuesta.tipo === 'marcar_pagado') {
     return <CobroDePrestamo propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
   }
@@ -19,12 +23,13 @@ export default function PropuestaAgente({ propuesta, categorias, medios, onResue
       propuesta={propuesta}
       categorias={categorias}
       medios={medios}
+      facturaInicial={factura}
       onResuelta={onResuelta}
     />
   )
 }
 
-function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
+function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResuelta }) {
   const datos = propuesta.datos
 
   const [tipo, setTipo] = useState(datos.tipo)
@@ -36,6 +41,14 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
   const [aQuien, setAQuien] = useState(datos.a_quien ?? '')
   const [estado, setEstado] = useState(datos.estado || 'pendiente')
   const [cobrarEl, setCobrarEl] = useState(datos.cobrar_el ?? '')
+  const [factura, setFactura] = useState(facturaInicial ?? null)
+  // Si el usuario usa el clip del chat con la tarjeta ya abierta, la foto
+  // llega después: se toma en cuanto cambia.
+  const [ultimaRecibida, setUltimaRecibida] = useState(facturaInicial)
+  if (facturaInicial !== ultimaRecibida) {
+    setUltimaRecibida(facturaInicial)
+    if (facturaInicial) setFactura(facturaInicial)
+  }
 
   const esPrestamo = tipo === 'preste'
 
@@ -56,7 +69,13 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
   }
 
   return (
-    <Tarjeta propuesta={propuesta} onResuelta={onResuelta} cuerpo={cuerpo} etiqueta="Guardar">
+    <Tarjeta
+      propuesta={propuesta}
+      onResuelta={onResuelta}
+      cuerpo={cuerpo}
+      etiqueta="Guardar"
+      despues={factura ? (movimiento) => movimientosApi.subirFactura(movimiento.id, factura) : null}
+    >
       {(campos) => (
         <div className="propuesta-campos">
           <div className="propuesta-campo">
@@ -168,6 +187,25 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
               </div>
             </>
           )}
+
+          {/* La factura: en un gasto se pide de frente (es lo que el
+              contador quiere ver); en lo demás queda como opción discreta. */}
+          <div className={`propuesta-campo crece ${tipo === 'pague' && !factura ? 'pide-factura' : ''}`}>
+            {factura ? (
+              <VistaAdjunto archivo={factura} texto="Factura adjunta" onQuitar={() => setFactura(null)} />
+            ) : (
+              <>
+                {tipo === 'pague' && (
+                  <span className="pide-factura-texto">
+                    ¿Tienes la factura? Adjunta la foto o el PDF.
+                  </span>
+                )}
+                <BotonAdjuntar onArchivo={setFactura} className="secundario boton-factura">
+                  📎 Adjuntar factura
+                </BotonAdjuntar>
+              </>
+            )}
+          </div>
         </div>
       )}
     </Tarjeta>
@@ -220,7 +258,11 @@ function CobroDePrestamo({ propuesta, medios, onResuelta }) {
 
 // Tarjeta es la parte común: el marco, los dos botones y el manejo de errores.
 // Los campos los pone cada tipo de propuesta, que es lo único que cambia.
-function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, children }) {
+//
+// `despues` es opcional: lo que hay que hacer con el movimiento ya creado (subir
+// su factura). Si falla, el movimiento YA quedó guardado: la tarjeta se cierra
+// igual y se avisa, para que no se intente guardar dos veces.
+function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, despues, children }) {
   const [campos, setCampos] = useState({})
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -230,8 +272,16 @@ function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, children }) {
     setCampos({})
     setOcupado(true)
     try {
-      const movimiento = await agenteApi.confirmarPropuesta(propuesta.id, cuerpo())
-      onResuelta(propuesta.id, movimiento)
+      let movimiento = await agenteApi.confirmarPropuesta(propuesta.id, cuerpo())
+      let aviso = ''
+      if (despues) {
+        try {
+          movimiento = (await despues(movimiento)) ?? movimiento
+        } catch (err) {
+          aviso = `El movimiento quedó guardado, pero la factura no se pudo subir (${err.message}). Puedes adjuntarla desde Movimientos.`
+        }
+      }
+      onResuelta(propuesta.id, movimiento, aviso)
     } catch (err) {
       setError(err.message)
       setCampos(err.campos ?? {})

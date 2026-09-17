@@ -2411,3 +2411,101 @@ label.opcion-formato .tenue {
 .atajos-cobro {
   margin-top: 8px;
 }
+
+/* ---------- factura adjunta desde el chat ---------- */
+
+button.wa-clip {
+  width: 40px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  color: var(--wa-tenue);
+  font-size: 22px;
+}
+
+button.wa-clip:hover:not(:disabled) {
+  color: var(--wa-texto);
+}
+
+.wa-adjunto-pendiente {
+  padding: 8px 12px 0;
+  background: var(--wa-cajon);
+}
+
+.wa-adjunto-pendiente p {
+  margin: 4px 2px 0;
+  font-size: 12px;
+}
+
+.vista-adjunto {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--wa-campo, var(--superficie));
+  border: 1px solid var(--borde);
+  min-width: 0;
+}
+
+.vista-adjunto-img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.vista-adjunto-icono {
+  font-size: 26px;
+  width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.vista-adjunto-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+}
+
+.vista-adjunto-texto .tenue {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+button.vista-adjunto-quitar {
+  background: none;
+  border: 0;
+  color: var(--tenue);
+  min-height: 0;
+  padding: 4px 6px;
+  font-size: 15px;
+}
+
+button.boton-factura {
+  align-self: flex-start;
+}
+
+/* En un gasto la tarjeta pregunta por la factura. */
+.propuesta-campo.pide-factura {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  border: 1px dashed var(--borde);
+  border-radius: 8px;
+}
+
+.pide-factura-texto {
+  font-size: 13px;
+}
+
