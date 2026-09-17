@@ -205,6 +205,7 @@ transferencia"… y se vuelve inmanejable.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/movimientos` | Lista paginada con filtros |
+| GET | `/api/movimientos/exportar` | Excel o PDF de un rango de fechas |
 | POST | `/api/movimientos` | Crear |
 | GET | `/api/movimientos/{id}` | Detalle |
 | PUT | `/api/movimientos/{id}` | Editar |
@@ -238,6 +239,28 @@ curl -X PATCH http://localhost:8080/api/movimientos/7/estado \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"estado":"pagado","medio_cobro_id":3}'
 ```
+
+### Exportar a Excel o PDF
+
+`GET /api/movimientos/exportar?formato=xlsx&desde=2026-09-01&hasta=2026-09-30`
+
+- `formato`: `xlsx` o `pdf`. `desde` y `hasta` son **obligatorios** (máximo
+  cinco años de rango).
+- Acepta los mismos filtros del listado (`tipo`, `categoria_id`,
+  `medio_pago_id`, `estado`, `q`): se exporta lo que se está viendo.
+- Responde el archivo con `Content-Disposition: attachment` y
+  `Cache-Control: no-store`. Trae arriba el resumen del rango (recibido,
+  pagado, por cobrar, recuperado y balance, sumados por Postgres) y abajo los
+  movimientos en orden cronológico.
+- Más de 5.000 movimientos en el rango → 422, "escoge un rango más corto".
+
+```bash
+curl -o septiembre.pdf -H "Authorization: Bearer $TOKEN"   "http://localhost:8080/api/movimientos/exportar?formato=pdf&desde=2026-09-01&hasta=2026-09-30"
+```
+
+En el Excel los montos son números (se pueden sumar y filtrar) y las
+descripciones siempre texto: una que empiece por `=` no se ejecuta como
+fórmula.
 
 ## Resumen
 

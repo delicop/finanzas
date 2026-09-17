@@ -29,6 +29,8 @@ func (h *Handler) Rutas() chi.Router {
 
 	r.Get("/", h.Listar)
 	r.Post("/", h.Crear)
+	// Antes de /{id}: chi prefiere la ruta fija, pero asi se lee claro.
+	r.Get("/exportar", h.Exportar)
 	r.Get("/{id}", h.Obtener)
 	r.Put("/{id}", h.Actualizar)
 	r.Delete("/{id}", h.Eliminar)

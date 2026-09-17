@@ -1,3 +1,5 @@
+import { guardarArchivo } from './archivos'
+
 // Descarga una conversación del asistente como texto plano, para guardarla en
 // el teléfono o mandarla por correo. Se arma en el navegador: el servidor ya
 // entregó los mensajes y no hace falta otra ruta para esto.
@@ -21,22 +23,15 @@ export function textoDeConversacion(mensajes, titulo = '') {
   return lineas.join('\n')
 }
 
+const BOM = String.fromCharCode(0xfeff)
+
 export function descargarConversacion(mensajes, titulo = '') {
   const primero = mensajes.find((m) => m.creado_en)?.creado_en
   const dia = (primero ? new Date(primero) : new Date()).toISOString().slice(0, 10)
 
-  // El BOM (﻿) hace que el Bloc de notas de Windows lea bien las tildes.
-  const archivo = new Blob(['﻿', textoDeConversacion(mensajes, titulo)], {
+  // Con BOM (marca de UTF-8) el Bloc de notas de Windows lee bien las tildes.
+  const archivo = new Blob([BOM, textoDeConversacion(mensajes, titulo)], {
     type: 'text/plain;charset=utf-8',
   })
-  const url = URL.createObjectURL(archivo)
-  const enlace = document.createElement('a')
-  enlace.href = url
-  enlace.download = `conversacion-asistente-${dia}.txt`
-  document.body.appendChild(enlace)
-  enlace.click()
-  enlace.remove()
-  // Un respiro antes de soltar la URL: algunos navegadores empiezan la
-  // descarga después del clic.
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  guardarArchivo(archivo, `conversacion-asistente-${dia}.txt`)
 }

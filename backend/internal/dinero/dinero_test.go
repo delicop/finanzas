@@ -77,3 +77,26 @@ func TestNormalizarNoPierdeValor(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatear(t *testing.T) {
+	casos := map[string]string{
+		"0":              "$ 0",
+		"0.00":           "$ 0",
+		"-0.00":          "$ 0",
+		"5":              "$ 5",
+		"999":            "$ 999",
+		"1000":           "$ 1.000",
+		"18000.00":       "$ 18.000",
+		"1234567.5":      "$ 1.234.567,50",
+		"1234567.05":     "$ 1.234.567,05",
+		"-250000.00":     "-$ 250.000",
+		"999999999999":   "$ 999.999.999.999",
+		"no es un monto": "no es un monto",
+		"12a4":           "12a4",
+	}
+	for entrada, esperado := range casos {
+		if obtenido := Formatear(entrada); obtenido != esperado {
+			t.Errorf("Formatear(%q) = %q, se esperaba %q", entrada, obtenido, esperado)
+		}
+	}
+}

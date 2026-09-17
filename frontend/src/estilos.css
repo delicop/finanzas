@@ -962,6 +962,19 @@ button.menor-peligro:hover:not(:disabled) {
     min-height: 46px;
   }
 
+  /* Con dos botones: el principal a lo ancho y el secundario al lado. */
+  .acciones-encabezado {
+    width: 100%;
+  }
+
+  .acciones-encabezado button {
+    min-height: 46px;
+  }
+
+  .acciones-encabezado button:last-child {
+    flex: 1;
+  }
+
   .fila-tarjetas {
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -2287,5 +2300,80 @@ button.burbuja-asistente:focus-visible {
 @media (max-width: 720px) {
   .barra {
     padding-top: max(10px, env(safe-area-inset-top));
+  }
+}
+
+/* ---------- exportar movimientos ---------- */
+
+.acciones-encabezado {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.atajos-rango {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.opciones-formato {
+  border: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.opciones-formato legend {
+  font-size: 13px;
+  color: var(--tenue);
+  margin-bottom: 4px;
+  padding: 0;
+}
+
+label.opcion-formato {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--superficie-2);
+  color: var(--texto);
+  cursor: pointer;
+}
+
+label.opcion-formato.activa {
+  border-color: var(--acento);
+  outline: 1px solid var(--acento);
+}
+
+label.opcion-formato input {
+  width: auto;
+  margin-top: 3px;
+}
+
+label.opcion-formato > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+
+label.opcion-formato .tenue {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.nota-filtros {
+  font-size: 12.5px;
+  margin: 10px 0 0;
+}
+
+@media (max-width: 480px) {
+  .opciones-formato {
+    grid-template-columns: 1fr;
   }
 }

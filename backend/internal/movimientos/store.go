@@ -50,11 +50,11 @@ const columnas = `
 	m.factura_ruta, m.factura_nombre, m.factura_tipo,
 	m.creado_en, m.actualizado_en`
 
-// Listar devuelve la pagina de movimientos y el total que cumple los filtros.
+// filtrosSQL arma el WHERE del listado y de la exportacion, que filtran igual.
 //
 // El WHERE se arma dinamicamente, pero los valores SIEMPRE van como parametros
 // ($1, $2, ...). Concatenar valores dentro del string SQL seria inyeccion SQL.
-func (s *Store) Listar(ctx context.Context, usuarioID int64, f Filtros) ([]Movimiento, int, error) {
+func filtrosSQL(usuarioID int64, f Filtros) (string, []any) {
 	condiciones := []string{"m.usuario_id = $1"}
 	args := []any{usuarioID}
 
@@ -91,7 +91,12 @@ func (s *Store) Listar(ctx context.Context, usuarioID int64, f Filtros) ([]Movim
 			"(m.descripcion ILIKE $"+n+" OR m.a_quien ILIKE $"+n+")")
 	}
 
-	where := "WHERE " + strings.Join(condiciones, " AND ")
+	return "WHERE " + strings.Join(condiciones, " AND "), args
+}
+
+// Listar devuelve la pagina de movimientos y el total que cumple los filtros.
+func (s *Store) Listar(ctx context.Context, usuarioID int64, f Filtros) ([]Movimiento, int, error) {
+	where, args := filtrosSQL(usuarioID, f)
 
 	var total int
 	conteoSQL := `SELECT count(*) FROM movimientos m ` + where

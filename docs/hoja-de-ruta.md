@@ -1,20 +1,20 @@
 # Hoja de ruta
 
-Lo que se le podría agregar a la app, en orden de valor. Las marcadas **en
-curso** son las que se están haciendo; el resto queda para después.
+Lo que se le podría agregar a la app, en orden de valor. Las marcadas
+**hecho** ya están en la app; el resto queda para después.
 
 ## Para el cliente
 
 | # | Idea | Estado |
 |---|---|---|
 | 1 | **Foto de la factura en el chat.** Mandarle la foto al asistente y que prepare el gasto con monto, fecha y comercio. Es lo que más tecleo ahorra. | En curso |
-| 2 | **Notas de voz.** Dictar "pagué 20 mil de gasolina" en vez de escribirlo, como en WhatsApp. | En curso |
+| 2 | **Notas de voz.** Dictar "pagué 20 mil de gasolina" en vez de escribirlo, como en WhatsApp. | Hecho ([agente.md](agente.md#notas-de-voz)) |
 | 3 | **Presupuestos por categoría.** "Máximo $500.000 al mes en Personal", con aviso al llegar al 80%. | Después |
 | 4 | **Gastos que se repiten.** El arriendo o el internet se crean solos cada mes y solo se confirman. | Después |
 | 5 | **Gráfica simple del mes.** Barras de en qué se fue la plata y comparación con el mes anterior. | Después |
-| 6 | **Exportar a Excel o PDF** los movimientos de un rango de fechas, para el contador. | En curso |
+| 6 | **Exportar a Excel o PDF** los movimientos de un rango de fechas, para el contador. | Hecho ([api.md](api.md#exportar-a-excel-o-pdf)) |
 | 7 | **Recordatorio de préstamos por WhatsApp.** Un botón que arma el mensaje ("Hola Carlos, te recuerdo los $200.000…") y abre WhatsApp listo para enviar. | Después |
-| 8 | **Instalar la app en el celular (PWA).** Ícono en la pantalla de inicio y sin barra del navegador. | En curso |
+| 8 | **Instalar la app en el celular (PWA).** Ícono en la pantalla de inicio y sin barra del navegador. | Hecho ([despliegue.md](despliegue.md#instalar-la-app-en-el-celular-pwa)) |
 
 ## Para el dueño del servidor
 

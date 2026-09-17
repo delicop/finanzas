@@ -115,6 +115,28 @@ export async function descargarFactura(movimientoId) {
   return { url: URL.createObjectURL(blob), tipo: blob.type }
 }
 
+// exportarMovimientos baja el Excel o el PDF de un rango de fechas, con los
+// mismos filtros del listado. Devuelve el archivo (Blob); si el backend
+// responde un error, llega como ApiError con sus campos, igual que apiFetch.
+export async function exportarMovimientos(filtros, formato) {
+  let respuesta
+  try {
+    respuesta = await fetch(
+      `${BASE_URL}/api/movimientos/exportar${queryString({ ...filtros, formato })}`,
+      { headers: cabeceras(true) },
+    )
+  } catch {
+    throw new ApiError('No se pudo conectar con el servidor', 0)
+  }
+
+  if (!respuesta.ok) {
+    if (respuesta.status === 401) tokenStorage.clear()
+    const datos = await respuesta.json().catch(() => null)
+    throw new ApiError(datos?.error ?? 'No se pudo generar el archivo', respuesta.status, datos?.campos)
+  }
+  return respuesta.blob()
+}
+
 function queryString(params) {
   const q = new URLSearchParams()
   for (const [clave, valor] of Object.entries(params ?? {})) {

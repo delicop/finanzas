@@ -62,3 +62,44 @@ func Normalizar(entrada string) (string, error) {
 	}
 	return entero, nil
 }
+
+// Formatear escribe un monto como se lee en Colombia: "$ 1.234.567" o
+// "$ 1.234,50". Recibe el texto que devuelve Postgres ("1234567.00") y lo
+// arma a mano, caracter por caracter: tampoco aqui se pasa por float.
+// Los centavos en cero no se muestran. Si el texto no es un numero, se
+// devuelve tal cual.
+func Formatear(monto string) string {
+	s := strings.TrimSpace(monto)
+	signo := ""
+	if strings.HasPrefix(s, "-") {
+		signo, s = "-", s[1:]
+	}
+
+	entero, decimales, _ := strings.Cut(s, ".")
+	if entero == "" || strings.Trim(entero, "0123456789") != "" || strings.Trim(decimales, "0123456789") != "" {
+		return monto
+	}
+	entero = strings.TrimLeft(entero, "0")
+	if entero == "" {
+		entero = "0"
+	}
+
+	var b strings.Builder
+	for i, d := range entero {
+		if i > 0 && (len(entero)-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteRune(d)
+	}
+
+	if strings.Trim(decimales, "0") != "" {
+		if len(decimales) == 1 {
+			decimales += "0"
+		}
+		b.WriteString("," + decimales[:2])
+	}
+	if b.String() == "0" {
+		signo = ""
+	}
+	return signo + "$ " + b.String()
+}

@@ -14,6 +14,7 @@ import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import VisorFactura from '../componentes/VisorFactura'
 import ModalCobro from '../componentes/ModalCobro'
+import ModalExportar from '../componentes/ModalExportar'
 
 const POR_PAGINA = 50
 
@@ -38,6 +39,7 @@ export default function Movimientos() {
   const [cambiandoEstado, setCambiandoEstado] = useState(null)
   // Préstamo que se está marcando como pagado (abre el modal del medio de cobro).
   const [cobrando, setCobrando] = useState(null)
+  const [exportando, setExportando] = useState(false)
 
   const filtros = {
     categoria_id: params.get('categoria_id') ?? '',
@@ -158,11 +160,17 @@ export default function Movimientos() {
     <>
       <div className="encabezado-pagina">
         <h1>Movimientos</h1>
-        {!soloLectura && (
-          <button onClick={() => setEditando({})} disabled={categorias.length === 0}>
-            Nuevo movimiento
+        <div className="acciones-encabezado">
+          {/* Exportar sí se puede revisando otra cuenta: es solo leer. */}
+          <button className="secundario" onClick={() => setExportando(true)}>
+            Exportar
           </button>
-        )}
+          {!soloLectura && (
+            <button onClick={() => setEditando({})} disabled={categorias.length === 0}>
+              Nuevo movimiento
+            </button>
+          )}
+        </div>
       </div>
 
       {categorias.length === 0 && !cargando && (
@@ -380,6 +388,8 @@ export default function Movimientos() {
           onConfirmar={(medioCobroID) => guardarEstado(cobrando, 'pagado', medioCobroID)}
         />
       )}
+
+      {exportando && <ModalExportar filtros={filtros} onCerrar={() => setExportando(false)} />}
     </>
   )
 }
