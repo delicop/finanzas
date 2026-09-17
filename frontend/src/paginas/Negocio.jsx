@@ -26,6 +26,22 @@ function nombreDelMes(periodo, conMayuscula = false) {
   return `${inicial} de ${anio}`
 }
 
+// "sep 2026 – ago 2027" para un pago anual; el mes solo para uno mensual.
+function cobertura(pago) {
+  if (pago.ciclo !== 'anual') return nombreDelMes(pago.periodo)
+  return `${mesCorto(pago.periodo)} – ${mesCorto(pago.cubre_hasta)}`
+}
+
+function mesCorto(periodo) {
+  const [anio, mes] = periodo.split('-')
+  const nombres = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+  return `${nombres[Number(mes) - 1]} ${anio}`
+}
+
+function EtiquetaCiclo({ ciclo }) {
+  return ciclo === 'anual' ? <span className="etiqueta etiqueta-anual">Anual</span> : null
+}
+
 function moverMes(periodo, meses) {
   const [anio, mes] = periodo.split('-').map(Number)
   // Date normaliza solo el desborde: mes 0 pasa a diciembre del año anterior.
@@ -74,7 +90,7 @@ export default function Negocio() {
   }
 
   async function deshacerPago(pago) {
-    if (!confirm(`¿Deshacer el cobro de ${pago.cliente_email} de ${nombreDelMes(pago.periodo)}?`))
+    if (!confirm(`¿Deshacer el cobro de ${pago.cliente_email} de ${cobertura(pago)}?`))
       return
     try {
       await negocioApi.eliminarPago(pago.id)
@@ -121,12 +137,19 @@ export default function Negocio() {
       ) : (
         <>
           <div className="fila-tarjetas">
+            {/* Ingreso mensual recurrente: un anual aporta su doceava parte.
+                No se compara con "cobrado": un anual paga todo de una vez y
+                un mes puede cobrar mucho más que esto, y el siguiente nada. */}
             <article className="tarjeta metrica">
-              <span>Esperado</span>
+              <span>Ingreso mensual</span>
               <strong className="cifra-negocio">{formatearMonto(resumen.esperado)}</strong>
               <span className="metrica-nota">
                 {resumen.clientes_con_plan} cliente
                 {resumen.clientes_con_plan === 1 ? '' : 's'} con plan
+                {resumen.clientes_anuales > 0 &&
+                  ` · ${resumen.clientes_anuales} anual${
+                    resumen.clientes_anuales === 1 ? '' : 'es'
+                  } (cuenta 1/12)`}
               </span>
             </article>
 
@@ -136,7 +159,7 @@ export default function Negocio() {
                 {formatearMonto(resumen.cobrado)}
               </strong>
               <span className="metrica-nota">
-                {resumen.clientes_pagaron} de {resumen.clientes_con_plan} ya pagaron
+                {resumen.clientes_pagaron} de {resumen.clientes_con_plan} al día
               </span>
             </article>
 
@@ -180,7 +203,7 @@ export default function Negocio() {
                       <span className="saldo-fuerte advertencia">{formatearMonto(p.monto)}</span>
                     </div>
                     <div className="tenue sub">
-                      {p.email} · {p.plan_nombre}
+                      {p.email} · {p.plan_nombre} <EtiquetaCiclo ciclo={p.ciclo} />
                     </div>
                     <div className="tarjeta-mov-acciones">
                       <button onClick={() => setCobrando(p)}>Registrar pago</button>
@@ -204,7 +227,9 @@ export default function Negocio() {
                       <span className="saldo-fuerte positivo">{formatearMonto(g.monto)}</span>
                     </div>
                     <div className="tenue sub">
-                      {g.plan_nombre} · pagado el {formatearFecha(g.pagado_en)}
+                      {g.plan_nombre} <EtiquetaCiclo ciclo={g.ciclo} /> · pagado el{' '}
+                      {formatearFecha(g.pagado_en)}
+                      {g.ciclo === 'anual' && <> · cubre {cobertura(g)}</>}
                       {g.nota && <> · {g.nota}</>}
                     </div>
                     <div className="tarjeta-mov-acciones">
@@ -222,6 +247,7 @@ export default function Negocio() {
                     <tr>
                       <th>Cliente</th>
                       <th>Plan</th>
+                      <th>Cubre</th>
                       <th>Pagado el</th>
                       <th>Nota</th>
                       <th className="num">Monto</th>
@@ -239,7 +265,10 @@ export default function Negocio() {
                             <span className="etiqueta tipo-pague">cliente eliminado</span>
                           )}
                         </td>
-                        <td className="tenue">{g.plan_nombre}</td>
+                        <td className="tenue">
+                          {g.plan_nombre} <EtiquetaCiclo ciclo={g.ciclo} />
+                        </td>
+                        <td className="tenue nowrap">{cobertura(g)}</td>
                         <td className="tenue nowrap">{formatearFecha(g.pagado_en)}</td>
                         <td className="tenue">{g.nota}</td>
                         <td className="num positivo">{formatearMonto(g.monto)}</td>
@@ -272,13 +301,14 @@ export default function Negocio() {
                     <div className="tarjeta-cat-arriba">
                       <strong>{p.nombre}</strong>
                       <span className="tenue">
-                        {p.clientes} cliente{p.clientes === 1 ? '' : 's'} ×{' '}
-                        {formatearMonto(p.precio_mensual)}
+                        {p.clientes} cliente{p.clientes === 1 ? '' : 's'} ·{' '}
+                        {formatearMonto(p.precio_mensual)}/mes
+                        {p.precio_anual && <> · {formatearMonto(p.precio_anual)}/año</>}
                       </span>
                     </div>
                     <div className="par-cifras">
                       <div>
-                        <span className="tenue">Esperado</span>
+                        <span className="tenue">Al mes</span>
                         <strong>{formatearMonto(p.esperado)}</strong>
                       </div>
                       <div>
@@ -295,9 +325,10 @@ export default function Negocio() {
                   <thead>
                     <tr>
                       <th>Plan</th>
-                      <th className="num">Precio</th>
+                      <th className="num">Mensual</th>
+                      <th className="num">Anual</th>
                       <th className="num">Clientes</th>
-                      <th className="num">Esperado</th>
+                      <th className="num">Ingreso al mes</th>
                       <th className="num">Cobrado</th>
                     </tr>
                   </thead>
@@ -306,6 +337,9 @@ export default function Negocio() {
                       <tr key={p.plan_id}>
                         <td>{p.nombre}</td>
                         <td className="num tenue">{formatearMonto(p.precio_mensual)}</td>
+                        <td className="num tenue">
+                          {p.precio_anual ? formatearMonto(p.precio_anual) : '—'}
+                        </td>
                         <td className="num tenue">{p.clientes}</td>
                         <td className="num">{formatearMonto(p.esperado)}</td>
                         <td className="num positivo">{formatearMonto(p.cobrado)}</td>
@@ -376,8 +410,19 @@ function FormularioPago({ cliente, periodo, onCerrar, onGuardado }) {
       <form onSubmit={onSubmit} noValidate>
         {error && <div className="alerta">{error}</div>}
 
+        {/* Lo que cubre este pago, dicho antes de registrarlo: un anual
+            deja al cliente al día por doce meses. */}
         <p className="tenue">
-          Plan <strong>{cliente.plan_nombre}</strong> · {nombreDelMes(periodo)}
+          Plan <strong>{cliente.plan_nombre}</strong>
+          {cliente.ciclo === 'anual' ? (
+            <>
+              {' '}
+              · <strong>pago anual</strong>: cubre de {mesCorto(periodo)} a{' '}
+              {mesCorto(moverMes(periodo, 11))}
+            </>
+          ) : (
+            <> · {nombreDelMes(periodo)}</>
+          )}
         </p>
 
         <label htmlFor="pagado_en">Fecha del pago</label>

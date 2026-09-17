@@ -67,8 +67,18 @@ func TestTokenManipulado(t *testing.T) {
 	tm := NewTokenManager(secreto, time.Hour)
 	token, _, _ := tm.Generar(&Usuario{ID: 1})
 
-	// Cambiamos un carácter de la firma.
-	manipulado := token[:len(token)-1] + "X"
+	// Cambiamos un carácter de la MITAD de la firma. No el último: en base64 el
+	// último carácter lleva bits de relleno, y cambiarlo a veces deja la firma
+	// decodificada igual. Eso hacía que esta prueba fallara de vez en cuando.
+	partes := strings.Split(token, ".")
+	firma := []byte(partes[2])
+	medio := len(firma) / 2
+	if firma[medio] == 'A' {
+		firma[medio] = 'B'
+	} else {
+		firma[medio] = 'A'
+	}
+	manipulado := partes[0] + "." + partes[1] + "." + string(firma)
 
 	if _, err := tm.UsuarioIDDesdeToken(manipulado); !errors.Is(err, ErrTokenInvalido) {
 		t.Errorf("un token manipulado debería rechazarse, se obtuvo: %v", err)

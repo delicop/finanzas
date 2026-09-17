@@ -115,12 +115,20 @@ type Destinatario struct {
 	ID     int64
 	Nombre string
 	Rol    string
+	// Si al redactar su aviso se puede usar el modelo. Lo tiene quien paga un
+	// plan con IA, y el administrador, que es quien paga el modelo.
+	ConIA bool
 }
 
 // Destinatarios son las cuentas activas. Las desactivadas no reciben nada:
 // cortarles el acceso y seguir mandandoles avisos seria incoherente.
 func (s *Store) Destinatarios(ctx context.Context) ([]Destinatario, error) {
-	const q = `SELECT id, nombre, rol FROM usuarios WHERE activo ORDER BY id`
+	const q = `
+		SELECT u.id, u.nombre, u.rol, (u.rol = 'admin' OR coalesce(p.incluye_ia, false))
+		FROM usuarios u
+		LEFT JOIN planes p ON p.id = u.plan_id
+		WHERE u.activo
+		ORDER BY u.id`
 
 	filas, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -131,7 +139,7 @@ func (s *Store) Destinatarios(ctx context.Context) ([]Destinatario, error) {
 	lista := []Destinatario{}
 	for filas.Next() {
 		var d Destinatario
-		if err := filas.Scan(&d.ID, &d.Nombre, &d.Rol); err != nil {
+		if err := filas.Scan(&d.ID, &d.Nombre, &d.Rol, &d.ConIA); err != nil {
 			return nil, fmt.Errorf("leyendo destinatario: %w", err)
 		}
 		lista = append(lista, d)

@@ -55,18 +55,26 @@ func (h *Handler) ListarPlanes(w http.ResponseWriter, r *http.Request) {
 type planRequest struct {
 	Nombre        string `json:"nombre"`
 	PrecioMensual string `json:"precio_mensual"`
-	Activo        *bool  `json:"activo"`
+	// Vacio o ausente = el plan no se vende por año.
+	PrecioAnual string `json:"precio_anual"`
+	IncluyeIA   bool   `json:"incluye_ia"`
+	Activo      *bool  `json:"activo"`
 }
 
-// valida deja el nombre y el precio listos para guardar, o los errores por campo.
-func (req *planRequest) valida() (string, string, map[string]string) {
+// valida deja los datos listos para guardar, o los errores por campo.
+func (req *planRequest) valida() (DatosPlan, map[string]string) {
 	v := httpx.NuevoValidador()
 
-	nombre := strings.TrimSpace(req.Nombre)
-	v.Requerido("nombre", nombre)
-	v.MaxLargo("nombre", nombre, 60)
+	d := DatosPlan{
+		Nombre:    strings.TrimSpace(req.Nombre),
+		IncluyeIA: req.IncluyeIA,
+		// PUT: si no mandan "activo", el plan sigue activo. Desactivarlo es
+		// explicito, nunca un efecto secundario de editarle el nombre.
+		Activo: req.Activo == nil || *req.Activo,
+	}
+	v.Requerido("nombre", d.Nombre)
+	v.MaxLargo("nombre", d.Nombre, 60)
 
-	var precio string
 	v.Requerido("precio_mensual", req.PrecioMensual)
 	if strings.TrimSpace(req.PrecioMensual) != "" {
 		// Mismo validador que los movimientos: el precio es plata y nunca
@@ -75,14 +83,23 @@ func (req *planRequest) valida() (string, string, map[string]string) {
 		if err != nil {
 			v.Check(false, "precio_mensual", err.Error())
 		} else {
-			precio = normalizado
+			d.PrecioMensual = normalizado
+		}
+	}
+
+	if strings.TrimSpace(req.PrecioAnual) != "" {
+		normalizado, err := dinero.Normalizar(req.PrecioAnual)
+		if err != nil {
+			v.Check(false, "precio_anual", err.Error())
+		} else {
+			d.PrecioAnual = normalizado
 		}
 	}
 
 	if !v.Valido() {
-		return "", "", v.Campos
+		return DatosPlan{}, v.Campos
 	}
-	return nombre, precio, nil
+	return d, nil
 }
 
 func (h *Handler) CrearPlan(w http.ResponseWriter, r *http.Request) {
@@ -92,13 +109,13 @@ func (h *Handler) CrearPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nombre, precio, campos := req.valida()
+	datos, campos := req.valida()
 	if campos != nil {
 		httpx.ErrorCampos(w, campos)
 		return
 	}
 
-	plan, err := h.store.CrearPlan(r.Context(), nombre, precio)
+	plan, err := h.store.CrearPlan(r.Context(), datos)
 	if errors.Is(err, ErrNombreDuplicado) {
 		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe un plan con ese nombre"})
 		return
@@ -122,26 +139,25 @@ func (h *Handler) ActualizarPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nombre, precio, campos := req.valida()
+	datos, campos := req.valida()
 	if campos != nil {
 		httpx.ErrorCampos(w, campos)
 		return
 	}
 
-	// PUT: si no mandan "activo", el plan sigue activo. Desactivarlo es
-	// explicito, nunca un efecto secundario de editarle el nombre.
-	activo := true
-	if req.Activo != nil {
-		activo = *req.Activo
-	}
-
-	plan, err := h.store.ActualizarPlan(r.Context(), id, nombre, precio, activo)
+	plan, err := h.store.ActualizarPlan(r.Context(), id, datos)
 	switch {
 	case errors.Is(err, ErrNoEncontrado):
 		httpx.Error(w, http.StatusNotFound, "Plan no encontrado")
 		return
 	case errors.Is(err, ErrNombreDuplicado):
 		httpx.ErrorCampos(w, map[string]string{"nombre": "Ya existe un plan con ese nombre"})
+		return
+	case errors.Is(err, ErrPlanConAnuales):
+		httpx.ErrorCampos(w, map[string]string{
+			"precio_anual": "Hay clientes pagando este plan por año. Pásalos a mensual " +
+				"desde Clientes antes de quitarle el precio anual.",
+		})
 		return
 	case err != nil:
 		httpx.ErrorInterno(w, r, err, "planes: actualizando")
@@ -261,7 +277,10 @@ func (h *Handler) RegistrarPago(w http.ResponseWriter, r *http.Request) {
 			"Ese cliente no tiene plan asignado: no hay nada que cobrarle todavía.")
 		return
 	case errors.Is(err, ErrPagoDuplicado):
-		httpx.Error(w, http.StatusConflict, "Ese cliente ya tiene un pago registrado en ese mes")
+		// Puede ser un pago de este mismo mes o uno anual que ya lo incluye.
+		httpx.Error(w, http.StatusConflict,
+			"Ese cliente ya tiene cubierto ese periodo: hay un pago de este mes, "+
+				"o uno anual que lo incluye.")
 		return
 	case err != nil:
 		httpx.ErrorInterno(w, r, err, "pagos: registrando")
@@ -296,9 +315,8 @@ var formatoPeriodo = regexp.MustCompile(`^\d{4}-(0[1-9]|1[0-2])$`)
 // normalizarPeriodo pasa "2026-03" a "2026-03-01".
 //
 // El dia siempre es 1 porque un periodo es un MES, no una fecha. Guardarlo
-// normalizado es lo que permite que el indice unico (usuario_id, periodo)
-// impida de verdad cobrar dos veces el mismo mes: sin eso, "2026-03-01" y
-// "2026-03-15" serian dos periodos distintos para la base.
+// normalizado es lo que permite que la restriccion pagos_sin_solapar compare
+// meses enteros: sin eso, "2026-03-15" dejaria media quincena sin cubrir.
 func normalizarPeriodo(crudo string) (string, error) {
 	s := strings.TrimSpace(crudo)
 	if s == "" {

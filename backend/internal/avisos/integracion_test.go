@@ -341,7 +341,11 @@ func TestCobrosDelMesSoloParaElAdminYNoElDiaUno(t *testing.T) {
 
 	jefe := crearUsuario(t, e.pool, "Jefe", auth.RolAdmin)
 
-	plan, err := suscripciones.NewStore(e.pool).CrearPlan(ctx, fmt.Sprintf("Plan %d", time.Now().UnixNano()), "50000")
+	plan, err := suscripciones.NewStore(e.pool).CrearPlan(ctx, suscripciones.DatosPlan{
+		Nombre:        fmt.Sprintf("Plan %d", time.Now().UnixNano()),
+		PrecioMensual: "50000",
+		Activo:        true,
+	})
 	if err != nil {
 		t.Fatalf("creando plan: %v", err)
 	}
@@ -358,7 +362,7 @@ func TestCobrosDelMesSoloParaElAdminYNoElDiaUno(t *testing.T) {
 	})
 
 	// Ana es la clienta que no ha pagado este mes.
-	if _, err := admin.NewStore(e.pool).AsignarPlan(ctx, e.ana, &plan.ID); err != nil {
+	if _, err := admin.NewStore(e.pool).AsignarPlan(ctx, e.ana, &plan.ID, "mensual"); err != nil {
 		t.Fatalf("asignando plan: %v", err)
 	}
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { categoriasApi, dashboardApi, mediosApi } from '../lib/api'
 import { formatearMonto } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
+import { useAlGuardarMovimiento } from '../lib/eventos'
 import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 
@@ -13,9 +14,9 @@ export default function Dashboard() {
   const esMovil = useEsMovil()
   const { soloLectura } = useAuth()
 
-  // Para el botón de registro rápido: el formulario necesita las dos listas
-  // completas. Van con otro nombre para no chocar con las del resumen, que
-  // son cifras agregadas, no catálogos.
+  // Para el formulario de registro rápido: necesita las dos listas completas.
+  // Van con otro nombre para no chocar con las del resumen, que son cifras
+  // agregadas, no catálogos.
   const [listaCategorias, setListaCategorias] = useState([])
   const [listaMedios, setListaMedios] = useState([])
   const [registrando, setRegistrando] = useState(false)
@@ -27,6 +28,10 @@ export default function Dashboard() {
       .catch((err) => setError(err.message))
       .finally(() => setCargando(false))
   }
+
+  // Si el asistente guarda algo con el resumen abierto debajo, las cifras se
+  // actualizan solas.
+  useAlGuardarMovimiento(cargarResumen)
 
   useEffect(() => {
     cargarResumen()
@@ -46,8 +51,8 @@ export default function Dashboard() {
     <>
       <div className="encabezado-pagina">
         <h1>Resumen</h1>
-        {/* Registro rápido: el movimiento se crea sin salir del resumen,
-            que es la pantalla donde uno entra. */}
+        {/* Registro rápido con el formulario. El asistente no va aquí: es la
+            burbuja flotante, que está en todas las pantallas. */}
         {!soloLectura && (
           <button onClick={() => setRegistrando(true)} disabled={!listo}>
             Nuevo movimiento
@@ -210,12 +215,11 @@ export default function Dashboard() {
           onCerrar={() => setRegistrando(false)}
           onGuardado={async () => {
             setRegistrando(false)
-            // Recargamos el resumen para que las cifras reflejen el
-            // movimiento que se acaba de registrar.
             await cargarResumen()
           }}
         />
       )}
+
     </>
   )
 }

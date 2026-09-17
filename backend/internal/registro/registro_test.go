@@ -1,10 +1,13 @@
 package registro
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"finanzas/internal/httpx"
 )
@@ -160,3 +163,71 @@ func TestRecortar(t *testing.T) {
 type errSimulado string
 
 func (e errSimulado) Error() string { return string(e) }
+
+// ---------------------------------------------------------------------------
+// Peticiones que el cliente abandona
+// ---------------------------------------------------------------------------
+
+// La app cancela peticiones a propósito (cerrar el chat, cambiar de pantalla).
+// La consulta que queda a medias falla con "context canceled", pero eso no es
+// una falla del servidor y no debe llenar la bitácora.
+func TestUnaPeticionAbandonadaNoVaALaBitacora(t *testing.T) {
+	falso := &registradorFalso{}
+	httpx.UsarRegistrador(falso)
+	t.Cleanup(func() { httpx.UsarRegistrador(nil) })
+
+	ctx, cancelar := context.WithCancel(context.Background())
+	cancelar() // el navegador ya cortó
+	r := httptest.NewRequest("GET", "/api/agente", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	httpx.ErrorInterno(w, r, fmt.Errorf("leyendo el hilo: %w", context.Canceled), "agente: leyendo")
+	httpx.RegistrarFallo(r, errSimulado("otra cosa"), "agente: otra")
+
+	if len(falso.llamadas) != 0 {
+		t.Errorf("se registraron %d fallas de una petición abandonada: %+v", len(falso.llamadas), falso.llamadas)
+	}
+	if w.Code != httpx.StatusClienteSeFue {
+		t.Errorf("status = %d, se esperaba %d", w.Code, httpx.StatusClienteSeFue)
+	}
+}
+
+// Un tiempo vencido NO es lo mismo: la consulta fue lenta y eso sí se revisa.
+func TestUnTiempoVencidoSiVaALaBitacora(t *testing.T) {
+	falso := &registradorFalso{}
+	httpx.UsarRegistrador(falso)
+	t.Cleanup(func() { httpx.UsarRegistrador(nil) })
+
+	ctx, cancelar := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancelar()
+	<-ctx.Done()
+	r := httptest.NewRequest("GET", "/api/dashboard", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	httpx.ErrorInterno(w, r, context.DeadlineExceeded, "dashboard: calculando")
+
+	if len(falso.llamadas) != 1 {
+		t.Errorf("un tiempo vencido debería registrarse; se registraron %d", len(falso.llamadas))
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, se esperaba 500", w.Code)
+	}
+}
+
+// Las tareas de cierre (deshacer una reserva) corren con su propio context:
+// si fallan, dejan datos a medias aunque el cliente se haya ido.
+func TestRegistrarFalloSiempreNoMiraAlCliente(t *testing.T) {
+	falso := &registradorFalso{}
+	httpx.UsarRegistrador(falso)
+	t.Cleanup(func() { httpx.UsarRegistrador(nil) })
+
+	ctx, cancelar := context.WithCancel(context.Background())
+	cancelar()
+	r := httptest.NewRequest("POST", "/api/agente/propuestas/1/confirmar", nil).WithContext(ctx)
+
+	httpx.RegistrarFalloSiempre(r, errSimulado("no se pudo deshacer"), "agente: devolviendo la propuesta")
+
+	if len(falso.llamadas) != 1 {
+		t.Errorf("una falla de cierre debe registrarse siempre; se registraron %d", len(falso.llamadas))
+	}
+}

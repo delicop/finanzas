@@ -3,6 +3,7 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -66,8 +67,36 @@ func UsarRegistrador(r Registrador) { registrador = r }
 // Nunca le exponemos al cliente el detalle de un error de base de datos:
 // eso filtra nombres de tablas y ayuda a un atacante.
 func ErrorInterno(w http.ResponseWriter, r *http.Request, err error, contexto string) {
+	if ClienteSeFue(r) {
+		// Nadie va a leer esta respuesta. 499 es el codigo que usa nginx para
+		// "el cliente cerro la conexion": en los logs de acceso se distingue
+		// de un 500 de verdad.
+		w.WriteHeader(StatusClienteSeFue)
+		RegistrarFallo(r, err, contexto)
+		return
+	}
 	RegistrarFallo(r, err, contexto)
 	Error(w, http.StatusInternalServerError, "Error interno del servidor")
+}
+
+// StatusClienteSeFue no es un codigo estandar: es el de nginx para una
+// peticion que el cliente abandono antes de recibir la respuesta.
+const StatusClienteSeFue = 499
+
+// ClienteSeFue dice si la peticion fallo porque quien la hizo ya no esta.
+//
+// La app cancela peticiones a proposito todo el tiempo: al cerrar el chat, al
+// cambiar de pantalla, al recargar. Cuando eso pasa con una consulta a medio
+// camino, la consulta falla con "context canceled", pero no hay nada roto en
+// el servidor. Registrarlo como error llena la bitacora de falsas alarmas y
+// esconde las fallas reales.
+//
+// Se mira el context del REQUEST y no el error: asi un "context canceled" que
+// venga de otro lado (una tarea interna con su propio context) si se registra.
+// Y solo Canceled, no DeadlineExceeded: si se vencio el tiempo del middleware
+// Timeout, la consulta fue lenta, y eso si hay que revisarlo.
+func ClienteSeFue(r *http.Request) bool {
+	return errors.Is(r.Context().Err(), context.Canceled)
 }
 
 // RegistrarFallo deja el error en la bitacora SIN responder nada.
@@ -77,9 +106,24 @@ func ErrorInterno(w http.ResponseWriter, r *http.Request, err error, contexto st
 // momento"), pero el dueno del servidor igual tiene que poder verlo en la
 // bitacora para saber que fue lo que pasó.
 func RegistrarFallo(r *http.Request, err error, contexto string) {
-	slog.Error(contexto, "error", err)
+	if ClienteSeFue(r) {
+		// Queda en el log de Docker con nivel bajo, por si hace falta, pero no
+		// en la bitacora: no es una falla que haya que corregir.
+		slog.Debug("peticion abandonada por el cliente", "contexto", contexto, "error", err, "ruta", r.URL.Path)
+		return
+	}
 
 	// Ademas del log, queda en la base para poder leerlo desde la app.
+	RegistrarFalloSiempre(r, err, contexto)
+}
+
+// RegistrarFalloSiempre guarda el fallo aunque el cliente ya se haya ido.
+//
+// Es para las tareas de cierre que corren con su propio context (deshacer una
+// reserva, por ejemplo): si ESAS fallan, el problema es real y deja datos a
+// medias, sin importar que el usuario haya cerrado la pestaña.
+func RegistrarFalloSiempre(r *http.Request, err error, contexto string) {
+	slog.Error(contexto, "error", err)
 	if registrador != nil {
 		registrador.GuardarError(r, err, contexto, false, "")
 	}

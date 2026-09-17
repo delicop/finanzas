@@ -4,13 +4,13 @@ import { notificacionesApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useTema } from '../lib/TemaContext'
 import { useEsMovil } from '../lib/useEsMovil'
+import BurbujaAsistente from './BurbujaAsistente'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
 
 const SECCIONES = [
   { a: '/', etiqueta: 'Resumen', icono: '◉', exacta: true },
   { a: '/movimientos', etiqueta: 'Movimientos', icono: '⇅' },
-  { a: '/agente', etiqueta: 'Asistente', icono: '✦' },
   { a: '/categorias', etiqueta: 'Categorías', icono: '◫' },
   { a: '/medios-pago', etiqueta: 'Medios', icono: '▤' },
 ]
@@ -27,7 +27,7 @@ const SECCIONES_ADMIN = [
 ]
 
 export default function Layout({ children }) {
-  const { usuario, logout, esAdmin, verComo, dejarDeObservar } = useAuth()
+  const { usuario, logout, esAdmin, verComo, dejarDeObservar, conIA } = useAuth()
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
   const [cambiandoPassword, setCambiandoPassword] = useState(false)
@@ -70,10 +70,10 @@ export default function Layout({ children }) {
   const secciones = esAdmin
     ? verComo
       ? // Observando: las secciones de dinero son las del cliente observado, y
-        // "Negocio" es la salida de vuelta al panel. El asistente se queda
-        // fuera: el chat de una persona no es un dato que el panel revise, y
-        // el backend responde 403 si se intenta.
-        [...SECCIONES.filter((s) => s.a !== '/agente'), SECCIONES_ADMIN[0]]
+        // "Negocio" es la salida de vuelta al panel. La burbuja del asistente
+        // no aparece: el chat de una persona no es un dato que el panel
+        // revise, y el backend responde 403 si se intenta.
+        [...SECCIONES, SECCIONES_ADMIN[0]]
       : SECCIONES_ADMIN
     : SECCIONES
 
@@ -184,6 +184,10 @@ export default function Layout({ children }) {
           ))}
         </nav>
       )}
+
+      {/* El asistente no es una sección: es una burbuja encima de todas.
+          Solo si el plan lo incluye (conIA ya es falso mirando otra cuenta). */}
+      {conIA && <BurbujaAsistente />}
 
       {cambiandoPassword && <ModalPassword onCerrar={() => setCambiandoPassword(false)} />}
 

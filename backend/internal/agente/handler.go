@@ -22,10 +22,23 @@ type Handler struct {
 	// Cada mensaje le cuesta plata al dueno del servidor: sin techo, un
 	// cliente con un script le deja la factura del mes en la mano.
 	limiteDiario int
+
+	// permiso dice si el plan del usuario incluye el asistente.
+	permiso Permiso
 }
 
-func NewHandler(store *Store, proveedor Proveedor, catalogo *Catalogo, limiteDiario int) *Handler {
-	return &Handler{store: store, proveedor: proveedor, catalogo: catalogo, limiteDiario: limiteDiario}
+// Permiso responde si un usuario puede usar el asistente. En la app es
+// auth.Store.TieneIA: el plan del cliente lo incluye o no.
+//
+// Es una funcion y no el store entero para que este paquete no dependa de
+// como se venden los planes, y para que las pruebas puedan pasar una propia.
+type Permiso func(ctx context.Context, usuarioID int64) (bool, error)
+
+// NewHandler arma el handler. Sin permiso (nil) nadie puede usar el chat: un
+// olvido al conectarlo debe cerrar la puerta, no abrirsela a todos.
+func NewHandler(store *Store, proveedor Proveedor, catalogo *Catalogo, limiteDiario int, permiso Permiso) *Handler {
+	return &Handler{store: store, proveedor: proveedor, catalogo: catalogo,
+		limiteDiario: limiteDiario, permiso: permiso}
 }
 
 // Rutas devuelve el sub-router de /api/agente.
@@ -397,6 +410,24 @@ func (h *Handler) usuarioPropio(w http.ResponseWriter, r *http.Request) (int64, 
 	if _, observando := httpx.Observador(r.Context()); observando {
 		httpx.Error(w, http.StatusForbidden,
 			"El chat con el asistente es privado: no se puede ver desde otra cuenta.")
+		return 0, false
+	}
+
+	// El plan manda. Se revisa en CADA peticion y no solo al iniciar sesion:
+	// si el dueño le quita la IA al plan, el corte es inmediato y no espera
+	// a que el token venza. Es lo que protege el costo, no el menu de la app.
+	permitido := false
+	if h.permiso != nil {
+		var err error
+		permitido, err = h.permiso(r.Context(), usuarioID)
+		if err != nil {
+			httpx.ErrorInterno(w, r, err, "agente: revisando el plan")
+			return 0, false
+		}
+	}
+	if !permitido {
+		httpx.Error(w, http.StatusForbidden,
+			"Tu plan no incluye el asistente. Habla con el administrador para cambiarte a uno que lo tenga.")
 		return 0, false
 	}
 

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -64,10 +65,18 @@ type usuarioJSON struct {
 	Email  string `json:"email"`
 	Nombre string `json:"nombre"`
 	Rol    string `json:"rol"`
+	// Si su plan incluye el asistente. Es para que la app no muestre un botón
+	// que no sirve; quien de verdad lo impide es el backend, en cada mensaje.
+	IA bool `json:"ia"`
 }
 
-func fichaDe(u *Usuario) usuarioJSON {
-	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol}
+// fichaDe arma lo que el frontend sabe de su usuario.
+func (h *Handler) fichaDe(ctx context.Context, u *Usuario) (usuarioJSON, error) {
+	ia, err := h.store.TieneIA(ctx, u.ID)
+	if err != nil {
+		return usuarioJSON{}, err
+	}
+	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol, IA: ia}, nil
 }
 
 // POST /api/auth/login
@@ -139,12 +148,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ficha, err := h.fichaDe(r.Context(), usuario)
+	if err != nil {
+		httpx.ErrorInterno(w, r, err, "login: armando la ficha")
+		return
+	}
+
 	h.limitado.exito(ip)
 
 	httpx.JSON(w, http.StatusOK, loginResponse{
 		Token:    token,
 		ExpiraEn: expira,
-		Usuario:  fichaDe(usuario),
+		Usuario:  ficha,
 	})
 }
 
@@ -169,7 +184,12 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httpx.JSON(w, http.StatusOK, fichaDe(usuario))
+	ficha, err := h.fichaDe(r.Context(), usuario)
+	if err != nil {
+		httpx.ErrorInterno(w, r, err, "me: armando la ficha")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, ficha)
 }
 
 type cambiarPasswordRequest struct {

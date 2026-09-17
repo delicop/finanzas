@@ -5,7 +5,8 @@ import { useEsMovil } from '../lib/useEsMovil'
 import Modal from '../componentes/Modal'
 import InputMonto from '../componentes/InputMonto'
 
-// Los planes que le vendes a tus clientes: nombre y precio mensual.
+// Los planes que le vendes a tus clientes: nombre, precio mensual, precio
+// anual (opcional) y si incluyen el asistente con IA.
 export default function Planes() {
   const [planes, setPlanes] = useState([])
   const [cargando, setCargando] = useState(true)
@@ -42,9 +43,13 @@ export default function Planes() {
   async function alternarActivo(plan) {
     setError('')
     try {
+      // El PUT reemplaza el plan entero: se reenvían los precios y la IA tal
+      // como están, para que desactivarlo no le cambie nada más.
       await negocioApi.actualizarPlan(plan.id, {
         nombre: plan.nombre,
         precio_mensual: plan.precio_mensual,
+        precio_anual: plan.precio_anual,
+        incluye_ia: plan.incluye_ia,
         activo: !plan.activo,
       })
       await recargar()
@@ -53,13 +58,13 @@ export default function Planes() {
     }
   }
 
+  const nuevo = { id: null, nombre: '', precio_mensual: '', precio_anual: '', incluye_ia: false, activo: true }
+
   return (
     <>
       <div className="encabezado-pagina">
         <h1>Planes</h1>
-        <button onClick={() => setEditando({ id: null, nombre: '', precio_mensual: '' })}>
-          Nuevo plan
-        </button>
+        <button onClick={() => setEditando(nuevo)}>Nuevo plan</button>
       </div>
 
       {error && <div className="alerta">{error}</div>}
@@ -86,7 +91,18 @@ export default function Planes() {
                   <strong>
                     {p.nombre} {!p.activo && <span className="etiqueta tipo-pague">Inactivo</span>}
                   </strong>
-                  <span className="saldo-fuerte">{formatearMonto(p.precio_mensual)}</span>
+                  <EtiquetaIA plan={p} />
+                </div>
+                <div className="par-cifras">
+                  <div>
+                    <span className="tenue">Mensual</span>
+                    <strong>{formatearMonto(p.precio_mensual)}</strong>
+                  </div>
+                  <div>
+                    <span className="tenue">Anual</span>
+                    <strong>{p.precio_anual ? formatearMonto(p.precio_anual) : '—'}</strong>
+                    <Ahorro plan={p} />
+                  </div>
                 </div>
                 <div className="tenue sub">
                   {p.clientes} cliente{p.clientes === 1 ? '' : 's'}
@@ -106,9 +122,10 @@ export default function Planes() {
               <thead>
                 <tr>
                   <th>Plan</th>
-                  <th className="num">Precio mensual</th>
+                  <th className="num">Mensual</th>
+                  <th className="num">Anual</th>
+                  <th>Asistente IA</th>
                   <th className="num">Clientes</th>
-                  <th className="num">Suma al mes</th>
                   <th className="acciones"></th>
                 </tr>
               </thead>
@@ -120,10 +137,14 @@ export default function Planes() {
                       {!p.activo && <span className="etiqueta tipo-pague">Inactivo</span>}
                     </td>
                     <td className="num">{formatearMonto(p.precio_mensual)}</td>
-                    <td className="num tenue">{p.clientes}</td>
-                    <td className="num saldo-fuerte">
-                      {formatearMonto(String(Number(p.precio_mensual) * p.clientes))}
+                    <td className="num">
+                      {p.precio_anual ? formatearMonto(p.precio_anual) : <span className="tenue">—</span>}
+                      <Ahorro plan={p} />
                     </td>
+                    <td>
+                      <EtiquetaIA plan={p} />
+                    </td>
+                    <td className="num tenue">{p.clientes}</td>
                     <td className="acciones">
                       <AccionesPlan
                         plan={p}
@@ -154,6 +175,30 @@ export default function Planes() {
   )
 }
 
+function EtiquetaIA({ plan }) {
+  return plan.incluye_ia ? (
+    <span className="etiqueta etiqueta-ia">✦ Con IA</span>
+  ) : (
+    <span className="etiqueta etiqueta-sin-ia">Sin IA</span>
+  )
+}
+
+// Cuánto ahorra el cliente pagando por año frente a doce meses sueltos.
+// El porcentaje es solo para mostrar: el dinero de verdad nunca se calcula
+// aquí, se guarda tal cual lo escribió el administrador.
+function porcentajeAhorro(mensual, anual) {
+  const m = Number(mensual)
+  const a = Number(anual)
+  if (!m || !a) return null
+  return Math.round((1 - a / (m * 12)) * 100)
+}
+
+function Ahorro({ plan }) {
+  const pct = porcentajeAhorro(plan.precio_mensual, plan.precio_anual)
+  if (pct === null || pct <= 0) return null
+  return <div className="nota-ahorro">ahorra {pct}%</div>
+}
+
 function AccionesPlan({ plan, onEditar, onActivo, onEliminar }) {
   return (
     <div className="acciones-fila">
@@ -175,24 +220,46 @@ function AccionesPlan({ plan, onEditar, onActivo, onEliminar }) {
 
 function FormularioPlan({ plan, onCerrar, onGuardado }) {
   const [nombre, setNombre] = useState(plan.nombre)
-  // El input muestra el monto con separadores de miles; se convierte al
-  // formato crudo ("50000.00") justo antes de enviarlo.
+  // Los inputs muestran los montos con separadores de miles; se convierten al
+  // formato crudo ("50000.00") justo antes de enviarlos.
   const [precio, setPrecio] = useState(() =>
     plan.precio_mensual ? montoAEntrada(plan.precio_mensual) : '',
   )
+  const [conAnual, setConAnual] = useState(Boolean(plan.precio_anual))
+  const [precioAnual, setPrecioAnual] = useState(() =>
+    plan.precio_anual ? montoAEntrada(plan.precio_anual) : '',
+  )
+  const [incluyeIA, setIncluyeIA] = useState(Boolean(plan.incluye_ia))
   const [campos, setCampos] = useState({})
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
 
   const esNuevo = plan.id === null
+  const mensualCrudo = entradaAMonto(precio)
+  const anualCrudo = conAnual ? entradaAMonto(precioAnual) : ''
+
+  // Referencia para quien arma el precio anual: lo que costarían doce meses.
+  const doceMeses = Number(mensualCrudo) > 0 ? String(Number(mensualCrudo) * 12) : ''
+  const ahorro = conAnual ? porcentajeAhorro(mensualCrudo, anualCrudo) : null
 
   async function onSubmit(e) {
     e.preventDefault()
     setError('')
     setCampos({})
+
+    if (conAnual && !anualCrudo) {
+      setCampos({ precio_anual: 'Escribe el precio anual o desmarca la opción' })
+      return
+    }
+
     setGuardando(true)
     try {
-      const datos = { nombre, precio_mensual: entradaAMonto(precio) }
+      const datos = {
+        nombre,
+        precio_mensual: mensualCrudo,
+        precio_anual: anualCrudo,
+        incluye_ia: incluyeIA,
+      }
       if (esNuevo) await negocioApi.crearPlan(datos)
       else await negocioApi.actualizarPlan(plan.id, { ...datos, activo: plan.activo })
       await onGuardado()
@@ -213,7 +280,7 @@ function FormularioPlan({ plan, onCerrar, onGuardado }) {
           <div className="alerta aviso">
             {plan.clientes} cliente{plan.clientes === 1 ? '' : 's'} tiene
             {plan.clientes === 1 ? '' : 'n'} este plan. El precio nuevo aplica desde el
-            próximo cobro que registres.
+            próximo cobro que registres, y el cambio de IA, desde ya.
           </div>
         )}
 
@@ -234,6 +301,55 @@ function FormularioPlan({ plan, onCerrar, onGuardado }) {
         </label>
         <InputMonto id="precio" valor={precio} onCambio={setPrecio} />
         {campos.precio_mensual && <span className="error-campo">{campos.precio_mensual}</span>}
+
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={conAnual}
+            onChange={(e) => setConAnual(e.target.checked)}
+          />
+          También se puede pagar por año
+        </label>
+
+        {conAnual && (
+          <div className="bloque-opcion">
+            <label htmlFor="precio-anual">
+              Precio anual <span className="req">*</span>
+            </label>
+            <InputMonto id="precio-anual" valor={precioAnual} onCambio={setPrecioAnual} />
+            {campos.precio_anual && <span className="error-campo">{campos.precio_anual}</span>}
+            <p className="tenue ayuda-campo">
+              {doceMeses && <>Doce meses sueltos serían {formatearMonto(doceMeses)}. </>}
+              {ahorro !== null &&
+                (ahorro > 0 ? (
+                  <strong className="positivo">El cliente ahorra {ahorro}%.</strong>
+                ) : ahorro < 0 ? (
+                  <strong className="negativo">Ojo: sale más caro que pagar mes a mes.</strong>
+                ) : (
+                  'Mismo valor que pagar mes a mes.'
+                ))}
+            </p>
+          </div>
+        )}
+        {!conAnual && campos.precio_anual && (
+          <span className="error-campo">{campos.precio_anual}</span>
+        )}
+
+        <label className="interruptor">
+          <input
+            type="checkbox"
+            checked={incluyeIA}
+            onChange={(e) => setIncluyeIA(e.target.checked)}
+          />
+          <span className="interruptor-pista" aria-hidden="true" />
+          <span>
+            <strong>Incluye el asistente con IA</strong>
+            <span className="tenue ayuda-campo">
+              Los clientes de este plan pueden chatear con el asistente. Cada mensaje tiene un
+              costo para ti.
+            </span>
+          </span>
+        </label>
 
         <div className="acciones-modal">
           <button type="button" className="secundario" onClick={onCerrar}>

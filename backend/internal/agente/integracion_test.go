@@ -125,6 +125,12 @@ func nuevoEntorno(t *testing.T, limiteDiario int) *entorno {
 	ana := crearUsuario(t, pool, "Ana")
 	beto := crearUsuario(t, pool, "Beto")
 
+	// El chat solo existe para quien tiene IA en su plan: los dos la tienen,
+	// y las pruebas de permisos crean sus propios usuarios sin ella.
+	planIA := crearPlan(t, pool, true)
+	asignarPlan(t, pool, ana, planIA)
+	asignarPlan(t, pool, beto, planIA)
+
 	movimientosStore := movimientos.NewStore(pool)
 	categoriasStore := categorias.NewStore(pool)
 	mediosStore := medios.NewStore(pool)
@@ -154,7 +160,7 @@ func nuevoEntorno(t *testing.T, limiteDiario int) *entorno {
 		pool:        pool,
 		store:       store,
 		proveedor:   proveedor,
-		handler:     agente.NewHandler(store, proveedor, catalogo, limiteDiario),
+		handler:     agente.NewHandler(store, proveedor, catalogo, limiteDiario, auth.NewStore(pool).TieneIA),
 		movimientos: movimientosStore,
 		categoria:   categoria.ID,
 		efectivo:    efectivo.ID,
@@ -239,6 +245,40 @@ func crearUsuario(t *testing.T, pool *sql.DB, nombre string) int64 {
 	})
 
 	return usuario.ID
+}
+
+// crearPlan crea un plan con o sin IA, y al terminar lo borra. Antes de
+// borrarlo se lo quita a quien lo tenga: usuarios.plan_id es RESTRICT.
+func crearPlan(t *testing.T, pool *sql.DB, incluyeIA bool) int64 {
+	t.Helper()
+
+	nombre := fmt.Sprintf("Plan prueba %d-%d", time.Now().UnixNano(), contador.Add(1))
+	var id int64
+	err := pool.QueryRowContext(context.Background(),
+		`INSERT INTO planes (nombre, precio_mensual, incluye_ia) VALUES ($1, 10000, $2) RETURNING id`,
+		nombre, incluyeIA).Scan(&id)
+	if err != nil {
+		t.Fatalf("creando plan: %v", err)
+	}
+
+	t.Cleanup(func() {
+		limpieza := context.Background()
+		if _, err := pool.ExecContext(limpieza, "UPDATE usuarios SET plan_id = NULL WHERE plan_id = $1", id); err != nil {
+			t.Errorf("desasignando el plan: %v", err)
+		}
+		if _, err := pool.ExecContext(limpieza, "DELETE FROM planes WHERE id = $1", id); err != nil {
+			t.Errorf("limpiando el plan: %v", err)
+		}
+	})
+	return id
+}
+
+func asignarPlan(t *testing.T, pool *sql.DB, usuarioID, planID int64) {
+	t.Helper()
+	if _, err := pool.ExecContext(context.Background(),
+		"UPDATE usuarios SET plan_id = $1 WHERE id = $2", planID, usuarioID); err != nil {
+		t.Fatalf("asignando plan: %v", err)
+	}
 }
 
 // enviar hace la petición como la haría la app: con el id del usuario en el
@@ -1087,5 +1127,65 @@ func TestNoProponeConCategoriaInventada(t *testing.T) {
 	resultado := e.proveedor.pasos[len(e.proveedor.pasos)-1].Contenido
 	if !strings.Contains(resultado, "no existe la categoría") || !strings.Contains(resultado, "Negocio") {
 		t.Errorf("resultado = %s", resultado)
+	}
+}
+
+// --------------------------------------------------------------------------
+// El asistente es parte del plan: sin IA en el plan, no hay chat.
+// --------------------------------------------------------------------------
+
+func TestSinIAEnElPlanNoHayChat(t *testing.T) {
+	e := nuevoEntorno(t, 50)
+
+	sinPlan := crearUsuario(t, e.pool, "SinPlan")
+
+	conPlanSinIA := crearUsuario(t, e.pool, "Basico")
+	asignarPlan(t, e.pool, conPlanSinIA, crearPlan(t, e.pool, false))
+
+	for nombre, usuario := range map[string]int64{"sin plan": sinPlan, "plan sin IA": conPlanSinIA} {
+		if res := e.enviar(t, usuario, "¿cuánto gasté?"); res.Code != http.StatusForbidden {
+			t.Errorf("%s: status = %d, se esperaba 403", nombre, res.Code)
+		}
+		ctx := httpx.ConUsuarioID(context.Background(), usuario)
+		if res := e.leerHilo(t, ctx); res.Code != http.StatusForbidden {
+			t.Errorf("%s: leer el hilo dio %d, se esperaba 403", nombre, res.Code)
+		}
+	}
+
+	// Lo que importa es la plata: el modelo ni se enteró.
+	if e.proveedor.llamadas != 0 {
+		t.Errorf("se llamó al modelo %d veces para usuarios sin IA", e.proveedor.llamadas)
+	}
+}
+
+// Quitarle la IA a un plan corta el chat desde el mensaje siguiente: no espera
+// a que venza la sesión.
+func TestQuitarLaIAAlPlanCortaElChatDeInmediato(t *testing.T) {
+	e := nuevoEntorno(t, 50)
+
+	if res := e.enviar(t, e.ana, "hola"); res.Code != http.StatusOK {
+		t.Fatalf("con IA: status = %d, se esperaba 200 (%s)", res.Code, res.Body.String())
+	}
+
+	if _, err := e.pool.ExecContext(context.Background(),
+		`UPDATE planes SET incluye_ia = false
+		 WHERE id = (SELECT plan_id FROM usuarios WHERE id = $1)`, e.ana); err != nil {
+		t.Fatalf("quitando la IA: %v", err)
+	}
+
+	if res := e.enviar(t, e.ana, "hola otra vez"); res.Code != http.StatusForbidden {
+		t.Errorf("sin IA: status = %d, se esperaba 403", res.Code)
+	}
+}
+
+// Si alguien arma el handler sin decir quién puede usarlo, la puerta queda
+// cerrada, no abierta para todos.
+func TestSinPermisoConfiguradoNadieEntra(t *testing.T) {
+	e := nuevoEntorno(t, 50)
+	catalogo := agente.NuevoCatalogo(e.movimientos, categorias.NewStore(e.pool), medios.NewStore(e.pool))
+	e.handler = agente.NewHandler(e.store, e.proveedor, catalogo, 50, nil)
+
+	if res := e.enviar(t, e.ana, "hola"); res.Code != http.StatusForbidden {
+		t.Errorf("status = %d, se esperaba 403", res.Code)
 	}
 }

@@ -112,7 +112,7 @@ func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora ti
 		Tipo:      TipoResumenSemanal,
 		Clave:     clave,
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactor, base.String()),
+		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base.String()),
 	})
 }
 
@@ -146,7 +146,7 @@ func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, aho
 		Tipo:      TipoPrestamosPendientes,
 		Clave:     ahora.Format(formatoMes),
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactor, base),
+		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base),
 	})
 }
 
@@ -175,9 +175,12 @@ func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time
 
 	titulo := fmt.Sprintf("Te falta cobrar %s este mes", pesos(resumen.Pendiente))
 
+	// Sin "de X esperados": con clientes anuales, lo esperado es un promedio
+	// mensual y no lo que toca cobrar este mes, y juntar las dos cifras en una
+	// frase invitaria a restarlas.
 	base := fmt.Sprintf(
-		"De %s esperados este mes llevas %s cobrados. Faltan %d cliente%s por pagar: %s.",
-		pesos(resumen.Esperado), pesos(resumen.Cobrado),
+		"Este mes llevas %s cobrados. Faltan %d cliente%s por pagar: %s.",
+		pesos(resumen.Cobrado),
 		len(resumen.Pendientes), plural(len(resumen.Pendientes)),
 		nombresDe(resumen.Pendientes))
 
@@ -186,8 +189,18 @@ func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time
 		Tipo:      TipoCobrosDelMes,
 		Clave:     periodo,
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactor, base),
+		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base),
 	})
+}
+
+// redactorPara devuelve el modelo solo si el plan de esa cuenta incluye IA.
+// Sin IA el aviso sale igual, con el texto que arma la app: las cifras son
+// las mismas, solo cambia la prosa. Lo que no se cobra no se paga.
+func (g *Generador) redactorPara(d Destinatario) Redactor {
+	if !d.ConIA {
+		return nil
+	}
+	return g.redactor
 }
 
 // guardar traduce "ya existía" a "no cree ninguno", que es lo que le interesa

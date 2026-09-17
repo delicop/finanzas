@@ -199,8 +199,12 @@ export const adminApi = {
   eliminarUsuario: (id, email) =>
     apiFetch(`/api/admin/usuarios/${id}${queryString({ email })}`, { metodo: 'DELETE' }),
 
-  asignarPlan: (id, planID) =>
-    apiFetch(`/api/admin/usuarios/${id}/plan`, { metodo: 'PUT', body: { plan_id: planID } }),
+  // ciclo: 'mensual' o 'anual'. Anual solo si el plan tiene precio anual.
+  asignarPlan: (id, planID, ciclo = 'mensual') =>
+    apiFetch(`/api/admin/usuarios/${id}/plan`, {
+      metodo: 'PUT',
+      body: { plan_id: planID, ciclo },
+    }),
 
   errores: (filtros) => apiFetch(`/api/admin/errores${queryString(filtros)}`),
   conteoErrores: () => apiFetch('/api/admin/errores/conteo'),

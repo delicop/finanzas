@@ -219,6 +219,8 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 type planRequest struct {
 	// Nulo o ausente = quitarle el plan (deja de cobrarsele).
 	PlanID *int64 `json:"plan_id"`
+	// "mensual" (por omision) o "anual".
+	Ciclo string `json:"ciclo"`
 }
 
 // PUT /api/admin/usuarios/{id}/plan
@@ -243,13 +245,27 @@ func (h *Handler) AsignarPlan(w http.ResponseWriter, r *http.Request) {
 		planID = nil
 	}
 
-	ficha, err := h.store.AsignarPlan(r.Context(), id, planID)
+	ciclo := strings.TrimSpace(req.Ciclo)
+	if ciclo == "" {
+		ciclo = "mensual"
+	}
+	if ciclo != "mensual" && ciclo != "anual" {
+		httpx.ErrorCampos(w, map[string]string{"ciclo": "El ciclo debe ser mensual o anual"})
+		return
+	}
+
+	ficha, err := h.store.AsignarPlan(r.Context(), id, planID, ciclo)
 	switch {
 	case errors.Is(err, ErrNoEncontrado):
 		httpx.Error(w, http.StatusNotFound, "Usuario no encontrado")
 		return
 	case errors.Is(err, ErrPlanNoExiste):
 		httpx.ErrorCampos(w, map[string]string{"plan_id": "Ese plan no existe"})
+		return
+	case errors.Is(err, ErrPlanSinAnual):
+		httpx.ErrorCampos(w, map[string]string{
+			"ciclo": "Ese plan no tiene precio anual. Agrégaselo en Planes o cóbralo por mes.",
+		})
 		return
 	case err != nil:
 		httpx.ErrorInterno(w, r, err, "admin: asignando plan")

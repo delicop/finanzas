@@ -114,3 +114,29 @@ func (s *Store) ActualizarPassword(ctx context.Context, id int64, passwordHash s
 	}
 	return nil
 }
+
+// TieneIA dice si el plan del usuario incluye el asistente con IA.
+//
+// Sin plan no hay asistente: cada mensaje le cuesta plata al dueño del
+// servidor, y lo que no se esta cobrando no se regala. Un plan desactivado
+// sigue valiendo para quien ya lo tiene, igual que su precio.
+//
+// Vive aqui y no en suscripciones porque la usan dos paquetes que ya dependen
+// de auth (el propio /me y el agente): un solo sitio donde cambiar la regla.
+func (s *Store) TieneIA(ctx context.Context, usuarioID int64) (bool, error) {
+	const q = `
+		SELECT coalesce(p.incluye_ia, false)
+		FROM usuarios u
+		LEFT JOIN planes p ON p.id = u.plan_id
+		WHERE u.id = $1`
+
+	var ia bool
+	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&ia)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("consultando si el plan incluye IA: %w", err)
+	}
+	return ia, nil
+}

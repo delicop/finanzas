@@ -27,6 +27,8 @@ var (
 	ErrUltimoAdmin = errors.New("debe quedar al menos un administrador activo")
 
 	ErrPlanNoExiste = errors.New("el plan no existe")
+	// Se pidio cobro anual en un plan que no tiene precio anual.
+	ErrPlanSinAnual = errors.New("el plan no se vende por año")
 )
 
 // UsuarioAdmin es la ficha que ve el administrador: el usuario mas cuanta
@@ -40,7 +42,12 @@ type UsuarioAdmin struct {
 	// ya existian no tienen, y a un admin no te cobras a ti mismo.
 	PlanID     *int64 `json:"plan_id"`
 	PlanNombre string `json:"plan_nombre"`
+	// Lo que paga de una vez segun su ciclo: el precio mensual o el anual.
 	PlanPrecio string `json:"plan_precio"`
+	// "mensual" o "anual".
+	Ciclo string `json:"ciclo"`
+	// Si su plan incluye el asistente.
+	PlanIA bool `json:"plan_ia"`
 }
 
 type Store struct {
@@ -59,7 +66,10 @@ func (s *Store) Listar(ctx context.Context) ([]UsuarioAdmin, error) {
 		SELECT u.id, u.email, u.nombre, u.rol, u.activo, u.creado_en,
 		       (SELECT count(*) FROM movimientos m WHERE m.usuario_id = u.id),
 		       (SELECT count(*) FROM categorias  c WHERE c.usuario_id = u.id),
-		       u.plan_id, coalesce(p.nombre, ''), coalesce(p.precio_mensual::text, '')
+		       u.plan_id, coalesce(p.nombre, ''),
+		       coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
+		                      ELSE p.precio_mensual END)::text, ''),
+		       u.ciclo_pago, coalesce(p.incluye_ia, false)
 		FROM usuarios u
 		LEFT JOIN planes p ON p.id = u.plan_id
 		ORDER BY u.creado_en`
@@ -76,7 +86,7 @@ func (s *Store) Listar(ctx context.Context) ([]UsuarioAdmin, error) {
 		var u UsuarioAdmin
 		if err := filas.Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo,
 			&u.CreadoEn, &u.Movimientos, &u.Categorias,
-			&u.PlanID, &u.PlanNombre, &u.PlanPrecio); err != nil {
+			&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA); err != nil {
 			return nil, fmt.Errorf("leyendo usuario: %w", err)
 		}
 		lista = append(lista, u)
@@ -155,7 +165,10 @@ func (s *Store) PorID(ctx context.Context, id int64) (*UsuarioAdmin, error) {
 		SELECT u.id, u.email, u.nombre, u.rol, u.activo, u.creado_en,
 		       (SELECT count(*) FROM movimientos m WHERE m.usuario_id = u.id),
 		       (SELECT count(*) FROM categorias  c WHERE c.usuario_id = u.id),
-		       u.plan_id, coalesce(p.nombre, ''), coalesce(p.precio_mensual::text, '')
+		       u.plan_id, coalesce(p.nombre, ''),
+		       coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
+		                      ELSE p.precio_mensual END)::text, ''),
+		       u.ciclo_pago, coalesce(p.incluye_ia, false)
 		FROM usuarios u
 		LEFT JOIN planes p ON p.id = u.plan_id
 		WHERE u.id = $1`
@@ -163,7 +176,7 @@ func (s *Store) PorID(ctx context.Context, id int64) (*UsuarioAdmin, error) {
 	var u UsuarioAdmin
 	err := s.db.QueryRowContext(ctx, q, id).Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol,
 		&u.Activo, &u.CreadoEn, &u.Movimientos, &u.Categorias,
-		&u.PlanID, &u.PlanNombre, &u.PlanPrecio)
+		&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoEncontrado
@@ -247,19 +260,47 @@ func (s *Store) Eliminar(ctx context.Context, id int64) ([]string, error) {
 	return rutas, nil
 }
 
-// AsignarPlan pone (o quita, con nil) el plan que se le cobra a un cliente.
+// AsignarPlan pone (o quita, con nil) el plan que se le cobra a un cliente, y
+// como lo paga: por mes o por año.
 //
 // Va en su propio metodo y no dentro de Cambios porque el plan tiene un tercer
 // estado: "quitarselo". Con un PATCH parcial, null significaria a la vez "no me
 // lo mandaste" y "ponlo en nulo", y esas dos cosas no pueden confundirse cuando
 // lo que esta en juego es si a alguien se le sigue cobrando o no.
-func (s *Store) AsignarPlan(ctx context.Context, id int64, planID *int64) (*UsuarioAdmin, error) {
-	const q = `UPDATE usuarios SET plan_id = $2 WHERE id = $1 RETURNING id`
+//
+// Sin plan, el ciclo vuelve a mensual: no queda un "anual" colgando que
+// sorprenda el dia que se le asigne otro plan.
+func (s *Store) AsignarPlan(ctx context.Context, id int64, planID *int64, ciclo string) (*UsuarioAdmin, error) {
+	if planID == nil {
+		ciclo = "mensual"
+	}
+
+	// La regla "anual solo si el plan tiene precio anual" va en el WHERE de la
+	// misma consulta que hace el cambio: no hay ventana entre revisar y escribir.
+	const q = `
+		UPDATE usuarios SET plan_id = $2, ciclo_pago = $3
+		WHERE id = $1
+		  AND ($3 = 'mensual' OR EXISTS (
+		        SELECT 1 FROM planes WHERE id = $2 AND precio_anual IS NOT NULL))
+		RETURNING id`
 
 	var actualizado int64
-	err := s.db.QueryRowContext(ctx, q, id, planID).Scan(&actualizado)
+	err := s.db.QueryRowContext(ctx, q, id, planID, ciclo).Scan(&actualizado)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNoEncontrado
+		// Sin filas: el usuario no existe, o el plan no se vende por año
+		// (o no existe, que para este caso es lo mismo que no tener anual).
+		if _, errPorID := s.PorID(ctx, id); errPorID != nil {
+			return nil, errPorID
+		}
+		var existe bool
+		if e := s.db.QueryRowContext(ctx,
+			`SELECT exists(SELECT 1 FROM planes WHERE id = $1)`, planID).Scan(&existe); e != nil {
+			return nil, fmt.Errorf("verificando plan: %w", e)
+		}
+		if !existe {
+			return nil, ErrPlanNoExiste
+		}
+		return nil, ErrPlanSinAnual
 	}
 	if err != nil {
 		// 23503 = foreign_key_violation: mandaron un plan que no existe.

@@ -103,7 +103,8 @@ func nuevoRouter(d dependencias) http.Handler {
 		// herramientas no tienen una puerta propia a la base, y cualquier
 		// filtro que proteja la API protege tambien al agente.
 		catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore)
-		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario)
+		// El permiso es el plan del cliente: sin IA en el plan, no hay chat.
+		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario, authStore.TieneIA)
 	}
 
 	avisosHandler := avisos.NewHandler(d.avisos)

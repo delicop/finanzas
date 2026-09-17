@@ -1,6 +1,7 @@
 package agente
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -110,9 +111,7 @@ func (h *Handler) confirmarMovimiento(w http.ResponseWriter, r *http.Request, us
 
 	// Rastro: de que propuesta salio este movimiento. Si falla, el movimiento
 	// ya existe y no vamos a tumbar la respuesta por una anotacion.
-	if err := h.store.AnotarMovimiento(r.Context(), usuarioID, propuestaID, m.ID); err != nil {
-		httpx.RegistrarFallo(r, err, "agente: anotando el movimiento de la propuesta")
-	}
+	h.anotarMovimiento(r, usuarioID, propuestaID, m.ID)
 
 	httpx.JSON(w, http.StatusCreated, m)
 }
@@ -158,9 +157,7 @@ func (h *Handler) confirmarMarcarPagado(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	if err := h.store.AnotarMovimiento(r.Context(), usuarioID, propuesta.ID, m.ID); err != nil {
-		httpx.RegistrarFallo(r, err, "agente: anotando el movimiento de la propuesta")
-	}
+	h.anotarMovimiento(r, usuarioID, propuesta.ID, m.ID)
 
 	httpx.JSON(w, http.StatusOK, m)
 }
@@ -201,8 +198,39 @@ func (h *Handler) responderReserva(w http.ResponseWriter, r *http.Request, err e
 // haber creado nada: queda en la bitacora y el usuario puede volver a
 // dictarlo.
 func (h *Handler) devolverAPendiente(r *http.Request, usuarioID, propuestaID int64) {
-	if err := h.store.DevolverPropuestaAPendiente(r.Context(), usuarioID, propuestaID); err != nil {
-		httpx.RegistrarFallo(r, err, "agente: devolviendo la propuesta a pendiente")
+	ctx, cancelar := contextoDeCierreConTope(r)
+	defer cancelar()
+
+	if err := h.store.DevolverPropuestaAPendiente(ctx, usuarioID, propuestaID); err != nil {
+		// Aqui NO se usa RegistrarFallo: si el cliente se fue, eso es justo lo
+		// que la filtraria, y esta si es una falla que hay que ver (la tarjeta
+		// quedo resuelta sin movimiento).
+		httpx.RegistrarFalloSiempre(r, err, "agente: devolviendo la propuesta a pendiente")
+	}
+}
+
+// contextoDeCierreConTope es el context para las tareas de cierre de una
+// escritura: deshacer una reserva, anotar de donde salio un movimiento.
+//
+// No puede ser r.Context() a secas. Si el usuario cierra la pestaña justo
+// cuando falla la escritura, ese context ya esta cancelado y el "deshacer"
+// fallaria tambien, dejando la tarjeta marcada como resuelta sin que exista
+// el movimiento. context.WithoutCancel conserva los valores del request (el
+// usuario, el id de la peticion) pero no hereda la cancelacion; el tope de
+// tiempo evita que una base colgada lo deje esperando para siempre.
+func contextoDeCierreConTope(r *http.Request) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+}
+
+// anotarMovimiento deja el rastro de que propuesta salio el movimiento. Si
+// falla, el movimiento ya existe y no se tumba la respuesta por una anotacion;
+// queda en la bitacora.
+func (h *Handler) anotarMovimiento(r *http.Request, usuarioID, propuestaID, movimientoID int64) {
+	ctx, cancelar := contextoDeCierreConTope(r)
+	defer cancelar()
+
+	if err := h.store.AnotarMovimiento(ctx, usuarioID, propuestaID, movimientoID); err != nil {
+		httpx.RegistrarFalloSiempre(r, err, "agente: anotando el movimiento de la propuesta")
 	}
 }
 

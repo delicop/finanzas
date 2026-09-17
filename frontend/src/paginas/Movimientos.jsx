@@ -9,6 +9,7 @@ import {
   formatearMonto,
 } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
+import { useAlGuardarMovimiento } from '../lib/eventos'
 import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import VisorFactura from '../componentes/VisorFactura'
@@ -74,6 +75,9 @@ export default function Movimientos() {
   useEffect(() => {
     cargar()
   }, [cargar])
+
+  // Lo que el asistente guarda aparece en la lista sin recargar la página.
+  useAlGuardarMovimiento(cargar)
 
   useEffect(() => {
     categoriasApi.listar().then(setCategorias).catch(() => {})

@@ -64,6 +64,9 @@ export function AuthProvider({ children }) {
       // Mirando una cuenta ajena no se puede escribir nada: el backend
       // rechaza cualquier método que no sea GET mientras va la cabecera.
       soloLectura: verComo !== null,
+      // Si el plan de la cuenta incluye el asistente. Solo decide qué se
+      // dibuja: quien lo impide de verdad es el backend, en cada mensaje.
+      conIA: usuario?.ia === true && verComo === null,
       observar,
       dejarDeObservar,
     }),

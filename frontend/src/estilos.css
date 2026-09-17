@@ -1414,108 +1414,448 @@ td.acciones .acciones-fila button {
 }
 
 /* ---------------------------------------------------------------------------
-   Asistente
-   Un hilo que crece hacia abajo con el cajón de escribir fijo debajo. El alto
-   se limita con max-height y no con una cuenta sobre 100vh: la barra del
-   navegador en el teléfono cambia de alto al hacer scroll y cualquier resta
-   contra la altura de la ventana termina bailando.
+   Asistente, con forma de chat de WhatsApp
+   Cabecera del contacto, burbujas a cada lado sobre un fondo propio y el
+   cajón de escribir abajo. Los colores son los de WhatsApp en cada tema, para
+   que se reconozca a primera vista qué es y cómo se usa.
    -------------------------------------------------------------------------*/
-.chat {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+:root {
+  --wa-cabecera: #202c33;
+  --wa-fondo: #0b141a;
+  --wa-mio: #005c4b;
+  --wa-agente: #202c33;
+  --wa-texto: #e9edef;
+  --wa-tenue: #8696a0;
+  --wa-cajon: #202c33;
+  --wa-campo: #2a3942;
+  --wa-verde: #00a884;
+  --wa-check: #53bdeb;
+  --wa-sistema: #182229;
 }
 
-.chat-hilo {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  max-height: 60vh;
-  min-height: 240px;
-  /* Espacio para que la última burbuja no quede pegada al cajón. */
-  padding-right: 4px;
+:root[data-tema='claro'] {
+  --wa-cabecera: #008069;
+  --wa-fondo: #efeae2;
+  --wa-mio: #d9fdd3;
+  --wa-agente: #ffffff;
+  --wa-texto: #111b21;
+  --wa-tenue: #667781;
+  --wa-cajon: #f0f2f5;
+  --wa-campo: #ffffff;
+  --wa-verde: #00a884;
+  --wa-check: #53bdeb;
+  --wa-sistema: #ffeecd;
 }
 
-.burbuja {
-  max-width: 78%;
-  padding: 10px 13px;
+.wa {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--wa-fondo);
+  /* El punteado tenue del fondo de WhatsApp, hecho con un gradiente para no
+     cargar una imagen. */
+  background-image: radial-gradient(rgba(127, 127, 127, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+  color: var(--wa-texto);
   border-radius: 12px;
+  overflow: hidden;
   border: 1px solid var(--borde);
-  background: var(--superficie-2);
-  font-size: 14px;
-  line-height: 1.45;
 }
 
-.burbuja p {
+.wa-cabecera {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--wa-cabecera);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.wa-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--wa-verde);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.wa-contacto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.25;
+}
+
+.wa-contacto strong {
+  font-size: 16px;
+}
+
+.wa-contacto span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.wa-contacto span.wa-escribiendo {
+  color: #7fe3c7;
+  opacity: 1;
+}
+
+button.wa-icono {
+  background: none;
+  border: 0;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 6px;
+  min-height: 0;
+  cursor: pointer;
+}
+
+button.wa-borrar {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+.wa-hilo {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 5% 10px;
+}
+
+.wa-burbuja {
+  position: relative;
+  max-width: 80%;
+  padding: 6px 9px 4px;
+  border-radius: 8px;
+  font-size: 14.5px;
+  line-height: 1.4;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  margin-bottom: 4px;
+}
+
+.wa-burbuja p {
   margin: 0;
-  /* El salto de línea que escribió el usuario (o el modelo) se respeta, y una
-     URL larguísima parte en vez de estirar la burbuja fuera de la pantalla. */
+  /* Los saltos de línea se respetan y una URL larguísima parte en vez de
+     estirar la burbuja fuera de la pantalla. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.burbuja-usuario {
+.wa-mio {
   align-self: flex-end;
-  border-color: var(--acento);
-  background: rgba(79, 140, 255, 0.12);
+  background: var(--wa-mio);
+  border-top-right-radius: 0;
 }
 
-.burbuja-agente {
+.wa-agente {
   align-self: flex-start;
+  background: var(--wa-agente);
+  border-top-left-radius: 0;
 }
 
-/* La línea de "consultó tu resumen": visible pero sin competir con la
-   respuesta. */
-.burbuja-fuente {
-  margin: 6px 0 0;
-  font-size: 12px;
-  color: var(--tenue);
+/* Las "colitas" de las burbujas, arriba de cada lado. */
+.wa-mio::after,
+.wa-agente::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 10px;
+}
+
+.wa-mio::after {
+  right: -8px;
+  background: linear-gradient(to bottom left, transparent 50%, var(--wa-mio) 50%);
+  transform: scaleY(-1);
+}
+
+.wa-agente::after {
+  left: -8px;
+  background: linear-gradient(to bottom right, transparent 50%, var(--wa-agente) 50%);
+  transform: scaleY(-1);
+}
+
+.wa-puntos::after {
+  display: none;
+}
+
+.wa-burbuja p.wa-fuente {
+  margin-top: 3px;
+  font-size: 11.5px;
   font-style: italic;
+  color: var(--wa-tenue);
 }
 
-.burbuja-hora {
+.wa-hora {
   display: block;
-  margin-top: 4px;
+  text-align: right;
   font-size: 11px;
-  color: var(--tenue);
+  color: var(--wa-tenue);
+  margin-top: 2px;
 }
 
-.chat-vacio {
+.wa-check {
+  color: var(--wa-check);
+  letter-spacing: -3px;
+}
+
+/* Avisos del sistema: el cartelito centrado de WhatsApp. */
+.wa-sistema {
+  align-self: center;
+  max-width: 90%;
+  margin: 6px 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--wa-sistema);
+  color: var(--wa-texto);
+  font-size: 13px;
+  text-align: center;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+
+.wa-ok {
+  color: var(--wa-verde);
+  font-weight: 600;
+}
+
+.wa-error {
+  color: var(--rojo);
+}
+
+.wa-bienvenida {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   margin: auto 0;
-  color: var(--tenue);
-  font-size: 14px;
 }
 
 .chat-sugerencias {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
-  margin-top: 12px;
 }
 
-.chat-escribir {
+.wa .chip {
+  background: var(--wa-agente);
+  color: var(--wa-verde);
+  border-color: transparent;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  font-size: 13px;
+}
+
+/* "escribiendo...": los tres puntos que laten. */
+.wa-puntos {
+  display: flex;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.wa-puntos span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--wa-tenue);
+  animation: wa-latido 1.2s infinite ease-in-out;
+}
+
+.wa-puntos span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.wa-puntos span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes wa-latido {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-puntos span {
+    animation: none;
+  }
+}
+
+/* Las tarjetas que esperan confirmación van como una burbuja más del agente. */
+.wa .propuesta {
+  align-self: flex-start;
+  width: 92%;
+  background: var(--wa-agente);
+  color: var(--wa-texto);
+  border: 1px solid var(--wa-verde);
+  margin: 4px 0;
+}
+
+.wa-restantes {
+  margin: 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--wa-tenue);
+  background: var(--wa-cajon);
+}
+
+.wa-escribir {
   display: flex;
   align-items: flex-end;
   gap: 8px;
-}
-
-.chat-escribir textarea {
-  /* Arranca de una línea y crece hasta un tope; de ahí en adelante hace
-     scroll adentro en vez de empujar el botón fuera de la pantalla. */
-  min-height: 40px;
-  max-height: 140px;
-  resize: vertical;
-  line-height: 1.4;
-}
-
-.chat-escribir button {
+  padding: 8px 10px;
+  background: var(--wa-cajon);
   flex-shrink: 0;
 }
 
-.chat-restantes {
-  margin: 0;
-  font-size: 12px;
+.wa-escribir textarea {
+  flex: 1;
+  resize: none;
+  border: 0;
+  border-radius: 21px;
+  padding: 10px 16px;
+  min-height: 42px;
+  max-height: 120px;
+  line-height: 1.4;
+  background: var(--wa-campo);
+  color: var(--wa-texto);
+  font-size: 15px;
+}
+
+.wa-escribir textarea:focus {
+  outline: none;
+}
+
+button.wa-enviar {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  padding: 0;
+  background: var(--wa-verde);
+  color: #fff;
+  font-size: 18px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+button.wa-enviar:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- la burbuja flotante y su panel ---------- */
+
+/* La única entrada al asistente, en la esquina como el botón de WhatsApp. */
+button.burbuja-asistente {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 60;
+  width: 58px;
+  height: 58px;
+  min-height: 58px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--wa-verde);
+  color: #fff;
+  font-size: 26px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s;
+}
+
+button.burbuja-asistente:hover {
+  transform: scale(1.06);
+}
+
+button.burbuja-asistente:focus-visible {
+  outline: 3px solid var(--acento);
+  outline-offset: 3px;
+}
+
+/* En el teléfono va por encima de la barra de pestañas, no encima de ella. */
+.con-barra-inferior button.burbuja-asistente {
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  right: 14px;
+}
+
+/* Que la burbuja no tape lo último de la página (la paginación, un botón). */
+.app:has(.burbuja-asistente) .contenido {
+  padding-bottom: 96px;
+}
+
+.con-barra-inferior.app:has(.burbuja-asistente) .contenido {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom));
+}
+
+.wa-fondo {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: var(--sombra-modal);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Escritorio: columna a la derecha, como WhatsApp Web con un chat abierto. */
+.wa-panel {
+  width: min(440px, 100%);
+  height: 100%;
+  padding: 12px;
+  animation: wa-entra 0.18s ease-out;
+}
+
+@keyframes wa-entra {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Teléfono: pantalla completa, como abrir una conversación. */
+  .wa-panel {
+    width: 100%;
+    padding: 0;
+  }
+
+  .wa-panel .wa {
+    border-radius: 0;
+    border: 0;
+  }
+
+  .wa-panel .wa-escribir {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .wa-burbuja {
+    max-width: 86%;
+  }
+
+  .wa-escribir textarea {
+    font-size: 16px;
+  }
 }
 
 /* Visible solo para lectores de pantalla: el cajón necesita su etiqueta, pero
@@ -1669,4 +2009,136 @@ td.acciones .acciones-fila button {
   font-size: 13px;
   line-height: 1.45;
   color: var(--tenue);
+}
+
+/* ---------------------------------------------------------------------------
+   Planes: precio anual y asistente con IA
+   -------------------------------------------------------------------------*/
+.etiqueta-ia {
+  color: var(--wa-verde);
+  border-color: rgba(0, 168, 132, 0.45);
+  background: rgba(0, 168, 132, 0.12);
+}
+
+.etiqueta-sin-ia {
+  color: var(--tenue);
+  border-color: var(--borde);
+}
+
+.etiqueta-anual {
+  color: var(--acento);
+  border-color: rgba(79, 140, 255, 0.45);
+  background: rgba(79, 140, 255, 0.12);
+  margin-left: 4px;
+}
+
+.nota-ahorro {
+  font-size: 11px;
+  color: var(--verde);
+  font-weight: 600;
+}
+
+/* El precio anual se pide dentro de un recuadro que cuelga de su casilla:
+   se lee como parte de esa opción, no como un campo suelto más. */
+.bloque-opcion {
+  margin: 6px 0 4px;
+  padding: 2px 12px 10px;
+  border-left: 3px solid var(--acento);
+  background: var(--superficie-2);
+  border-radius: 0 8px 8px 0;
+}
+
+.ayuda-campo {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Interruptor de encendido/apagado hecho con el checkbox de siempre: sigue
+   funcionando con teclado y lector de pantalla, solo cambia cómo se ve. */
+.interruptor {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--texto);
+}
+
+.interruptor input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.interruptor-pista {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 24px;
+  margin-top: 1px;
+  border-radius: 999px;
+  background: var(--borde);
+  transition: background 0.15s;
+}
+
+.interruptor-pista::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.interruptor input:checked + .interruptor-pista {
+  background: var(--wa-verde);
+}
+
+.interruptor input:checked + .interruptor-pista::after {
+  transform: translateX(18px);
+}
+
+.interruptor input:focus-visible + .interruptor-pista {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+}
+
+.interruptor strong {
+  display: block;
+  font-size: 14px;
+}
+
+/* En Clientes: el plan y cómo lo paga, uno al lado del otro. */
+.selector-plan-grupo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.selector-ciclo {
+  min-width: 0;
+}
+
+.precio-plan {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tarjeta-cat .selector-plan-grupo {
+  margin-top: 8px;
+}
+
+.tarjeta-cat .selector-plan-grupo .selector-plan {
+  margin-top: 0;
 }

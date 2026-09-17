@@ -62,10 +62,10 @@ export default function Clientes() {
     cambiar(u, { activo: !u.activo })
   }
 
-  async function asignarPlan(u, planID) {
+  async function asignarPlan(u, planID, ciclo) {
     setError('')
     try {
-      await adminApi.asignarPlan(u.id, planID === '' ? null : Number(planID))
+      await adminApi.asignarPlan(u.id, planID === '' ? null : Number(planID), ciclo)
       await recargar()
     } catch (err) {
       setError(err.message)
@@ -145,7 +145,7 @@ export default function Clientes() {
                 <SelectorPlan
                   usuario={u}
                   planes={planes}
-                  onCambiar={(valor) => asignarPlan(u, valor)}
+                  onCambiar={(plan, ciclo) => asignarPlan(u, plan, ciclo)}
                 />
                 <AccionesUsuario
                   usuario={u}
@@ -196,7 +196,7 @@ export default function Clientes() {
                       <SelectorPlan
                         usuario={u}
                         planes={planes}
-                        onCambiar={(valor) => asignarPlan(u, valor)}
+                        onCambiar={(plan, ciclo) => asignarPlan(u, plan, ciclo)}
                       />
                     </td>
                     <td className="num tenue">{u.movimientos}</td>
@@ -520,9 +520,13 @@ function ConfirmarBorrado({ usuario, onCerrar, onBorrado }) {
 }
 
 
-// SelectorPlan es un <select> y no un modal: cambiar de plan es una acción de
+// SelectorPlan son dos <select> y no un modal: cambiar de plan es una acción de
 // un solo dato que se hace seguido, y abrir una ventana para elegir una opción
 // de una lista corta es fricción sin ninguna ganancia.
+//
+// El segundo selector (mensual/anual) solo aparece si el plan se vende por
+// año. Al cambiar a un plan sin precio anual, el ciclo vuelve a mensual solo:
+// el backend rechazaría un anual que el plan no ofrece.
 //
 // A un administrador no se le asigna plan: no te cobras a ti mismo.
 function SelectorPlan({ usuario, planes, onCambiar }) {
@@ -532,21 +536,49 @@ function SelectorPlan({ usuario, planes, onCambiar }) {
   // si no, el select mostraría vacío y el primer cambio accidental le quitaría
   // el plan sin que nadie lo pidiera.
   const visibles = planes.filter((p) => p.activo || p.id === usuario.plan_id)
+  const actual = planes.find((p) => p.id === usuario.plan_id)
+  const ciclo = usuario.ciclo || 'mensual'
+
+  function cambiarPlan(valor) {
+    const elegido = planes.find((p) => String(p.id) === valor)
+    // Se conserva el anual solo si el plan nuevo también lo ofrece.
+    const nuevoCiclo = elegido?.precio_anual && ciclo === 'anual' ? 'anual' : 'mensual'
+    onCambiar(valor, nuevoCiclo)
+  }
 
   return (
-    <select
-      className="selector-plan"
-      value={usuario.plan_id ?? ''}
-      onChange={(e) => onCambiar(e.target.value)}
-      aria-label={`Plan de ${usuario.email}`}
-    >
-      <option value="">Sin plan</option>
-      {visibles.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.nombre} — {formatearMonto(p.precio_mensual)}
-          {p.activo ? '' : ' (inactivo)'}
-        </option>
-      ))}
-    </select>
+    <div className="selector-plan-grupo">
+      <select
+        className="selector-plan"
+        value={usuario.plan_id ?? ''}
+        onChange={(e) => cambiarPlan(e.target.value)}
+        aria-label={`Plan de ${usuario.email}`}
+      >
+        <option value="">Sin plan</option>
+        {visibles.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.nombre}
+            {p.incluye_ia ? ' ✦' : ''}
+            {p.activo ? '' : ' (inactivo)'}
+          </option>
+        ))}
+      </select>
+
+      {actual?.precio_anual && (
+        <select
+          className="selector-plan selector-ciclo"
+          value={ciclo}
+          onChange={(e) => onCambiar(String(actual.id), e.target.value)}
+          aria-label={`Cómo paga ${usuario.email}`}
+        >
+          <option value="mensual">Mensual · {formatearMonto(actual.precio_mensual)}</option>
+          <option value="anual">Anual · {formatearMonto(actual.precio_anual)}</option>
+        </select>
+      )}
+
+      {actual && !actual.precio_anual && (
+        <span className="tenue precio-plan">{formatearMonto(actual.precio_mensual)}/mes</span>
+      )}
+    </div>
   )
 }

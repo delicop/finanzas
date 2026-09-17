@@ -82,10 +82,10 @@ servidor. Lo que las protege no es un filtro sino `RequireAdmin`.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/admin/planes` | Planes con su conteo de clientes |
-| POST | `/api/admin/planes` | Crear (`nombre`, `precio_mensual`) |
-| PUT | `/api/admin/planes/{id}` | Editar nombre, precio y `activo` |
+| POST | `/api/admin/planes` | Crear (`nombre`, `precio_mensual`, `precio_anual`, `incluye_ia`) |
+| PUT | `/api/admin/planes/{id}` | Editar todo lo anterior y `activo` |
 | DELETE | `/api/admin/planes/{id}` | Eliminar — **409** si tiene clientes |
-| PUT | `/api/admin/usuarios/{id}/plan` | Asignar el plan (`{"plan_id": 3}`) o quitarlo (`null`) |
+| PUT | `/api/admin/usuarios/{id}/plan` | Asignar el plan y cómo lo paga (`{"plan_id": 3, "ciclo": "anual"}`) o quitarlo (`null`) |
 | GET | `/api/admin/negocio?periodo=AAAA-MM` | Tablero del mes |
 | GET | `/api/admin/pagos?periodo=AAAA-MM` | Cobros de ese mes |
 | POST | `/api/admin/pagos` | Registrar un cobro |
@@ -94,10 +94,42 @@ servidor. Lo que las protege no es un filtro sino `RequireAdmin`.
 Los precios y montos son **string**, igual que en el resto de la app: columna
 `NUMERIC(14,2)` y ninguna suma en Go.
 
-`periodo` siempre es `AAAA-MM` y se normaliza al día 1 antes de guardarlo. Es lo
-que permite que el índice único `(usuario_id, periodo)` impida de verdad cobrar
-dos veces el mismo mes: sin normalizar, `2026-03-01` y `2026-03-15` serían dos
-periodos distintos.
+#### Qué trae un plan
+
+| Campo | Qué es |
+|---|---|
+| `precio_mensual` | Obligatorio. |
+| `precio_anual` | Opcional. Vacío = el plan **no se vende por año**. |
+| `incluye_ia` | Si sus clientes pueden usar el asistente. Por omisión, `false`. |
+
+**Sin IA en el plan no hay asistente**, y **sin plan tampoco**: cada mensaje le
+cuesta plata al dueño del servidor. Se revisa en el backend en cada petición a
+`/api/agente`, así que quitarle la IA a un plan corta el chat desde el mensaje
+siguiente, sin esperar a que venza la sesión (responde **403**). `/api/auth/me`
+trae `"ia": true|false` para que la app esconda el botón, pero quien lo impide
+es el servidor.
+
+Los avisos automáticos le llegan a todos igual; el modelo solo los *redacta*
+para quien tiene IA en el plan. Los demás reciben el texto que arma la app, con
+las mismas cifras.
+
+#### Mensual o anual
+
+El ciclo es **del cliente**, no del plan: el mismo plan lo puede pagar uno por
+mes y otro por año (`usuarios.ciclo_pago`). Solo se acepta `"anual"` si el plan
+tiene precio anual (**422** en `campos.ciclo` si no). Quitarle el precio anual a
+un plan que alguien paga por año también se rechaza (**422** en
+`campos.precio_anual`): primero hay que pasar a ese cliente a mensual.
+
+Un pago **cubre un rango** de meses: `[periodo, cubre_hasta)`. Uno mensual cubre
+ese mes; uno anual, ese mes y los once siguientes. El monto por omisión sale del
+ciclo del cliente: el precio mensual o el anual.
+
+`periodo` siempre es `AAAA-MM` y se normaliza al día 1. Que dos pagos del mismo
+cliente no cubran el mismo mes lo garantiza la base con una **restricción de
+exclusión** sobre rangos (`pagos_sin_solapar`, con la extensión `btree_gist`):
+ni un doble clic ni un pago mensual metido en medio de un año pagado pueden
+inflar los ingresos.
 
 ```bash
 # El cobro normal: el monto sale del plan, no del cuerpo de la petición.
@@ -113,14 +145,23 @@ $1 y los ingresos quedarían mal para siempre.
 
 Respuestas que conviene esperar:
 
-- **409** `"Ese cliente ya tiene un pago registrado en ese mes"` — el índice único.
+- **409** `"Ese cliente ya tiene cubierto ese periodo"` — un pago de ese mes, o uno anual que lo incluye.
 - **409** `"Ese cliente no tiene plan asignado"` — no hay nada que cobrarle.
 - **422** con `campos.periodo` si el periodo no es `AAAA-MM`.
 
-El tablero de `/api/admin/negocio` devuelve `esperado`, `cobrado` y `pendiente`.
-Ojo: **`pendiente` no es `esperado − cobrado`**. Se calcula aparte, sumando los
-planes de los clientes activos sin pago ese mes, porque la resta daría negativo
-con un sobrepago y escondería a quien sí debe.
+El tablero de `/api/admin/negocio` devuelve:
+
+| Campo | Qué es |
+|---|---|
+| `esperado` | **Ingreso mensual recurrente.** Un cliente anual aporta su precio anual ÷ 12. |
+| `cobrado` | Lo que entró en los pagos registrados ese mes. Un pago anual cuenta entero en el mes en que se hizo. |
+| `pendiente` | Lo que les toca pagar a los clientes que **no tienen el mes cubierto**, según su ciclo (el año entero si pagan por año). |
+| `clientes_pagaron` | Cuántos tienen el mes cubierto ("al día"). |
+| `clientes_anuales` | Cuántos pagan por año. |
+
+Ojo: **`pendiente` no es `esperado − cobrado`**, y con clientes anuales esa
+resta no tiene ningún sentido: un mes puede cobrar un año entero y el siguiente
+nada. Cada cifra se calcula por su lado.
 
 ### Ver los datos de otro usuario
 

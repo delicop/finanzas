@@ -1,8 +1,10 @@
 # El asistente
 
 Un chat dentro de la app: el usuario escribe en lenguaje normal y le responde
-un modelo de lenguaje. Vive en `backend/internal/agente/` y en la pantalla
-**Asistente** del menú.
+un modelo de lenguaje. Vive en `backend/internal/agente/` y, en la app, en la
+**burbuja verde flotante** de la esquina (`BurbujaAsistente.jsx`), que está en
+todas las pantallas de dinero y abre el chat con forma de WhatsApp
+(`ChatAsistente.jsx`). No tiene pestaña propia en el menú: una sola entrada.
 
 El agente consulta los datos del usuario y además *prepara* movimientos a
 partir de lo que le dicta — pero no los escribe: deja una tarjeta que el
@@ -183,6 +185,12 @@ mientras se observa. Sin ese corte, el middleware `VerComo` cambiaría el id del
 context y el `GET` devolvería el hilo ajeno sin que ningún handler se enterara.
 
 ## Cómo se configura
+
+**Quién puede usarlo: solo los clientes cuyo plan incluye IA.** Sin plan, o
+con un plan sin `incluye_ia`, `/api/agente` responde **403** y la burbuja no
+aparece. La revisión va en cada petición (`auth.Store.TieneIA`),
+así que quitarle la IA a un plan corta el chat de inmediato. El handler recibe
+ese permiso como función: si alguien lo arma sin él, **nadie** entra.
 
 Sin `LLM_API_KEY` **el chat no existe**: las rutas no se montan y la app
 funciona exactamente igual. Es el mismo criterio de `TOKEN_MANTENIMIENTO`: una
