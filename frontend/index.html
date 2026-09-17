@@ -2,8 +2,24 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: instalada en un iPhone, la app llega hasta los
+         bordes y el CSS respeta las zonas seguras con env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Finanzas</title>
+    <meta name="description" content="Tus gastos, ingresos y préstamos en un solo lugar." />
+
+    <!-- Lo que la vuelve instalable (PWA). -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f1115" />
+    <link rel="icon" href="/iconos/icono.svg" type="image/svg+xml" />
+    <link rel="icon" href="/iconos/icono-192.png" type="image/png" sizes="192x192" />
+
+    <!-- iPhone: Safari no lee los íconos del manifest, pide los suyos. -->
+    <link rel="apple-touch-icon" href="/iconos/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Finanzas" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>
   <body>
     <div id="root"></div>

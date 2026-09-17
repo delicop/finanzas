@@ -2241,3 +2241,28 @@ button.burbuja-asistente:focus-visible {
 .tarjeta-cat .selector-plan-grupo .selector-plan {
   margin-top: 0;
 }
+
+/* ---------- app instalada (PWA) ---------- */
+
+.pasos-instalar {
+  margin: 0 0 16px;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.sin-conexion {
+  margin-bottom: 16px;
+}
+
+/* Instalada en el iPhone la app llega hasta arriba, detrás de la hora y la
+   batería: la barra baja lo que mida esa zona. En el navegador esa zona vale
+   0 y queda el relleno de siempre. */
+.barra {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+@media (max-width: 720px) {
+  .barra {
+    padding-top: max(10px, env(safe-area-inset-top));
+  }
+}

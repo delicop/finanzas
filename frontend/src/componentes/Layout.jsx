@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { notificacionesApi } from '../lib/api'
+import { useEnLinea } from '../lib/pwa'
 import { useAuth } from '../lib/AuthContext'
 import { useTema } from '../lib/TemaContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import BurbujaAsistente from './BurbujaAsistente'
+import InstalarApp, { AvisoSinConexion } from './InstalarApp'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
 
@@ -30,6 +32,7 @@ export default function Layout({ children }) {
   const { usuario, logout, esAdmin, verComo, dejarDeObservar, conIA } = useAuth()
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
+  const enLinea = useEnLinea()
   const [cambiandoPassword, setCambiandoPassword] = useState(false)
   const [viendoAvisos, setViendoAvisos] = useState(false)
   const [sinLeer, setSinLeer] = useState(0)
@@ -109,6 +112,8 @@ export default function Layout({ children }) {
         <div className="barra-der">
           <span className="usuario">{usuario.nombre || usuario.email}</span>
 
+          <InstalarApp />
+
           <button
             className="boton-tema"
             onClick={alternar}
@@ -146,6 +151,7 @@ export default function Layout({ children }) {
       </header>
 
       <main className="contenido">
+        <AvisoSinConexion enLinea={enLinea} />
         {/* Mientras el admin mira una cuenta ajena, la app entera muestra
             datos que no son suyos. Sin un aviso permanente y difícil de
             ignorar, es cuestión de tiempo que alguien lea el saldo de otro

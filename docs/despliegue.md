@@ -129,6 +129,39 @@ Tres opciones, de menos a más trabajo:
 Con proxy delante, asegúrate de que envíe `X-Forwarded-For`; el límite de
 intentos de login lo usa para identificar la IP real.
 
+## Instalar la app en el celular (PWA)
+
+La app se puede instalar como una aplicación más: ícono en la pantalla de
+inicio, sin la barra del navegador y abre aunque no haya señal (las cifras sí
+necesitan conexión).
+
+**Requisito: HTTPS.** El navegador solo acepta el service worker con un
+certificado válido (o en `localhost`). Entrando por `http://192.168.x.x:5173`
+la app funciona, pero **no aparece la opción de instalar**. Las opciones 1 y 2
+de la sección anterior lo resuelven: Tailscale da un dominio `*.ts.net` con
+HTTPS (`tailscale serve`) y Cloudflare Tunnel también.
+
+Cómo se instala:
+
+- **Android (Chrome)**: aparece el botón 📲 en la barra de la app, o el menú ⋮ ›
+  *Instalar aplicación*.
+- **iPhone (Safari)**: Compartir › *Agregar a inicio*. El botón 📲 lo explica.
+- **Computador (Chrome/Edge)**: el botón 📲 o el ícono de instalar en la barra de
+  direcciones.
+
+Qué guarda el service worker (`frontend/public/sw.js`):
+
+| Qué | Cómo |
+|---|---|
+| `/api/*` y `/uploads/*` | **Nunca** se guardan: una cifra vieja es peor que un error |
+| Las páginas | Primero la red; sin señal, la última versión guardada |
+| `/assets/*` (con hash en el nombre) | Del caché |
+
+Solo se registra en producción (imagen nginx), no con `npm run dev`. nginx
+sirve `sw.js`, `index.html` y el manifest con `Cache-Control: no-cache` para
+que las versiones nuevas lleguen. Si se cambia la lógica de `sw.js`, subir
+`VERSION` dentro del archivo.
+
 ## Si algo falla
 
 ```bash

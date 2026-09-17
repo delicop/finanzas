@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fondo a sangre: el sistema recorta la forma (círculo, gota, cuadrado)
+       según el teléfono. Lo importante va dentro del 80% del centro. -->
+  <defs>
+    <linearGradient id="f" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4fd8"/>
+      <stop offset="1" stop-color="#0f1115"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#f)"/>
+  <!-- Las barras de un resumen, subiendo. -->
+  <rect x="136" y="300" width="56" height="86" rx="12" fill="#4ade80" opacity=".55"/>
+  <rect x="228" y="250" width="56" height="136" rx="12" fill="#4ade80" opacity=".8"/>
+  <rect x="320" y="196" width="56" height="190" rx="12" fill="#4ade80"/>
+  <!-- El signo de pesos. -->
+  <text x="256" y="200" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+        font-size="150" font-weight="700" fill="#ffffff">$</text>
+</svg>
