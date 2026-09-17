@@ -35,6 +35,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
   const [medioID, setMedioID] = useState(datos.medio_pago_id ?? 0)
   const [aQuien, setAQuien] = useState(datos.a_quien ?? '')
   const [estado, setEstado] = useState(datos.estado || 'pendiente')
+  const [cobrarEl, setCobrarEl] = useState(datos.cobrar_el ?? '')
 
   const esPrestamo = tipo === 'preste'
 
@@ -50,6 +51,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
       // cambiar de tipo no obliga a limpiar nada.
       a_quien: esPrestamo ? aQuien : '',
       estado: esPrestamo ? estado : '',
+      cobrar_el: esPrestamo ? cobrarEl : '',
     }
   }
 
@@ -151,6 +153,18 @@ function MovimientoNuevo({ propuesta, categorias, medios, onResuelta }) {
                   <option value="pagado">Pagado</option>
                 </select>
                 {campos.estado && <span className="error-campo">{campos.estado}</span>}
+              </div>
+
+              <div className="propuesta-campo">
+                <label htmlFor={`cobrar-${propuesta.id}`}>¿Cuándo te paga?</label>
+                <input
+                  id={`cobrar-${propuesta.id}`}
+                  type="date"
+                  value={cobrarEl}
+                  min={fecha || undefined}
+                  onChange={(e) => setCobrarEl(e.target.value)}
+                />
+                {campos.cobrar_el && <span className="error-campo">{campos.cobrar_el}</span>}
               </div>
             </>
           )}

@@ -62,6 +62,11 @@ categoria o un medio que no existan.
 Si no dijo la fecha, es hoy. Si no entendiste el monto, pregunta: no redondees
 ni completes de memoria.
 
+Cuando sea un prestamo, si no dijo cuando le pagan, preguntale una vez si
+quedaron en una fecha: con ella la app le avisa ese dia. Si la dice ("el
+viernes", "a fin de mes"), conviertela a AAAA-MM-DD contando desde hoy y
+mandala en cobrar_el. Si no hay fecha, no la inventes.
+
 LAS CIFRAS NO SE CALCULAN
 Los numeros salen de las herramientas y se copian tal cual. No sumes, no
 restes, no promedies, no conviertas. Si una pregunta necesita una cuenta que

@@ -72,6 +72,9 @@ type Deudor struct {
 	AQuien    string `json:"a_quien"`
 	Total     string `json:"total"`
 	Prestamos int    `json:"prestamos"`
+	// ProximoCobro es la fecha de cobro mas cercana de sus prestamos
+	// pendientes (puede ser una que ya paso). nil si ninguno tiene fecha.
+	ProximoCobro *string `json:"proximo_cobro"`
 }
 
 type Totales struct {
@@ -268,7 +271,7 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 
 	// 4) Quien debe cuanto.
 	const deudores = `
-		SELECT a_quien, sum(monto)::numeric(14,2)::text, count(*)
+		SELECT a_quien, sum(monto)::numeric(14,2)::text, count(*), to_char(min(cobrar_el), 'YYYY-MM-DD')
 		FROM movimientos
 		WHERE usuario_id = $1 AND tipo = 'preste' AND estado = 'pendiente'
 		GROUP BY a_quien
@@ -282,7 +285,7 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 
 	for filasDeudores.Next() {
 		var d Deudor
-		if err := filasDeudores.Scan(&d.AQuien, &d.Total, &d.Prestamos); err != nil {
+		if err := filasDeudores.Scan(&d.AQuien, &d.Total, &d.Prestamos, &d.ProximoCobro); err != nil {
 			return nil, fmt.Errorf("leyendo deudor: %w", err)
 		}
 		resumen.Deudores = append(resumen.Deudores, d)

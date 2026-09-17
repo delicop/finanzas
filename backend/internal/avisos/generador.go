@@ -23,7 +23,7 @@ func NuevoGenerador(store *Store, negocio *suscripciones.Store, redactor Redacto
 	return &Generador{store: store, negocio: negocio, redactor: redactor}
 }
 
-// Correr evalua los tres avisos para cada cuenta activa y devuelve cuantos
+// Correr evalua los avisos para cada cuenta activa y devuelve cuantos
 // creo. Un fallo con un usuario no detiene a los demas: se junta al final.
 func (g *Generador) Correr(ctx context.Context, ahora time.Time) (int, error) {
 	destinatarios, err := g.store.Destinatarios(ctx)
@@ -55,15 +55,14 @@ func (g *Generador) paraUsuario(ctx context.Context, d Destinatario, ahora time.
 	var creados int
 	var fallos []error
 
-	for _, regla := range []func(context.Context, Destinatario, time.Time) (bool, error){
+	for _, regla := range []func(context.Context, Destinatario, time.Time) (int, error){
 		g.resumenSemanal,
 		g.prestamosPendientes,
 		g.cobrosDelMes,
+		g.cobrosDelDia,
 	} {
-		creado, err := regla(ctx, d, ahora)
-		if creado {
-			creados++
-		}
+		n, err := regla(ctx, d, ahora)
+		creados += n
 		if err != nil {
 			fallos = append(fallos, err)
 		}
@@ -73,7 +72,7 @@ func (g *Generador) paraUsuario(ctx context.Context, d Destinatario, ahora time.
 }
 
 // --------------------------------------------------------------------------
-// Las tres reglas
+// Las reglas. Cada una devuelve cuantos avisos creo.
 // --------------------------------------------------------------------------
 
 // resumenSemanal: que paso la semana pasada (lunes a domingo).
@@ -81,18 +80,27 @@ func (g *Generador) paraUsuario(ctx context.Context, d Destinatario, ahora time.
 // Sin movimientos no hay aviso. Un "esta semana no registraste nada" no le
 // sirve a nadie, y de paso eso deja fuera al administrador, que no lleva
 // finanzas propias.
-func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora time.Time) (bool, error) {
+func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
 	desde, hasta, clave := semanaAnterior(ahora)
 
 	semana, err := g.store.ResumenSemana(ctx, d.ID, desde.Format(formatoFecha), hasta.Format(formatoFecha))
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if semana.Movimientos == 0 {
-		return false, nil
+		return 0, nil
 	}
 
+	// El titulo cuenta lo que mas pesa de la semana: "pagaste $0" en una
+	// semana en la que solo se presto no le dice nada a nadie.
 	titulo := fmt.Sprintf("Tu semana: pagaste %s", pesos(semana.Pagado))
+	switch {
+	case !esCero(semana.Pagado):
+	case !esCero(semana.Prestado):
+		titulo = fmt.Sprintf("Tu semana: prestaste %s", pesos(semana.Prestado))
+	case !esCero(semana.Recibido):
+		titulo = fmt.Sprintf("Tu semana: recibiste %s", pesos(semana.Recibido))
+	}
 
 	var base strings.Builder
 	fmt.Fprintf(&base, "Del %s registraste %d movimiento%s: recibiste %s y pagaste %s.",
@@ -107,12 +115,12 @@ func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora ti
 		fmt.Fprintf(&base, " Además prestaste %s.", pesos(semana.Prestado))
 	}
 
-	return g.guardar(ctx, Nuevo{
+	return g.guardar(ctx, d, Nuevo{
 		UsuarioID: d.ID,
 		Tipo:      TipoResumenSemanal,
 		Clave:     clave,
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base.String()),
+		Cuerpo:    base.String(),
 	})
 }
 
@@ -120,13 +128,13 @@ func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora ti
 //
 // La clave es el mes, no la semana: recordar lo mismo cada siete dias no hace
 // que se lo paguen mas rapido, solo que deje de leer los avisos.
-func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, ahora time.Time) (bool, error) {
+func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
 	prestamos, err := g.store.PrestamosViejos(ctx, d.ID, DiasPrestamoViejo)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if prestamos.Cantidad == 0 {
-		return false, nil
+		return 0, nil
 	}
 
 	titulo := fmt.Sprintf("Tienes %s sin cobrar", pesos(prestamos.Total))
@@ -141,12 +149,12 @@ func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, aho
 			prestamos.AQuien, prestamos.DiasMasViejo)
 	}
 
-	return g.guardar(ctx, Nuevo{
+	return g.guardar(ctx, d, Nuevo{
 		UsuarioID: d.ID,
 		Tipo:      TipoPrestamosPendientes,
 		Clave:     ahora.Format(formatoMes),
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base),
+		Cuerpo:    base,
 	})
 }
 
@@ -155,9 +163,9 @@ func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, aho
 //
 // No sale el dia 1 a proposito: el mes recien empieza y "te faltan todos" no
 // es informacion. A partir del dia 5 la cifra ya dice algo.
-func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time.Time) (bool, error) {
+func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
 	if d.Rol != rolAdmin || ahora.Day() < diaDelAvisoDeCobros {
-		return false, nil
+		return 0, nil
 	}
 
 	periodo := ahora.Format(formatoMes)
@@ -167,10 +175,10 @@ func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time
 	// cambio, es el mes pelado: es lo que se lee.
 	resumen, err := g.negocio.Resumen(ctx, periodo+"-01")
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 	if len(resumen.Pendientes) == 0 {
-		return false, nil
+		return 0, nil
 	}
 
 	titulo := fmt.Sprintf("Te falta cobrar %s este mes", pesos(resumen.Pendiente))
@@ -184,13 +192,63 @@ func (g *Generador) cobrosDelMes(ctx context.Context, d Destinatario, ahora time
 		len(resumen.Pendientes), plural(len(resumen.Pendientes)),
 		nombresDe(resumen.Pendientes))
 
-	return g.guardar(ctx, Nuevo{
+	return g.guardar(ctx, d, Nuevo{
 		UsuarioID: d.ID,
 		Tipo:      TipoCobrosDelMes,
 		Clave:     periodo,
 		Titulo:    titulo,
-		Cuerpo:    redactarSeguro(ctx, g.redactorPara(d), base),
+		Cuerpo:    base,
 	})
+}
+
+// cobrosDelDia: hoy es el dia en que quedaron de devolver un prestamo.
+//
+// Un aviso por prestamo, con la fecha en la clave: si el usuario cambia la
+// fecha de cobro, el nuevo dia tambien avisa. Si el servidor estuvo apagado
+// ese dia, sale al volver (hasta DiasGraciaCobro despues), diciendo que era
+// para ese dia y no "hoy".
+func (g *Generador) cobrosDelDia(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
+	hoy := ahora.In(zonaColombia)
+	desde := hoy.AddDate(0, 0, -DiasGraciaCobro)
+
+	cobros, err := g.store.CobrosDelDia(ctx, d.ID, desde.Format(formatoFecha), hoy.Format(formatoFecha))
+	if err != nil {
+		return 0, err
+	}
+
+	var creados int
+	var fallos []error
+	for _, c := range cobros {
+		quien := strings.TrimSpace(c.AQuien)
+
+		var titulo, base string
+		if c.CobrarEl == hoy.Format(formatoFecha) {
+			titulo = fmt.Sprintf("Hoy te paga %s", quien)
+			base = fmt.Sprintf("Hoy es el día en que %s quedó de devolverte %s", quien, pesos(c.Monto))
+		} else {
+			titulo = fmt.Sprintf("%s quedó de pagarte el %s", quien, diaEnEspanol(c.CobrarEl))
+			base = fmt.Sprintf("El %s era el día en que %s quedó de devolverte %s, y sigue pendiente",
+				diaEnEspanol(c.CobrarEl), quien, pesos(c.Monto))
+		}
+		base += fmt.Sprintf(" (se lo prestaste el %s", diaEnEspanol(c.Fecha))
+		if desc := strings.TrimSpace(c.Descripcion); desc != "" {
+			base += ": " + desc
+		}
+		base += "). Cuando te pague, márcalo como pagado en Movimientos."
+
+		n, err := g.guardar(ctx, d, Nuevo{
+			UsuarioID: d.ID,
+			Tipo:      TipoCobroDelDia,
+			Clave:     fmt.Sprintf("%d:%s", c.MovimientoID, c.CobrarEl),
+			Titulo:    titulo,
+			Cuerpo:    base,
+		})
+		creados += n
+		if err != nil {
+			fallos = append(fallos, err)
+		}
+	}
+	return creados, errors.Join(fallos...)
 }
 
 // redactorPara devuelve el modelo solo si el plan de esa cuenta incluye IA.
@@ -203,17 +261,34 @@ func (g *Generador) redactorPara(d Destinatario) Redactor {
 	return g.redactor
 }
 
-// guardar traduce "ya existía" a "no cree ninguno", que es lo que le interesa
-// a quien cuenta. No es un error: es la tarea corriendo otra vez.
-func (g *Generador) guardar(ctx context.Context, nuevo Nuevo) (bool, error) {
-	_, err := g.store.Guardar(ctx, nuevo)
+// guardar crea el aviso si todavia no existe y devuelve cuantos creo (0 o 1).
+//
+// Primero pregunta si ya esta: la tarea corre cada hora y vuelve a evaluarlo
+// todo, y redactar con el modelo un aviso que ya existe es pagar por nada.
+// Solo si es nuevo se le pasa el texto base al modelo (si la cuenta tiene IA).
+//
+// "Ya existía" no es un error: es la tarea corriendo otra vez. El indice
+// unico sigue siendo la regla de verdad: si dos corridas se cruzan, el
+// ON CONFLICT descarta la segunda.
+func (g *Generador) guardar(ctx context.Context, d Destinatario, nuevo Nuevo) (int, error) {
+	existe, err := g.store.Existe(ctx, nuevo.UsuarioID, nuevo.Tipo, nuevo.Clave)
+	if err != nil {
+		return 0, err
+	}
+	if existe {
+		return 0, nil
+	}
+
+	nuevo.Cuerpo = redactarSeguro(ctx, g.redactorPara(d), nuevo.Cuerpo)
+
+	_, err = g.store.Guardar(ctx, nuevo)
 	if errors.Is(err, ErrYaExiste) {
-		return false, nil
+		return 0, nil
 	}
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	return true, nil
+	return 1, nil
 }
 
 // --------------------------------------------------------------------------
@@ -243,6 +318,19 @@ func semanaAnterior(ahora time.Time) (desde, hasta time.Time, clave string) {
 
 	anio, semana := desde.ISOWeek()
 	return desde, hasta, fmt.Sprintf("%d-W%02d", anio, semana)
+}
+
+// zonaColombia es la hora de Colombia: UTC-5 todo el año. Fija, sin
+// time.LoadLocation, porque la imagen de Docker no trae la base de zonas.
+var zonaColombia = time.FixedZone("COT", -5*60*60)
+
+// diaEnEspanol: "2026-09-15" -> "15 de septiembre".
+func diaEnEspanol(iso string) string {
+	t, err := time.Parse(formatoFecha, iso)
+	if err != nil {
+		return iso
+	}
+	return fmt.Sprintf("%d de %s", t.Day(), meses[t.Month()-1])
 }
 
 var meses = [...]string{"enero", "febrero", "marzo", "abril", "mayo", "junio",

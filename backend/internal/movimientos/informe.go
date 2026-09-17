@@ -162,7 +162,7 @@ func generarExcel(inf *Informe, destino *bytes.Buffer) error {
 		ancho  float64
 	}{
 		{"Fecha", 12}, {"Tipo", 10}, {"Categoría", 18}, {"Descripción", 40},
-		{"Medio", 16}, {"Monto", 16}, {"A quién", 18}, {"Estado", 12}, {"Devuelto por", 16},
+		{"Medio", 16}, {"Monto", 16}, {"A quién", 18}, {"Estado", 12}, {"Cobrar el", 12}, {"Devuelto por", 16},
 	}
 	filaTitulos := fila
 	for i, c := range columnas {
@@ -189,7 +189,12 @@ func generarExcel(inf *Informe, destino *bytes.Buffer) error {
 		if m.Estado != nil {
 			poner(8, fila, nombresEstado[*m.Estado], 0)
 		}
-		poner(9, fila, texto(m.MedioCobroNombre), 0)
+		if m.CobrarEl != nil {
+			if dia, err := time.Parse(FormatoFecha, *m.CobrarEl); err == nil {
+				poner(9, fila, dia, fecha)
+			}
+		}
+		poner(10, fila, texto(m.MedioCobroNombre), 0)
 		fila++
 	}
 
@@ -332,6 +337,9 @@ func generarPDF(inf *Informe, destino *bytes.Buffer) error {
 			detalle := "a " + texto(m.AQuien)
 			if m.Estado != nil {
 				detalle += " · " + strings.ToLower(nombresEstado[*m.Estado])
+			}
+			if m.CobrarEl != nil && (m.Estado == nil || *m.Estado == EstadoPendiente) {
+				detalle += ", cobrar el " + fechaCorta(*m.CobrarEl)
 			}
 			if m.MedioCobroNombre != nil {
 				detalle += " por " + *m.MedioCobroNombre

@@ -52,6 +52,43 @@ export function hoyISO() {
   return `${ahora.getFullYear()}-${mes}-${dia}`
 }
 
+// sumarDias("2026-09-28", 5) -> "2026-10-03". Se arma con la fecha LOCAL
+// (new Date(año, mes, día)), así un cambio de mes o de año sale bien y no
+// hay corrimiento por zona horaria.
+export function sumarDias(iso, dias) {
+  const [anio, mes, dia] = iso.split('-').map(Number)
+  const f = new Date(anio, mes - 1, dia + dias)
+  const m = String(f.getMonth() + 1).padStart(2, '0')
+  const d = String(f.getDate()).padStart(2, '0')
+  return `${f.getFullYear()}-${m}-${d}`
+}
+
+// finDeMes("2026-09-10") -> "2026-09-30".
+export function finDeMes(iso) {
+  const [anio, mes] = iso.split('-').map(Number)
+  const ultimo = new Date(anio, mes, 0).getDate() // el día 0 del mes siguiente
+  return `${anio}-${String(mes).padStart(2, '0')}-${String(ultimo).padStart(2, '0')}`
+}
+
+// Cuánto falta para una fecha de cobro, dicho como lo diría una persona.
+// Devuelve { texto, tono } con tono 'vencido', 'hoy' o 'pronto' (o null si
+// falta más de una semana, que no merece resaltarse).
+export function faltaParaCobrar(iso, hoy = hoyISO()) {
+  const [a1, m1, d1] = hoy.split('-').map(Number)
+  const [a2, m2, d2] = iso.split('-').map(Number)
+  // Date.UTC para contar días exactos, sin horas de verano de por medio.
+  const dias = Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86400000)
+
+  if (dias < 0) {
+    const n = -dias
+    return { texto: `venció hace ${n} día${n === 1 ? '' : 's'}`, tono: 'vencido' }
+  }
+  if (dias === 0) return { texto: 'te paga hoy', tono: 'hoy' }
+  if (dias === 1) return { texto: 'te paga mañana', tono: 'pronto' }
+  if (dias <= 7) return { texto: `te paga en ${dias} días`, tono: 'pronto' }
+  return { texto: `te paga el ${formatearFecha(iso)}`, tono: null }
+}
+
 export const ETIQUETAS_TIPO = {
   recibi: 'Recibí',
   pague: 'Pagué',

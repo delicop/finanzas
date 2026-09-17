@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgconn"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ type Datos struct {
 	Descripcion string
 	AQuien      *string // solo para tipo 'preste'
 	Estado      *string // solo para tipo 'preste'
+	CobrarEl    *string // solo para tipo 'preste', opcional
 	MedioPagoID *int64  // opcional
 }
 
@@ -46,7 +48,7 @@ type Filtros struct {
 const columnas = `
 	m.id, m.categoria_id, c.nombre, m.medio_pago_id, mp.nombre,
 	m.medio_cobro_id, mc.nombre, m.tipo, m.monto::text, m.fecha,
-	m.descripcion, m.a_quien, m.estado,
+	m.descripcion, m.a_quien, m.estado, m.cobrar_el,
 	m.factura_ruta, m.factura_nombre, m.factura_tipo,
 	m.creado_en, m.actualizado_en`
 
@@ -177,8 +179,8 @@ func (s *Store) Crear(ctx context.Context, usuarioID int64, d Datos) (*Movimient
 			SELECT id FROM medios_pago WHERE id = $9 AND usuario_id = $1
 		), ins AS (
 			INSERT INTO movimientos
-				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id)
-			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio)
+				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id, cobrar_el)
+			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio), $10::date
 			FROM cat
 			-- El medio es opcional, pero si viene uno TIENE que ser del usuario.
 			-- Sin este WHERE, un id ajeno o inexistente se guardaria como NULL
@@ -193,10 +195,13 @@ func (s *Store) Crear(ctx context.Context, usuarioID int64, d Datos) (*Movimient
 		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id`, columnas)
 
 	m, err := escanear(s.db.QueryRowContext(ctx, q,
-		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID))
+		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, s.porQueNoEntro(ctx, usuarioID, d)
+	}
+	if esCobroAntes(err) {
+		return nil, ErrCobroAntes
 	}
 	if err != nil {
 		return nil, fmt.Errorf("creando movimiento: %w", err)
@@ -242,6 +247,7 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			    a_quien        = $8,
 			    estado         = $9,
 			    medio_pago_id  = (SELECT id FROM medio),
+			    cobrar_el      = $11::date,
 			    actualizado_en = now()
 			FROM cat
 			WHERE m.id = $2 AND m.usuario_id = $1
@@ -255,7 +261,7 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id`, columnas)
 
 	m, err := escanear(s.db.QueryRowContext(ctx, q,
-		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID))
+		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// Sin filas puede ser: el movimiento no existe, la categoria no sirve
@@ -268,6 +274,9 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			return nil, ErrNoEncontrado
 		}
 		return nil, s.porQueNoEntro(ctx, usuarioID, d)
+	}
+	if esCobroAntes(err) {
+		return nil, ErrCobroAntes
 	}
 	if err != nil {
 		return nil, fmt.Errorf("actualizando movimiento: %w", err)
@@ -405,6 +414,7 @@ func escanear(fila escaneable) (*Movimiento, error) {
 		cobroNombre   sql.NullString
 		aQuien        sql.NullString
 		estado        sql.NullString
+		cobrarEl      sql.NullTime
 		facturaRuta   sql.NullString
 		facturaNombre sql.NullString
 		facturaTipo   sql.NullString
@@ -412,7 +422,7 @@ func escanear(fila escaneable) (*Movimiento, error) {
 
 	err := fila.Scan(
 		&m.ID, &m.CategoriaID, &m.CategoriaNombre, &medioID, &medioNombre, &cobroID, &cobroNombre, &m.Tipo, &m.Monto, &fecha,
-		&m.Descripcion, &aQuien, &estado,
+		&m.Descripcion, &aQuien, &estado, &cobrarEl,
 		&facturaRuta, &facturaNombre, &facturaTipo,
 		&m.CreadoEn, &m.ActualizadoEn,
 	)
@@ -443,6 +453,10 @@ func escanear(fila escaneable) (*Movimiento, error) {
 	}
 	if estado.Valid {
 		m.Estado = &estado.String
+	}
+	if cobrarEl.Valid {
+		dia := cobrarEl.Time.Format(FormatoFecha)
+		m.CobrarEl = &dia
 	}
 	if facturaRuta.Valid && facturaRuta.String != "" {
 		// Nunca exponemos la ruta en disco: solo el endpoint de descarga.
@@ -521,4 +535,12 @@ func (s *Store) CambiarEstado(ctx context.Context, usuarioID, id int64, estado s
 		return nil, fmt.Errorf("cambiando estado: %w", err)
 	}
 	return m, nil
+}
+
+// esCobroAntes reconoce el CHECK que impide cobrar antes de prestar. Validar
+// ya lo revisa; esto cubre al que llegue por otro camino (el asistente con una
+// fecha rara, un cliente viejo).
+func esCobroAntes(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.ConstraintName == "movimientos_cobrar_el_despues_del_prestamo"
 }

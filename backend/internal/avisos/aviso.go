@@ -14,11 +14,13 @@ import (
 	"time"
 )
 
-// Los tres avisos que sabe generar. Los limita tambien un CHECK en la base.
+// Los avisos que sabe generar. Los limita tambien un CHECK en la base.
 const (
 	TipoResumenSemanal      = "resumen_semanal"
 	TipoPrestamosPendientes = "prestamos_pendientes"
 	TipoCobrosDelMes        = "cobros_del_mes"
+	// TipoCobroDelDia: hoy es el dia en que quedaron de devolver un prestamo.
+	TipoCobroDelDia = "cobro_del_dia"
 )
 
 const (
@@ -26,6 +28,12 @@ const (
 	// recordatorio. Un mes: menos que eso es meterse en una plata que todavia
 	// es reciente, y mas seria dejarla enfriar.
 	DiasPrestamoViejo = 30
+
+	// DiasGraciaCobro: si el servidor estuvo apagado justo el dia del cobro,
+	// el aviso sale al volver, siempre que no hayan pasado mas de estos dias.
+	// Despues ya no es "hoy te pagan" sino un olvido, y de eso se encarga el
+	// recordatorio de prestamos pendientes.
+	DiasGraciaCobro = 3
 
 	// MaxNotificaciones es cuantas devuelve la app. Nadie baja mas alla.
 	MaxNotificaciones = 30

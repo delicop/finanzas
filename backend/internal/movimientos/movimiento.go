@@ -50,6 +50,10 @@ type Movimiento struct {
 	AQuien *string `json:"a_quien"`
 	Estado *string `json:"estado"`
 
+	// CobrarEl es el dia en que quedaron de devolver el prestamo (AAAA-MM-DD).
+	// Opcional, y solo para 'preste'. Ese dia la app avisa.
+	CobrarEl *string `json:"cobrar_el"`
+
 	Factura *Factura `json:"factura"`
 
 	CreadoEn      time.Time `json:"creado_en"`
@@ -69,6 +73,7 @@ var (
 	ErrYaTieneFactura    = errors.New("el movimiento ya tiene una factura")
 	ErrNoEsPrestamo      = errors.New("solo los movimientos de tipo presté tienen estado")
 	ErrMedioInvalido     = errors.New("el medio de pago no existe")
+	ErrCobroAntes        = errors.New("la fecha de cobro no puede ser anterior al préstamo")
 )
 
 // EsTipoValido evita que llegue cualquier string a la base de datos.

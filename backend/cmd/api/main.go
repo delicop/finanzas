@@ -240,9 +240,10 @@ func generarAvisosPeriodicamente(ctx context.Context, generador *avisos.Generado
 
 	trabajar()
 
-	// Cada 6 horas: el resumen semanal no tiene por que salir a las 3 de la
-	// manana en punto, y con este intervalo el del lunes llega temprano.
-	ticker := time.NewTicker(6 * time.Hour)
+	// Cada hora: el aviso de "hoy te paga X" tiene que llegar temprano ese
+	// dia, no a media tarde. Es barato: una corrida sin avisos nuevos son unas
+	// pocas consultas por usuario, y el modelo solo se llama para los nuevos.
+	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 
 	for {

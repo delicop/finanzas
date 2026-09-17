@@ -3,6 +3,7 @@ package movimientos_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -540,5 +541,70 @@ func TestLosCentavosNoSePierden(t *testing.T) {
 	r := e.resumen(t)
 	if r.Totales.Recibido != "0.30" {
 		t.Errorf("0.10 + 0.20 = %s, se esperaba 0.30 exacto", r.Totales.Recibido)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Fecha de cobro de los préstamos
+// ---------------------------------------------------------------------------
+
+func TestPrestamoConFechaDeCobro(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	m := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "200000", Fecha: "2026-09-08",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente),
+		MedioPagoID: ptr(e.efectivo), CobrarEl: ptr("2026-09-20"),
+	})
+	if m.CobrarEl == nil || *m.CobrarEl != "2026-09-20" {
+		t.Fatalf("cobrar_el = %v", m.CobrarEl)
+	}
+
+	// Se ve en "Te deben", con la fecha más cercana de esa persona.
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "50000", Fecha: "2026-09-09",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente),
+		MedioPagoID: ptr(e.efectivo), CobrarEl: ptr("2026-09-12"),
+	})
+	r := e.resumen(t)
+	if len(r.Deudores) != 1 || r.Deudores[0].ProximoCobro == nil || *r.Deudores[0].ProximoCobro != "2026-09-12" {
+		t.Errorf("deudores = %+v", r.Deudores)
+	}
+
+	// Al volverlo "pagué", la fecha se va con a_quien y estado.
+	pague, err := e.store.Actualizar(ctx, e.usuarioID, m.ID, movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "200000",
+		Fecha: "2026-09-08", MedioPagoID: ptr(e.efectivo),
+	})
+	if err != nil {
+		t.Fatalf("actualizando: %v", err)
+	}
+	if pague.CobrarEl != nil {
+		t.Errorf("un gasto quedó con fecha de cobro: %v", *pague.CobrarEl)
+	}
+}
+
+// La base no deja cobrar antes de prestar ni poner fecha de cobro a un gasto,
+// aunque la validación se salte.
+func TestLaBaseCuidaLaFechaDeCobro(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	_, err := e.store.Crear(ctx, e.usuarioID, movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPreste, Monto: "1000", Fecha: "2026-09-10",
+		AQuien: ptr("Ana"), Estado: ptr(movimientos.EstadoPendiente),
+		MedioPagoID: ptr(e.efectivo), CobrarEl: ptr("2026-09-01"),
+	})
+	if !errors.Is(err, movimientos.ErrCobroAntes) {
+		t.Errorf("cobrar antes de prestar: err = %v", err)
+	}
+
+	_, err = e.store.Crear(ctx, e.usuarioID, movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "1000", Fecha: "2026-09-10",
+		MedioPagoID: ptr(e.efectivo), CobrarEl: ptr("2026-09-20"),
+	})
+	if err == nil {
+		t.Error("un gasto quedó con fecha de cobro")
 	}
 }

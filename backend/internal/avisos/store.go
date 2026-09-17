@@ -43,6 +43,19 @@ func (s *Store) Guardar(ctx context.Context, nuevo Nuevo) (*Aviso, error) {
 	return &a, nil
 }
 
+// Existe dice si ya hay un aviso con esa clave. Se pregunta ANTES de
+// redactarlo: sin esto, cada corrida de la tarea le pediria al modelo un texto
+// que despues el indice unico descarta, y eso se paga.
+func (s *Store) Existe(ctx context.Context, usuarioID int64, tipo, clave string) (bool, error) {
+	const q = `SELECT exists(SELECT 1 FROM notificaciones WHERE usuario_id = $1 AND tipo = $2 AND clave = $3)`
+
+	var existe bool
+	if err := s.db.QueryRowContext(ctx, q, usuarioID, tipo, clave).Scan(&existe); err != nil {
+		return false, fmt.Errorf("buscando aviso: %w", err)
+	}
+	return existe, nil
+}
+
 // Listar devuelve los ultimos avisos del usuario y cuantos sin leer tiene.
 func (s *Store) Listar(ctx context.Context, usuarioID int64) ([]Aviso, int, error) {
 	const q = `
@@ -235,4 +248,46 @@ func (s *Store) PrestamosViejos(ctx context.Context, usuarioID int64, dias int) 
 		return nil, fmt.Errorf("prestamos viejos: %w", err)
 	}
 	return &p, nil
+}
+
+// Cobro es un prestamo pendiente que tocaba cobrar en estos dias.
+type Cobro struct {
+	MovimientoID int64
+	AQuien       string
+	Monto        string
+	Fecha        string // cuando se presto, AAAA-MM-DD
+	CobrarEl     string // cuando quedo de pagar, AAAA-MM-DD
+	Descripcion  string
+}
+
+// CobrosDelDia son los prestamos pendientes con fecha de cobro entre
+// `desde` y `hoy` (inclusive). `hoy` lo manda quien llama, en hora de
+// Colombia: el current_date de Postgres es el del servidor, que corre en UTC,
+// y a las 8 de la noche ya diria que es manana.
+func (s *Store) CobrosDelDia(ctx context.Context, usuarioID int64, desde, hoy string) ([]Cobro, error) {
+	const q = `
+		SELECT id, a_quien, monto::text, to_char(fecha, 'YYYY-MM-DD'),
+		       to_char(cobrar_el, 'YYYY-MM-DD'), descripcion
+		FROM movimientos
+		WHERE usuario_id = $1
+		  AND tipo = 'preste'
+		  AND estado = 'pendiente'
+		  AND cobrar_el BETWEEN $2::date AND $3::date
+		ORDER BY cobrar_el, id`
+
+	filas, err := s.db.QueryContext(ctx, q, usuarioID, desde, hoy)
+	if err != nil {
+		return nil, fmt.Errorf("cobros del dia: %w", err)
+	}
+	defer filas.Close()
+
+	var lista []Cobro
+	for filas.Next() {
+		var c Cobro
+		if err := filas.Scan(&c.MovimientoID, &c.AQuien, &c.Monto, &c.Fecha, &c.CobrarEl, &c.Descripcion); err != nil {
+			return nil, fmt.Errorf("leyendo cobro: %w", err)
+		}
+		lista = append(lista, c)
+	}
+	return lista, filas.Err()
 }

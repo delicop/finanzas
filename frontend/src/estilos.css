@@ -335,8 +335,9 @@ td.acciones button {
   font-size: 12px;
   color: var(--tenue);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
 }
 
 /* ---------- etiquetas ---------- */
@@ -2376,4 +2377,37 @@ label.opcion-formato .tenue {
   .opciones-formato {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- fecha de cobro de los préstamos ---------- */
+
+.fecha-cobro {
+  font-size: 12px;
+  color: var(--tenue);
+  white-space: nowrap;
+}
+
+.fecha-cobro.cobro-vencido {
+  color: var(--rojo);
+  font-weight: 600;
+}
+
+.fecha-cobro.cobro-hoy {
+  color: var(--ambar);
+  font-weight: 600;
+}
+
+.fecha-cobro.cobro-pronto {
+  color: var(--verde);
+}
+
+.lista-deudores .deudor {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.atajos-cobro {
+  margin-top: 8px;
 }

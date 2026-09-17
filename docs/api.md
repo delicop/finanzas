@@ -222,14 +222,16 @@ transferencia"… y se vuelve inmanejable.
 
 **Campos obligatorios al crear:** `categoria_id`, `medio_pago_id`, `tipo`,
 `monto`, `fecha` (y `a_quien` + `estado` si el tipo es `preste`).
-Opcionales: `descripcion` y la factura.
+Opcionales: `descripcion`, la factura y, solo para `preste`, `cobrar_el`
+(AAAA-MM-DD, la fecha de pago acordada; no puede ser antes de `fecha`). Ese
+día llega un aviso `cobro_del_dia`.
 
 ```bash
 curl -X POST http://localhost:8080/api/movimientos \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"categoria_id":1,"medio_pago_id":2,"tipo":"preste","monto":"200000",
        "fecha":"2026-09-16","descripcion":"Préstamo",
-       "a_quien":"Carlos","estado":"pendiente"}'
+       "a_quien":"Carlos","estado":"pendiente","cobrar_el":"2026-09-30"}'
 ```
 
 Marcar que ya pagaron, indicando por dónde:
@@ -269,7 +271,8 @@ fórmula.
 - `totales` — recibido, pagado, por cobrar, recuperado y balance
 - `medios` — cuánto hay en cada medio de pago (**¿dónde está la plata?**)
 - `categorias` — el desglose por categoría
-- `deudores` — quién debe cuánto
+- `deudores` — quién debe cuánto, con `proximo_cobro` (la fecha de pago más
+  cercana de sus préstamos pendientes, o `null`)
 
 En `medios` no aparece "por cobrar": un préstamo pendiente no está en ningún
 medio, está con la persona. La suma de los saldos da exactamente el balance
@@ -293,9 +296,9 @@ sin ella los números no cuadrarían.
   "sin_leer": 1 }
 ```
 
-`tipo` es `resumen_semanal`, `prestamos_pendientes` o `cobros_del_mes` (este
-último solo le llega al administrador). Los genera una tarea del servidor cada
-6 horas; ver [avisos.md](avisos.md).
+`tipo` es `resumen_semanal`, `cobro_del_dia`, `prestamos_pendientes` o
+`cobros_del_mes` (este último solo le llega al administrador). Los genera una
+tarea del servidor cada hora; ver [avisos.md](avisos.md).
 
 Igual que el chat, son privados: en modo "ver como" responden 403.
 

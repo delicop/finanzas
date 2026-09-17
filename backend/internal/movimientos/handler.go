@@ -166,6 +166,7 @@ type Entrada struct {
 	Descripcion string `json:"descripcion"`
 	AQuien      string `json:"a_quien"`
 	Estado      string `json:"estado"`
+	CobrarEl    string `json:"cobrar_el"`
 }
 
 func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
@@ -187,6 +188,10 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, ErrMedioInvalido) {
 		httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
+		return
+	}
+	if errors.Is(err, ErrCobroAntes) {
+		httpx.ErrorCampos(w, map[string]string{"cobrar_el": "No puede ser antes del día en que prestaste"})
 		return
 	}
 	if err != nil {
@@ -215,6 +220,8 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorCampos(w, map[string]string{"categoria_id": "La categoría no existe"})
 	case errors.Is(err, ErrMedioInvalido):
 		httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
+	case errors.Is(err, ErrCobroAntes):
+		httpx.ErrorCampos(w, map[string]string{"cobrar_el": "No puede ser antes del día en que prestaste"})
 	case err != nil:
 		httpx.ErrorInterno(w, r, err, "movimientos: actualizando")
 	default:
@@ -278,6 +285,7 @@ func Validar(req Entrada) (Datos, map[string]string) {
 	req.Descripcion = strings.TrimSpace(req.Descripcion)
 	req.AQuien = strings.TrimSpace(req.AQuien)
 	req.Estado = strings.TrimSpace(req.Estado)
+	req.CobrarEl = strings.TrimSpace(req.CobrarEl)
 
 	v := httpx.NuevoValidador()
 
@@ -331,10 +339,24 @@ func Validar(req Entrada) (Datos, map[string]string) {
 			v.Check(false, "estado", "Estado inválido: usa pagado o pendiente")
 		}
 
+		// Cuando quedaron de pagar: opcional. Las fechas AAAA-MM-DD se pueden
+		// comparar como texto, y asi no hace falta convertirlas.
+		if req.CobrarEl != "" {
+			if !fechaValida(req.CobrarEl) {
+				v.Check(false, "cobrar_el", "Fecha inválida, usa el formato AAAA-MM-DD")
+			} else if fechaValida(req.Fecha) && req.CobrarEl < req.Fecha {
+				v.Check(false, "cobrar_el", "No puede ser antes del día en que prestaste")
+			}
+		}
+
 		if v.Valido() {
 			aQuien, estado := req.AQuien, req.Estado
 			datos.AQuien = &aQuien
 			datos.Estado = &estado
+			if req.CobrarEl != "" {
+				cobrarEl := req.CobrarEl
+				datos.CobrarEl = &cobrarEl
+			}
 		}
 	}
 

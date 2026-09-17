@@ -6,6 +6,7 @@ import { useEsMovil } from '../lib/useEsMovil'
 import { useAlGuardarMovimiento } from '../lib/eventos'
 import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
+import FechaCobro from '../componentes/FechaCobro'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -150,9 +151,12 @@ export default function Dashboard() {
           <ul className="lista-deudores">
             {deudores.map((d) => (
               <li key={d.a_quien}>
-                <Link to={`/movimientos?tipo=preste&estado=pendiente&q=${encodeURIComponent(d.a_quien)}`}>
-                  {d.a_quien}
-                </Link>
+                <span className="deudor">
+                  <Link to={`/movimientos?tipo=preste&estado=pendiente&q=${encodeURIComponent(d.a_quien)}`}>
+                    {d.a_quien}
+                  </Link>
+                  <FechaCobro fecha={d.proximo_cobro} />
+                </span>
                 <span className="monto">{formatearMonto(d.total)}</span>
               </li>
             ))}

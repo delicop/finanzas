@@ -15,6 +15,7 @@ import MovimientoForm from '../componentes/MovimientoForm'
 import VisorFactura from '../componentes/VisorFactura'
 import ModalCobro from '../componentes/ModalCobro'
 import ModalExportar from '../componentes/ModalExportar'
+import FechaCobro from '../componentes/FechaCobro'
 
 const POR_PAGINA = 50
 
@@ -471,6 +472,8 @@ function DetallePrestamo({ m }) {
     <div className="sub">
       {m.a_quien}
       <span className={`estado estado-${m.estado}`}>{ETIQUETAS_ESTADO[m.estado]}</span>
+      {/* La fecha acordada solo importa mientras no han pagado. */}
+      {m.estado === 'pendiente' && <FechaCobro fecha={m.cobrar_el} conFecha />}
       {m.medio_cobro_nombre && (
         <span className="cobrado-por">te pagó por {m.medio_cobro_nombre}</span>
       )}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { movimientosApi } from '../lib/api'
-import { entradaAMonto, hoyISO, montoAEntrada } from '../lib/formato'
+import { entradaAMonto, finDeMes, hoyISO, montoAEntrada, sumarDias } from '../lib/formato'
 import InputMonto from './InputMonto'
 import Modal from './Modal'
 
@@ -13,6 +13,7 @@ const VACIO = {
   descripcion: '',
   a_quien: '',
   estado: 'pendiente',
+  cobrar_el: '',
 }
 
 export default function MovimientoForm({ movimiento, categorias, medios, onCerrar, onGuardado }) {
@@ -30,6 +31,7 @@ export default function MovimientoForm({ movimiento, categorias, medios, onCerra
           descripcion: movimiento.descripcion,
           a_quien: movimiento.a_quien ?? '',
           estado: movimiento.estado ?? 'pendiente',
+          cobrar_el: movimiento.cobrar_el ?? '',
         }
   )
 
@@ -60,6 +62,10 @@ export default function MovimientoForm({ movimiento, categorias, medios, onCerra
     if (!String(datos.monto).trim()) errores.monto = 'Este campo es obligatorio'
     if (!datos.fecha) errores.fecha = 'Este campo es obligatorio'
     if (esPrestamo && !datos.a_quien.trim()) errores.a_quien = 'Este campo es obligatorio'
+    // Las fechas AAAA-MM-DD se comparan bien como texto.
+    if (esPrestamo && datos.cobrar_el && datos.fecha && datos.cobrar_el < datos.fecha) {
+      errores.cobrar_el = 'No puede ser antes del día en que prestaste'
+    }
     return errores
   }
 
@@ -90,6 +96,7 @@ export default function MovimientoForm({ movimiento, categorias, medios, onCerra
         // pero los mandamos vacíos para dejar clara la intención.
         a_quien: esPrestamo ? datos.a_quien : '',
         estado: esPrestamo ? datos.estado : '',
+        cobrar_el: esPrestamo ? datos.cobrar_el : '',
       }
 
       const guardado = esNuevo
@@ -229,6 +236,47 @@ export default function MovimientoForm({ movimiento, categorias, medios, onCerra
               ))}
             </div>
             {campos.estado && <span className="error-campo">{campos.estado}</span>}
+
+            <label htmlFor="cobrar_el">
+              ¿Cuándo te paga? <span className="tenue">(fecha de pago acordada, opcional)</span>
+            </label>
+            <input
+              id="cobrar_el"
+              type="date"
+              value={datos.cobrar_el}
+              min={datos.fecha || undefined}
+              onChange={(e) => cambiar('cobrar_el', e.target.value)}
+            />
+            {/* Atajos para lo que se suele acordar, contados desde el día del
+                préstamo. */}
+            {datos.fecha && (
+              <div className="grupo-tipos atajos-cobro">
+                {[
+                  ['En 8 días', sumarDias(datos.fecha, 8)],
+                  ['En 15 días', sumarDias(datos.fecha, 15)],
+                  ['En un mes', sumarDias(datos.fecha, 30)],
+                  ['Fin de mes', finDeMes(datos.fecha)],
+                ].map(([etiqueta, valor]) => (
+                  <button
+                    key={etiqueta}
+                    type="button"
+                    className={`chip ${datos.cobrar_el === valor ? 'chip-activo' : ''}`}
+                    onClick={() => cambiar('cobrar_el', datos.cobrar_el === valor ? '' : valor)}
+                  >
+                    {etiqueta}
+                  </button>
+                ))}
+              </div>
+            )}
+            {campos.cobrar_el ? (
+              <span className="error-campo">{campos.cobrar_el}</span>
+            ) : (
+              <span className="ayuda-campo tenue">
+                {datos.cobrar_el
+                  ? 'Ese día te llega un aviso para que cobres.'
+                  : 'Si quedaron en una fecha, ponla y ese día te avisamos.'}
+              </span>
+            )}
           </div>
         )}
 

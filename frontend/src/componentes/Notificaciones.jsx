@@ -49,8 +49,8 @@ export default function Notificaciones({ onCerrar, onLeidos }) {
         <p className="tenue">Cargando...</p>
       ) : avisos.length === 0 ? (
         <p className="tenue">
-          Todavía no hay avisos. Aquí van a llegar tu resumen de cada semana y los préstamos que
-          lleves tiempo sin cobrar.
+          Todavía no hay avisos. Aquí van a llegar tu resumen de cada semana, el aviso del día en
+          que alguien quedó de pagarte y los préstamos que lleves tiempo sin cobrar.
         </p>
       ) : (
         <ul className="lista-avisos">

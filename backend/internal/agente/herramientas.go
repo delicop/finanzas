@@ -166,6 +166,11 @@ func (c *Catalogo) Esquemas() []Herramienta {
 					"enum":        []string{movimientos.EstadoPendiente, movimientos.EstadoPagado},
 					"description": "Solo para tipo preste: si ya se lo devolvieron o sigue pendiente",
 				},
+				"cobrar_el": map[string]any{
+					"type": "string",
+					"description": "Solo para tipo preste y opcional: AAAA-MM-DD del día en que quedó de pagar " +
+						"('me paga el viernes'). Ese día la app le avisa. Si no lo dijo, no lo pongas",
+				},
 			}),
 		},
 		{
@@ -553,6 +558,7 @@ type argumentosMovimientoNuevo struct {
 	MedioPago   string `json:"medio_pago"`
 	AQuien      string `json:"a_quien"`
 	Estado      string `json:"estado"`
+	CobrarEl    string `json:"cobrar_el"`
 }
 
 // datosMovimiento es lo que pinta la tarjeta: los ids para que los selectores
@@ -568,6 +574,7 @@ type datosMovimiento struct {
 	MedioPago   string `json:"medio_pago"`
 	AQuien      string `json:"a_quien,omitempty"`
 	Estado      string `json:"estado,omitempty"`
+	CobrarEl    string `json:"cobrar_el,omitempty"`
 }
 
 func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crudos json.RawMessage) (Resultado, error) {
@@ -604,6 +611,7 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		Descripcion: strings.TrimSpace(args.Descripcion),
 		AQuien:      strings.TrimSpace(args.AQuien),
 		Estado:      strings.TrimSpace(args.Estado),
+		CobrarEl:    strings.TrimSpace(args.CobrarEl),
 	}
 
 	datos, campos := movimientos.Validar(entrada)
@@ -624,6 +632,7 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		MedioPago:   medio,
 		AQuien:      valor(datos.AQuien),
 		Estado:      valor(datos.Estado),
+		CobrarEl:    valor(datos.CobrarEl),
 	}
 
 	confirmacion, err := aJSON(map[string]any{

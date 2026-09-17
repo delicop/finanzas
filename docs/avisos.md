@@ -1,7 +1,8 @@
 # Avisos
 
 Las notificaciones que la app deja sin que nadie las pida: el resumen de cada
-semana, los préstamos que llevas tiempo sin cobrar y, para el dueño del
+semana, el día en que alguien quedó de pagarte, los préstamos que llevas
+tiempo sin cobrar y, para el dueño del
 servidor, a quién le falta pagarle el mes. Se leen en la campana de la barra
 superior.
 
@@ -9,11 +10,12 @@ Viven en `backend/internal/avisos/`. **No dependen del asistente**: las cifras
 las calcula Postgres y el texto lo arma la app. Si hay modelo configurado, lo
 único que hace es redactar mejor el párrafo — y bajo vigilancia.
 
-## Los tres avisos
+## Los avisos
 
 | Aviso | Cuándo | Para quién |
 |---|---|---|
 | `resumen_semanal` | Lo que pasó la semana pasada (lunes a domingo), si hubo movimientos | Cada usuario |
+| `cobro_del_dia` | El día en que quedaron de devolverte un préstamo pendiente | Cada usuario |
 | `prestamos_pendientes` | Hay préstamos pendientes con más de 30 días | Cada usuario |
 | `cobros_del_mes` | Del día 5 en adelante, si alguien no ha pagado | Solo el administrador |
 
@@ -28,14 +30,35 @@ que dejes de leer los avisos.
 El de cobros no sale el día 1 porque "te faltan todos" al empezar el mes no es
 información.
 
+### El día del cobro
+
+Al registrar un préstamo ("Presté") se puede poner **¿Cuándo te paga?**: la
+fecha de pago acordada (`movimientos.cobrar_el`, opcional). Ese día llega
+**"Hoy te paga Carlos"** con el monto, cuándo se prestó y para qué.
+
+- Un aviso **por préstamo**, con clave `<id del movimiento>:<fecha>`: si se
+  cambia la fecha, el nuevo día también avisa.
+- Si ya está pagado, no avisa.
+- El "hoy" es el de **Colombia** (UTC-5), no el del servidor: a las 8 de la
+  noche en Bogotá el servidor ya está en el día siguiente.
+- Si el servidor estuvo apagado ese día, el aviso sale al volver (hasta 3 días
+  después) diciendo "Carlos quedó de pagarte el 14 de septiembre". Más tarde ya
+  lo cubre el recordatorio mensual de préstamos pendientes.
+- La fecha también se ve en la lista de movimientos y en "Te deben" del
+  Resumen: "te paga hoy" (ámbar), "te paga en 3 días" (verde), "venció hace 2
+  días" (rojo).
+- El asistente la entiende: "le presté 50 mil a Juan, me paga el viernes" y la
+  pone en la tarjeta. Si no la dicen, pregunta una vez.
+
 ## Por qué no hay un cron
 
 La tarea es una goroutine del propio servidor
-([main.go](../backend/cmd/api/main.go)), que corre al arrancar y cada 6 horas.
+([main.go](../backend/cmd/api/main.go)), que corre al arrancar y cada hora
+(para que el aviso del día de cobro llegue temprano).
 Una pieza menos que instalar, que configurar y que se puede olvidar al mover la
 app de máquina.
 
-Que corra "cada 6 horas" y no "los lunes a las 8" no importa, porque **la tarea
+Que corra "cada hora" y no "los lunes a las 8" no importa, porque **la tarea
 no lleva ninguna cuenta**: cada aviso se guarda con una clave de periodo
 (`2026-W38` para el semanal, `2026-09` para los mensuales) y un índice único
 sobre `(usuario_id, tipo, clave)` impide el duplicado.
@@ -50,6 +73,9 @@ lo que de verdad pasa: que el servidor se reinicie tres veces seguidas, que
 esté apagado un fin de semana (al volver genera lo que falte), o que alguien
 dispare la tarea a mano. Guardar "la última vez que corrí" se desincroniza en
 cuanto una de esas cosas ocurre a destiempo.
+
+Antes de redactar un aviso se pregunta si ya existe: así el modelo solo se
+llama para los avisos nuevos, y correr cada hora no cuesta más.
 
 La clave de la semana sale de `ISOWeek` y no de una cuenta propia: en los
 cambios de año la semana 1 puede empezar en diciembre, y calcularla a mano ahí
