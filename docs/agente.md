@@ -248,6 +248,41 @@ proveedor falla, sigue en pantalla en vez de perderse. Y el consumo se anota al
 aceptar el mensaje, no al responderlo: si solo se cobrara el éxito, un
 proveedor fallando en bucle sería un reintento infinito gratis contra la cuota.
 
+## Terminar y guardar la conversación
+
+Un chat que nunca se limpia tiene dos problemas: el usuario tiene que leer todo
+lo anterior cada vez que lo abre, y el modelo relee los últimos mensajes en
+cada pregunta (más lento y más caro). Por eso la conversación se **termina**:
+
+- Después de guardar un movimiento desde una tarjeta, el chat pregunta
+  **"¿Necesitas algo más?"** con dos respuestas: *Sí, otra cosa* (sigue
+  escribiendo) y *No, terminar*.
+- En el menú ⋮ de la cabecera también está *Terminar y guardar*.
+
+Terminar **no borra**: la conversación queda archivada
+(`agente_conversaciones.archivada_en`) con la primera pregunta como título, y
+el siguiente mensaje abre un hilo nuevo. Desde el menú ⋮:
+
+| Opción | Qué hace |
+|---|---|
+| Terminar y guardar | Archiva la abierta y deja el chat limpio |
+| Descargar esta conversación | Un `.txt` con la conversación abierta |
+| Conversaciones guardadas | Lista para leer, descargar o borrar cada una |
+| Borrar todo el historial | Borra la abierta **y** las guardadas (no se puede deshacer) |
+
+Reglas que cuida el backend:
+
+- **Una sola conversación abierta por usuario**, con un índice único parcial.
+  Si dos pestañas escriben a la vez, la segunda usa la que abrió la primera.
+- Al terminar, las **tarjetas sin confirmar** de esa conversación se descartan:
+  en el chat nuevo aparecerían sin el contexto que las explica.
+- Un chat **sin mensajes** no se guarda: se borra.
+- Las guardadas **solo se leen**. Seguir escribiendo en una vieja obligaría al
+  modelo a releerla entera, que es justo lo que terminar evita.
+- La de otro usuario responde 404, como si no existiera.
+
+Terminar no toca el límite diario: el contador vive en `agente_consumo`.
+
 ## Privacidad
 
 Los mensajes salen del servidor hacia el proveedor del modelo. Van las preguntas del
@@ -263,7 +298,8 @@ apagado por defecto y que cada quien lo active.
 
 ```
 agente_propuestas      lo preparado y sin confirmar, con su estado
-agente_conversaciones  un hilo por usuario (la última es la que abre la app)
+agente_conversaciones  una abierta por usuario (archivada_en NULL) y las
+                       guardadas, con su título
 agente_mensajes        las líneas del hilo, con los tokens y las herramientas
                        que gastó cada una
 agente_consumo         una marca por mensaje gastado: el contador del límite

@@ -1518,10 +1518,109 @@ button.wa-icono {
   cursor: pointer;
 }
 
-button.wa-borrar {
-  font-size: 13px;
-  font-weight: 500;
-  opacity: 0.85;
+.wa-titulo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* El menú de los tres puntos. */
+.wa-menu {
+  position: relative;
+}
+
+.wa-menu-lista {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  min-width: 230px;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: var(--wa-agente);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.wa-menu-lista button {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--wa-texto);
+  text-align: left;
+  font-size: 14.5px;
+  font-weight: 400;
+  padding: 11px 18px;
+  min-height: 0;
+}
+
+.wa-menu-lista button:hover,
+.wa-menu-lista button:focus-visible {
+  background: var(--wa-cajon);
+}
+
+.wa-menu-lista button.peligro {
+  color: var(--rojo);
+}
+
+/* "Guardado. ¿Necesitas algo más?" con sus dos respuestas. */
+.wa-algo-mas {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+}
+
+.wa-algo-mas p {
+  margin: 0;
+}
+
+/* Las conversaciones guardadas, como la lista de chats de WhatsApp. */
+.wa-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--wa-agente);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+
+.wa-lista li + li {
+  border-top: 1px solid var(--wa-cajon);
+}
+
+.wa-lista button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--wa-texto);
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 400;
+}
+
+.wa-lista button:hover {
+  background: var(--wa-cajon);
+}
+
+.wa-lista strong {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wa-lista span {
+  font-size: 12.5px;
+  color: var(--wa-tenue);
 }
 
 .wa-hilo {

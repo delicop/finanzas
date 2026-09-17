@@ -247,6 +247,12 @@ export const agenteApi = {
     apiFetch('/api/agente/mensajes', { metodo: 'POST', body: { texto }, senal }),
   borrar: () => apiFetch('/api/agente', { metodo: 'DELETE' }),
 
+  // Terminar deja el chat limpio pero guarda la conversación para releerla.
+  terminar: () => apiFetch('/api/agente/terminar', { metodo: 'POST' }),
+  guardadas: (senal) => apiFetch('/api/agente/guardadas', { senal }),
+  guardada: (id, senal) => apiFetch(`/api/agente/guardadas/${id}`, { senal }),
+  borrarGuardada: (id) => apiFetch(`/api/agente/guardadas/${id}`, { metodo: 'DELETE' }),
+
   // Confirmar es la ÚNICA forma de que algo que preparó el asistente llegue a
   // la base: la manda la tarjeta, con los datos que el usuario tenga en
   // pantalla (que pueden no ser los que propuso el modelo, y está bien).

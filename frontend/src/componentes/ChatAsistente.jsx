@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { agenteApi, categoriasApi, mediosApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
-import { formatearHora, formatearMonto } from '../lib/formato'
+import { descargarConversacion } from '../lib/descargarChat'
+import { formatearMonto } from '../lib/formato'
+import Burbuja from './BurbujaMensaje'
+import ConversacionesGuardadas from './ConversacionesGuardadas'
 import PropuestaAgente from './PropuestaAgente'
 
 // Ideas para arrancar cuando el hilo está vacío.
@@ -10,18 +13,6 @@ const SUGERENCIAS = [
   '¿Quién me debe plata?',
   'Pagué 45 mil de almuerzo en efectivo',
 ]
-
-// Cómo se le nombran al usuario las herramientas que consultó el agente. El
-// backend manda el nombre técnico; aquí se traduce, y lo que no esté en la
-// lista se muestra tal cual en vez de desaparecer.
-// Las de "proponer_" no se listan: no son una consulta, y lo que prepararon ya
-// está a la vista en su tarjeta.
-const NOMBRES_HERRAMIENTAS = {
-  resumen: 'tu resumen',
-  listar_movimientos: 'tus movimientos',
-  listar_categorias: 'tus categorías',
-  listar_medios_pago: 'tus medios de pago',
-}
 
 // El mismo techo que valida el backend. Repetirlo aquí no es duplicar la
 // regla: es avisarle al usuario antes de que escriba 2001 caracteres y reciba
@@ -60,6 +51,13 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   // El chat es opcional en el servidor: si no hay llave del modelo, la ruta
   // ni siquiera existe y responde 404.
   const [sinConfigurar, setSinConfigurar] = useState(false)
+
+  // 'chat' o 'guardadas': las conversaciones terminadas se ven en el mismo
+  // panel, en vez de abrir otra ventana encima.
+  const [vista, setVista] = useState('chat')
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  // Se muestra una vez al terminar, para que quede claro que no se perdió.
+  const [recienTerminada, setRecienTerminada] = useState(false)
 
   const hilo = useRef(null)
   const campo = useRef(null)
@@ -114,8 +112,8 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
 
   // Al abrir, el cursor ya está listo para escribir, como en WhatsApp.
   useEffect(() => {
-    if (!cargando) campo.current?.focus()
-  }, [cargando])
+    if (!cargando && vista === 'chat') campo.current?.focus()
+  }, [cargando, vista])
 
   async function enviar(e) {
     e?.preventDefault()
@@ -138,6 +136,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     if (campo.current) campo.current.style.height = 'auto'
     setError('')
     setGuardado('')
+    setRecienTerminada(false)
     setEnviando(true)
 
     try {
@@ -174,16 +173,54 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     caja.style.height = `${Math.min(caja.scrollHeight, 120)}px`
   }
 
-  async function empezarDeCero() {
-    if (!confirm('¿Borrar la conversación? No se puede deshacer.')) return
+  // Terminar deja el chat limpio: el asistente ya no relee lo anterior (más
+  // rápido y más barato) y la conversación queda guardada para consultarla.
+  async function terminar() {
+    setMenuAbierto(false)
+    try {
+      const { guardada } = await agenteApi.terminar()
+      setMensajes([])
+      // El servidor descartó las tarjetas sin confirmar de esa conversación.
+      setPropuestas([])
+      setGuardado('')
+      setError('')
+      setRecienTerminada(guardada)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function seguir() {
+    setGuardado('')
+    campo.current?.focus()
+  }
+
+  async function borrarHistorial() {
+    setMenuAbierto(false)
+    if (!confirm('¿Borrar esta conversación y todas las guardadas? No se puede deshacer.')) return
     try {
       await agenteApi.borrar()
       setMensajes([])
       setGuardado('')
       setError('')
+      setRecienTerminada(false)
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  function descargar() {
+    setMenuAbierto(false)
+    descargarConversacion(mensajes)
+  }
+
+  function verGuardadas() {
+    setMenuAbierto(false)
+    setVista('guardadas')
+  }
+
+  if (vista === 'guardadas') {
+    return <ConversacionesGuardadas onVolver={() => setVista('chat')} />
   }
 
   // Una tarjeta se fue: o se guardó (llega el movimiento creado) o se
@@ -217,10 +254,29 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
           <strong>Asistente</strong>
           <span className={enviando ? 'wa-escribiendo' : ''}>{sinConfigurar ? 'sin conectar' : estado}</span>
         </div>
-        {mensajes.length > 0 && !soloLectura && (
-          <button type="button" className="wa-icono wa-borrar" onClick={empezarDeCero} title="Empezar de cero">
-            Vaciar
-          </button>
+        {!soloLectura && !sinConfigurar && !cargando && (
+          <MenuChat
+            abierto={menuAbierto}
+            onAlternar={() => setMenuAbierto((a) => !a)}
+            onCerrar={() => setMenuAbierto(false)}
+          >
+            {mensajes.length > 0 && (
+              <>
+                <button type="button" role="menuitem" onClick={terminar}>
+                  Terminar y guardar
+                </button>
+                <button type="button" role="menuitem" onClick={descargar}>
+                  Descargar esta conversación
+                </button>
+              </>
+            )}
+            <button type="button" role="menuitem" onClick={verGuardadas}>
+              Conversaciones guardadas
+            </button>
+            <button type="button" role="menuitem" className="peligro" onClick={borrarHistorial}>
+              Borrar todo el historial
+            </button>
+          </MenuChat>
         )}
       </header>
 
@@ -243,6 +299,11 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
           <>
             {mensajes.length === 0 && (
               <div className="wa-bienvenida">
+                {recienTerminada && (
+                  <p className="wa-sistema wa-ok">
+                    ✓ Tu conversación quedó guardada. La encuentras en ⋮ › Conversaciones guardadas.
+                  </p>
+                )}
                 <p className="wa-sistema">
                   Escríbeme como a un amigo: pregúntame por tus gastos, tus saldos o quién te debe, o
                   dime qué pagaste y te lo dejo listo para guardar.
@@ -279,7 +340,27 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
               />
             ))}
 
-            {guardado && <p className="wa-sistema wa-ok">✓ {guardado}</p>}
+            {/* Después de guardar, la pregunta de siempre: ¿algo más? Si no,
+                se termina y el chat queda limpio para la próxima vez. Solo
+                cuando no quedan otras tarjetas por confirmar. */}
+            {guardado && (
+              <div className="wa-sistema wa-algo-mas">
+                <p className="wa-ok">✓ {guardado}</p>
+                {propuestas.length === 0 && (
+                  <>
+                    <p>¿Necesitas algo más?</p>
+                    <div className="chat-sugerencias">
+                      <button type="button" className="chip" onClick={seguir}>
+                        Sí, otra cosa
+                      </button>
+                      <button type="button" className="chip" onClick={terminar}>
+                        No, terminar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {error && <p className="wa-sistema wa-error">{error}</p>}
           </>
         )}
@@ -323,31 +404,44 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   )
 }
 
-function Burbuja({ mensaje }) {
-  const esMio = mensaje.rol === 'usuario'
-  const consultas = (mensaje.herramientas ?? []).filter((h) => !h.startsWith('proponer_'))
+// El menú de los tres puntos de la cabecera. Se cierra con Escape (sin cerrar
+// también el panel del chat) y con un clic en cualquier otra parte.
+function MenuChat({ abierto, onAlternar, onCerrar, children }) {
+  const caja = useRef(null)
+
+  useEffect(() => {
+    if (!abierto) return
+    const alClic = (e) => {
+      if (!caja.current?.contains(e.target)) onCerrar()
+    }
+    document.addEventListener('pointerdown', alClic)
+    return () => document.removeEventListener('pointerdown', alClic)
+  }, [abierto, onCerrar])
+
+  function alTeclear(e) {
+    if (e.key === 'Escape' && abierto) {
+      // Sin esto, el mismo Escape cierra el chat entero.
+      e.stopPropagation()
+      onCerrar()
+    }
+  }
 
   return (
-    <div className={`wa-burbuja ${esMio ? 'wa-mio' : 'wa-agente'}`}>
-      {/* El texto va tal cual, sin interpretarlo como HTML ni como markdown:
-          React escapa el contenido y eso es exactamente lo que se quiere con
-          algo que escribe un modelo. Los saltos de línea los respeta el CSS
-          con white-space: pre-wrap. */}
-      <p>{mensaje.contenido}</p>
-
-      {/* De dónde salieron las cifras. No es un adorno: quien lee un número en
-          una app de plata tiene derecho a saber qué miró el agente. */}
-      {consultas.length > 0 && (
-        <p className="wa-fuente">
-          Consultó {consultas.map((h) => NOMBRES_HERRAMIENTAS[h] ?? h).join(' y ')}
-        </p>
-      )}
-
-      {mensaje.creado_en && (
-        <time className="wa-hora">
-          {formatearHora(mensaje.creado_en)}
-          {esMio && <span className="wa-check"> ✓✓</span>}
-        </time>
+    <div className="wa-menu" ref={caja} onKeyDown={alTeclear}>
+      <button
+        type="button"
+        className="wa-icono"
+        onClick={onAlternar}
+        aria-label="Más opciones"
+        aria-haspopup="menu"
+        aria-expanded={abierto}
+      >
+        ⋮
+      </button>
+      {abierto && (
+        <div className="wa-menu-lista" role="menu">
+          {children}
+        </div>
       )}
     </div>
   )

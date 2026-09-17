@@ -286,7 +286,11 @@ modelo** (`LLM_API_KEY`); si no, responden 404. Ver
 |---|---|---|
 | GET | `/api/agente` | Tu conversación con sus mensajes |
 | POST | `/api/agente/mensajes` | Escribirle al asistente |
-| DELETE | `/api/agente` | Borrar la conversación (204) |
+| DELETE | `/api/agente` | Borrar la conversación abierta y las guardadas (204) |
+| POST | `/api/agente/terminar` | Archivar la conversación abierta → `{"guardada": true}` |
+| GET | `/api/agente/guardadas` | Conversaciones terminadas, la más reciente primero |
+| GET | `/api/agente/guardadas/{id}` | Una guardada con sus mensajes en `hilo` |
+| DELETE | `/api/agente/guardadas/{id}` | Borrar una guardada (204; 404 si no es tuya o está abierta) |
 | POST | `/api/agente/propuestas/{id}/confirmar` | Ejecuta lo que el agente preparó |
 | DELETE | `/api/agente/propuestas/{id}` | Descarta la propuesta (204) |
 

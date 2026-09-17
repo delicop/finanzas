@@ -119,6 +119,21 @@ type Conversacion struct {
 	Mensajes []Mensaje `json:"mensajes"`
 }
 
+// Guardada es una conversacion terminada, tal como aparece en la lista.
+type Guardada struct {
+	ID          int64     `json:"id"`
+	Titulo      string    `json:"titulo"`
+	CreadaEn    time.Time `json:"creada_en"`
+	ArchivadaEn time.Time `json:"archivada_en"`
+	Mensajes    int       `json:"mensajes"`
+}
+
+// GuardadaConMensajes es una conversacion terminada abierta para leerla.
+type GuardadaConMensajes struct {
+	Guardada
+	Hilo []Mensaje `json:"hilo"`
+}
+
 // Los dos tipos de propuesta que el agente sabe preparar.
 const (
 	TipoPropuestaMovimiento   = "movimiento"
@@ -162,6 +177,8 @@ type Respuesta struct {
 
 var (
 	ErrNoEncontrada = errors.New("conversacion no encontrada")
+	// Otra peticion abrio la conversacion un instante antes.
+	ErrYaAbierta = errors.New("ya hay una conversacion abierta")
 
 	// ErrLimiteDiario: el usuario ya gasto sus mensajes del dia. Existe
 	// porque cada mensaje le cuesta plata al dueno del servidor y un cliente

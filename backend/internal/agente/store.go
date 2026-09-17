@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Store struct {
@@ -24,16 +25,17 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 // mandarselo al proveedor no.
 const MensajesVisibles = 100
 
-// Activa devuelve la ultima conversacion del usuario con sus mensajes.
-// Si nunca ha escrito, devuelve ErrNoEncontrada: crearla es decision del
-// handler, no un efecto secundario de consultarla.
+// Activa devuelve la conversacion abierta del usuario con sus mensajes.
+// Si no tiene una (nunca ha escrito, o termino la ultima), devuelve
+// ErrNoEncontrada: crearla es decision del handler, no un efecto secundario
+// de consultarla.
 func (s *Store) Activa(ctx context.Context, usuarioID int64) (*Conversacion, error) {
+	// La base garantiza que hay a lo sumo una abierta por usuario
+	// (agente_conversaciones_una_abierta).
 	const q = `
 		SELECT id
 		FROM agente_conversaciones
-		WHERE usuario_id = $1
-		ORDER BY actualizada_en DESC, id DESC
-		LIMIT 1`
+		WHERE usuario_id = $1 AND archivada_en IS NULL`
 
 	var conv Conversacion
 	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&conv.ID)
@@ -60,6 +62,12 @@ func (s *Store) Crear(ctx context.Context, usuarioID int64) (int64, error) {
 
 	var id int64
 	if err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&id); err != nil {
+		// 23505: otra peticion del mismo usuario (otra pestaña) la abrio un
+		// instante antes. No es un error: quien llama vuelve a leer la abierta.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return 0, ErrYaAbierta
+		}
 		return 0, fmt.Errorf("creando conversacion: %w", err)
 	}
 	return id, nil
@@ -398,6 +406,146 @@ func (s *Store) AnotarMovimiento(ctx context.Context, usuarioID, id, movimientoI
 
 	if _, err := s.db.ExecContext(ctx, q, id, usuarioID, movimientoID); err != nil {
 		return fmt.Errorf("anotando el movimiento de la propuesta: %w", err)
+	}
+	return nil
+}
+
+/* -------------------------- conversaciones guardadas -------------------- */
+
+// LargoTitulo es cuanto de la primera pregunta se guarda como titulo.
+const LargoTitulo = 80
+
+// MensajesArchivados es el tope de mensajes que se devuelven al abrir una
+// conversacion guardada. Leer es gratis, pero no infinito.
+const MensajesArchivados = 500
+
+// Terminar archiva la conversacion abierta: la app vuelve a un chat limpio y
+// el modelo deja de leer ese hilo, pero se puede releer y descargar.
+//
+// Las tarjetas que quedaron sin confirmar en esa conversacion se descartan:
+// si no, seguirian apareciendo en el chat nuevo sin el contexto que las
+// explica. Una conversacion sin mensajes no se guarda: se borra.
+//
+// Devuelve false si no habia nada que guardar.
+func (s *Store) Terminar(ctx context.Context, usuarioID int64) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("abriendo transaccion: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // tras el Commit no hace nada
+
+	var id int64
+	var mensajes int
+	err = tx.QueryRowContext(ctx, `
+		SELECT c.id, (SELECT count(*) FROM agente_mensajes m WHERE m.conversacion_id = c.id)
+		FROM agente_conversaciones c
+		WHERE c.usuario_id = $1 AND c.archivada_en IS NULL
+		FOR UPDATE`, usuarioID).Scan(&id, &mensajes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("buscando la conversacion abierta: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE agente_propuestas
+		SET estado = 'descartada', resuelta_en = now()
+		WHERE usuario_id = $1 AND conversacion_id = $2 AND estado = 'pendiente'`,
+		usuarioID, id); err != nil {
+		return false, fmt.Errorf("descartando propuestas: %w", err)
+	}
+
+	if mensajes == 0 {
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM agente_conversaciones WHERE id = $1 AND usuario_id = $2`, id, usuarioID); err != nil {
+			return false, fmt.Errorf("borrando conversacion vacia: %w", err)
+		}
+		return false, tx.Commit()
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE agente_conversaciones c
+		SET archivada_en = now(),
+		    titulo = coalesce((
+		        SELECT left(m.contenido, $3)
+		        FROM agente_mensajes m
+		        WHERE m.conversacion_id = c.id AND m.rol = 'usuario'
+		        ORDER BY m.id
+		        LIMIT 1), '')
+		WHERE c.id = $1 AND c.usuario_id = $2`, id, usuarioID, LargoTitulo); err != nil {
+		return false, fmt.Errorf("archivando conversacion: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("confirmando: %w", err)
+	}
+	return true, nil
+}
+
+const columnasGuardada = `c.id, c.titulo, c.creada_en, c.archivada_en,
+	(SELECT count(*) FROM agente_mensajes m WHERE m.conversacion_id = c.id)`
+
+// Guardadas lista las conversaciones archivadas, la mas reciente primero.
+func (s *Store) Guardadas(ctx context.Context, usuarioID int64) ([]Guardada, error) {
+	filas, err := s.db.QueryContext(ctx, `
+		SELECT `+columnasGuardada+`
+		FROM agente_conversaciones c
+		WHERE c.usuario_id = $1 AND c.archivada_en IS NOT NULL
+		ORDER BY c.archivada_en DESC, c.id DESC`, usuarioID)
+	if err != nil {
+		return nil, fmt.Errorf("listando conversaciones guardadas: %w", err)
+	}
+	defer filas.Close()
+
+	lista := []Guardada{}
+	for filas.Next() {
+		var g Guardada
+		if err := filas.Scan(&g.ID, &g.Titulo, &g.CreadaEn, &g.ArchivadaEn, &g.Mensajes); err != nil {
+			return nil, fmt.Errorf("leyendo conversacion guardada: %w", err)
+		}
+		lista = append(lista, g)
+	}
+	return lista, filas.Err()
+}
+
+// Guardada devuelve una conversacion archivada con sus mensajes.
+func (s *Store) Guardada(ctx context.Context, usuarioID, id int64) (*GuardadaConMensajes, error) {
+	var g GuardadaConMensajes
+	err := s.db.QueryRowContext(ctx, `
+		SELECT `+columnasGuardada+`
+		FROM agente_conversaciones c
+		WHERE c.id = $1 AND c.usuario_id = $2 AND c.archivada_en IS NOT NULL`,
+		id, usuarioID).Scan(&g.ID, &g.Titulo, &g.CreadaEn, &g.ArchivadaEn, &g.Mensajes)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNoEncontrada
+	}
+	if err != nil {
+		return nil, fmt.Errorf("consultando conversacion guardada: %w", err)
+	}
+
+	g.Hilo, err = s.Historial(ctx, usuarioID, id, MensajesArchivados)
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+// BorrarGuardada elimina una conversacion archivada. La abierta no se toca
+// por aqui: para esa esta Terminar.
+func (s *Store) BorrarGuardada(ctx context.Context, usuarioID, id int64) error {
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM agente_conversaciones
+		WHERE id = $1 AND usuario_id = $2 AND archivada_en IS NOT NULL`, id, usuarioID)
+	if err != nil {
+		return fmt.Errorf("borrando conversacion guardada: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("verificando borrado: %w", err)
+	}
+	if n == 0 {
+		return ErrNoEncontrada
 	}
 	return nil
 }

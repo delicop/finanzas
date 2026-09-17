@@ -50,6 +50,13 @@ func (h *Handler) Rutas() chi.Router {
 	r.Delete("/", h.Borrar)
 	r.Post("/mensajes", h.Enviar)
 
+	// Terminar archiva el hilo abierto; las guardadas se leen, se descargan
+	// desde la app y se borran de una en una.
+	r.Post("/terminar", h.Terminar)
+	r.Get("/guardadas", h.Guardadas)
+	r.Get("/guardadas/{id}", h.Guardada)
+	r.Delete("/guardadas/{id}", h.BorrarGuardada)
+
 	// Las escrituras del agente pasan SIEMPRE por aqui: un clic del usuario
 	// sobre una tarjeta que ya vio. El modelo no tiene forma de llamar a
 	// estas rutas.
@@ -380,7 +387,16 @@ func (h *Handler) conversacionAbierta(r *http.Request, usuarioID int64) (int64, 
 	if !errors.Is(err, ErrNoEncontrada) {
 		return 0, err
 	}
-	return h.store.Crear(r.Context(), usuarioID)
+	id, err := h.store.Crear(r.Context(), usuarioID)
+	if errors.Is(err, ErrYaAbierta) {
+		// Otra pestaña gano la carrera: se usa la que ella abrio.
+		conv, err = h.store.Activa(r.Context(), usuarioID)
+		if err != nil {
+			return 0, err
+		}
+		return conv.ID, nil
+	}
+	return id, err
 }
 
 func (h *Handler) restantes(r *http.Request, usuarioID int64) (int, error) {
