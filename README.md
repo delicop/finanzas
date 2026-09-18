@@ -116,7 +116,7 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | POST   | `/api/recurrentes`               | Crear una plantilla                           |
 | PUT    | `/api/recurrentes/{id}`          | Editar o pausar                               |
 | DELETE | `/api/recurrentes/{id}`          | Eliminar la plantilla (no los movimientos)    |
-| GET    | `/api/recurrentes/pendientes`    | Lo que toca confirmar                         |
+| GET    | `/api/recurrentes/pendientes`    | Lo que toca confirmar y lo que viene          |
 | POST   | `/api/recurrentes/pendientes/{id}/confirmar` | Crear el movimiento               |
 | DELETE | `/api/recurrentes/pendientes/{id}` | Descartar ("este mes no")                   |
 | GET    | `/api/notificaciones`            | Tus avisos (resumen semanal, deudas sin mover) |

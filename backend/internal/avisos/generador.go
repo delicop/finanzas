@@ -416,7 +416,10 @@ func (g *Generador) recurrentesPendientes(ctx context.Context, d Destinatario, a
 		}
 	}
 
-	pendientes, err := g.recurrentes.Pendientes(ctx, d.ID)
+	// Solo lo que YA vencio: las ocurrencias se preparan con treinta dias de
+	// anticipacion para que el resumen pueda mostrar lo que viene, y avisar de
+	// esas seria despertar a alguien un mes antes por el arriendo.
+	pendientes, err := g.recurrentes.Pendientes(ctx, d.ID, hoy)
 	if err != nil {
 		return 0, errors.Join(append(fallos, err)...)
 	}

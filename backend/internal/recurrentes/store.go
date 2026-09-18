@@ -30,6 +30,7 @@ const uniones = `
 		SELECT count(*) AS cuantas
 		FROM recurrentes_ocurrencias o
 		WHERE o.recurrente_id = r.id AND o.estado = 'pendiente'
+		  AND o.fecha <= (now() AT TIME ZONE 'America/Bogota')::date
 	) p ON true`
 
 // --------------------------------------------------------------------------
@@ -241,16 +242,39 @@ const unionesOcurrencia = `
 	JOIN categorias c   ON c.id  = r.categoria_id
 	JOIN medios_pago mp ON mp.id = r.medio_pago_id`
 
-// Pendientes son las ocurrencias sin resolver del usuario, de la mas vieja a
-// la mas nueva: lo primero que toca confirmar va arriba.
-func (s *Store) Pendientes(ctx context.Context, usuarioID int64) ([]Ocurrencia, error) {
+// Pendientes son las ocurrencias que YA VENCIERON y siguen sin resolver, de la
+// mas vieja a la mas nueva: lo primero que toca confirmar va arriba.
+//
+// El corte por fecha es lo que separa "esto ya te tocaba" de "esto se viene".
+// Importa mas de lo que parece: de aqui salen tambien los avisos al celular, y
+// sin el corte le llegaria un "¿ya pagaste el arriendo?" treinta dias antes.
+func (s *Store) Pendientes(ctx context.Context, usuarioID int64, hoy time.Time) ([]Ocurrencia, error) {
 	q := `SELECT ` + columnasOcurrencia + ` FROM recurrentes_ocurrencias o ` + unionesOcurrencia + `
-		WHERE o.usuario_id = $1 AND o.estado = 'pendiente'
+		WHERE o.usuario_id = $1 AND o.estado = 'pendiente' AND o.fecha <= $2::date
 		ORDER BY o.fecha, o.id`
 
-	filas, err := s.db.QueryContext(ctx, q, usuarioID)
+	return s.ocurrencias(ctx, q, usuarioID, hoy.Format(formatoFecha))
+}
+
+// Proximas son las que TODAVIA no vencen, dentro de la ventana que se mira
+// hacia adelante. Es lo que contesta "¿que gastos tengo encima?" antes de que
+// lleguen, y no ha tocado ni un peso: hasta que la persona no confirme, en las
+// cifras no aparece nada.
+func (s *Store) Proximas(ctx context.Context, usuarioID int64, hoy time.Time) ([]Ocurrencia, error) {
+	q := `SELECT ` + columnasOcurrencia + ` FROM recurrentes_ocurrencias o ` + unionesOcurrencia + `
+		WHERE o.usuario_id = $1 AND o.estado = 'pendiente'
+		  AND o.fecha > $2::date AND o.fecha <= $3::date
+		ORDER BY o.fecha, o.id`
+
+	return s.ocurrencias(ctx, q, usuarioID,
+		hoy.Format(formatoFecha),
+		hoy.AddDate(0, 0, VentanaFuturaDias).Format(formatoFecha))
+}
+
+func (s *Store) ocurrencias(ctx context.Context, q string, args ...any) ([]Ocurrencia, error) {
+	filas, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return nil, fmt.Errorf("listando ocurrencias pendientes: %w", err)
+		return nil, fmt.Errorf("listando ocurrencias: %w", err)
 	}
 	defer filas.Close()
 
@@ -263,6 +287,26 @@ func (s *Store) Pendientes(ctx context.Context, usuarioID int64) ([]Ocurrencia, 
 		lista = append(lista, *o)
 	}
 	return lista, filas.Err()
+}
+
+// BorrarProximas quita las ocurrencias que todavia NO vencieron y siguen sin
+// resolver. Se usa al editar la plantilla, antes de volver a generarlas.
+//
+// Solo toca el futuro y solo lo pendiente, y las dos condiciones son a
+// proposito: una ocurrencia vencida puede estar esperando un clic (eso es algo
+// que le pasó al usuario, no una prediccion nuestra), y una confirmada ya tiene
+// un movimiento detras. Borrar cualquiera de las dos seria perder plata de la
+// cuenta.
+func (s *Store) BorrarProximas(ctx context.Context, usuarioID, recurrenteID int64, hoy time.Time) error {
+	const q = `
+		DELETE FROM recurrentes_ocurrencias
+		WHERE usuario_id = $1 AND recurrente_id = $2
+		  AND estado = 'pendiente' AND fecha > $3::date`
+
+	if _, err := s.db.ExecContext(ctx, q, usuarioID, recurrenteID, hoy.Format(formatoFecha)); err != nil {
+		return fmt.Errorf("borrando las proximas ocurrencias: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Ocurrencia(ctx context.Context, usuarioID, id int64) (*Ocurrencia, error) {
@@ -282,13 +326,17 @@ func (s *Store) Ocurrencia(ctx context.Context, usuarioID, id int64) (*Ocurrenci
 // la regla de idempotencia. La tarea corre cada hora y vuelve a evaluarlo todo;
 // lo que impide que el arriendo aparezca veinte veces es el indice, no que la
 // tarea lleve bien la cuenta de por donde iba.
-func (s *Store) Generar(ctx context.Context, r Recurrente, usuarioID int64, hasta time.Time) ([]Ocurrencia, error) {
+func (s *Store) Generar(ctx context.Context, r Recurrente, usuarioID int64, hoy time.Time) ([]Ocurrencia, error) {
 	if !r.Activo {
 		return nil, nil
 	}
 
-	desde := hasta.AddDate(0, 0, -VentanaDias)
-	fechas := Vencimientos(r, desde, hasta)
+	// `hoy` marca el centro de la ventana, no su borde: hacia atras se pone al
+	// dia lo que falto (servidor apagado, recurrente creado con fecha vieja) y
+	// hacia adelante se preparan las que vienen, para que un gasto se pueda
+	// ver venir desde que se crea.
+	desde := hoy.AddDate(0, 0, -VentanaDias)
+	fechas := Vencimientos(r, desde, hoy.AddDate(0, 0, VentanaFuturaDias))
 	if len(fechas) == 0 {
 		return nil, nil
 	}

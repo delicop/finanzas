@@ -72,7 +72,7 @@ export default function Dashboard() {
 
       {/* Lo que toca confirmar va arriba de todo: es lo único de esta
           pantalla que pide una acción hoy. */}
-      {!soloLectura && <RecurrentesPendientes onConfirmado={cargarResumen} />}
+      {!soloLectura && <RecurrentesPendientes onConfirmado={cargarResumen} conProximas />}
 
       <div className="fila-tarjetas">
         <Metrica titulo="Recibido" monto={totales.recibido} clase="positivo" />

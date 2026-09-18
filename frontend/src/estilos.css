@@ -2768,6 +2768,33 @@ button.boton-factura {
   margin: 0;
 }
 
+/* "Lo que viene" no pide nada hoy: va en gris y no en ámbar, para que no
+   compita con lo que sí está esperando un clic justo encima. */
+.proximas-recurrentes {
+  border-color: var(--borde);
+}
+
+.proximas-recurrentes h2 .contador {
+  background: var(--borde);
+  color: var(--texto);
+}
+
+.proximas-totales {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0 0 4px;
+}
+
+.proximas-totales p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.proximas-totales strong {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Un recurrente pausado sigue en la lista, pero apagado: borrarlo perdería
    el historial de lo que ya se confirmó. */
 .fila-pausada {

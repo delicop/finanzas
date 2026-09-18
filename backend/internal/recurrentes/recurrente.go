@@ -38,6 +38,27 @@ const formatoFecha = "2006-01-02"
 // inicio de hace tres anios, no le aparecen 36 arriendos por confirmar.
 const VentanaDias = 60
 
+// VentanaFuturaDias es cuanto hacia ADELANTE se preparan las ocurrencias.
+//
+// Sin esto, un recurrente recien creado no existia en ninguna parte hasta el
+// dia que le tocaba: creabas el arriendo del 5 un 18 y el resumen no decia
+// nada durante diecisiete dias, como si ese gasto no estuviera encima.
+//
+// Prepararlas antes NO las cobra ni las descuenta: una ocurrencia sigue siendo
+// una pregunta ("¿ya lo pagaste?") hasta que la persona la confirma. Solo
+// cambia que la pregunta ya se puede ver venir — y contestarla antes, si pago
+// el arriendo el 2.
+const VentanaFuturaDias = 30
+
+// zonaColombia es la hora de Colombia: UTC-5 todo el anio, sin horario de
+// verano. La fecha que importa es la del usuario, no la del servidor: a las 8
+// de la noche en Bogota el servidor (que corre en UTC) ya esta en manana, y el
+// arriendo del 5 le aparecería por confirmar desde el 4 a las 7 p. m.
+var zonaColombia = time.FixedZone("COT", -5*60*60)
+
+// HoyEnColombia es el dia de hoy para quien usa la app.
+func HoyEnColombia() time.Time { return time.Now().In(zonaColombia) }
+
 // Recurrente es la plantilla: que se repite, cada cuanto y con que datos.
 type Recurrente struct {
 	ID int64 `json:"id"`

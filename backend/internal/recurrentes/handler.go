@@ -88,6 +88,12 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rec, err := h.store.Crear(r.Context(), usuarioID, datos)
+	if err == nil {
+		// Se preparan sus ocurrencias de una vez, sin esperar a que pase la
+		// tarea de la hora: quien acaba de crear el arriendo abre el resumen
+		// enseguida, y tiene que verlo ahi.
+		h.prepararOcurrencias(r, usuarioID, rec)
+	}
 	h.responder(w, r, rec, err, http.StatusCreated, "recurrentes: creando")
 }
 
@@ -103,6 +109,17 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rec, err := h.store.Actualizar(r.Context(), usuarioID, id, datos)
+	if err == nil {
+		// Las que todavia no vencen se rehacen: si le cambio el dia, la
+		// frecuencia o la fecha de fin —o lo pauso—, lo que quedaba anunciado
+		// hacia adelante ya no es cierto. Lo vencido no se toca: eso es
+		// historia y puede estar esperando confirmacion.
+		if err := h.store.BorrarProximas(r.Context(), usuarioID, id, HoyEnColombia()); err != nil {
+			httpx.ErrorInterno(w, r, err, "recurrentes: rehaciendo las proximas")
+			return
+		}
+		h.prepararOcurrencias(r, usuarioID, rec)
+	}
 	h.responder(w, r, rec, err, http.StatusOK, "recurrentes: actualizando")
 }
 
@@ -215,6 +232,21 @@ func Validar(req Entrada) (Datos, map[string]string) {
 	return datos, nil
 }
 
+// prepararOcurrencias deja listas las de este recurrente, hacia atras y hacia
+// adelante.
+//
+// Si falla no se tumba la peticion: la plantilla YA quedo creada, que es lo que
+// el usuario pidio, y la tarea de la hora las genera igual. Queda en la
+// bitacora.
+func (h *Handler) prepararOcurrencias(r *http.Request, usuarioID int64, rec *Recurrente) {
+	if rec == nil {
+		return
+	}
+	if _, err := h.store.Generar(r.Context(), *rec, usuarioID, HoyEnColombia()); err != nil {
+		httpx.RegistrarFallo(r, err, "recurrentes: preparando las ocurrencias")
+	}
+}
+
 // -------------------------------------------------------------- ocurrencias
 
 func (h *Handler) ListarPendientes(w http.ResponseWriter, r *http.Request) {
@@ -224,12 +256,30 @@ func (h *Handler) ListarPendientes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lista, err := h.store.Pendientes(r.Context(), usuarioID)
+	hoy := HoyEnColombia()
+
+	lista, err := h.store.Pendientes(r.Context(), usuarioID, hoy)
 	if err != nil {
 		httpx.ErrorInterno(w, r, err, "recurrentes: listando pendientes")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"pendientes": lista})
+
+	// Lo que viene va en la MISMA respuesta y no en otra ruta: son dos caras
+	// de lo mismo ("esto ya te tocaba" / "esto se te viene") y el resumen las
+	// pinta juntas. Dos peticiones para eso serian dos por cada carga.
+	proximas, err := h.store.Proximas(r.Context(), usuarioID, hoy)
+	if err != nil {
+		httpx.ErrorInterno(w, r, err, "recurrentes: listando las proximas")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"pendientes": lista,
+		"proximas":   proximas,
+		// Cuantos dias hacia adelante se esta mirando, para que la app lo
+		// pueda decir sin tener el numero escrito aparte.
+		"dias_futuros": VentanaFuturaDias,
+	})
 }
 
 // Confirmar crea el movimiento de esta ocurrencia.
