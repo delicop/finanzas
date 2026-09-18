@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -329,6 +331,56 @@ func (s *Store) PropuestasPendientes(ctx context.Context, usuarioID int64) ([]Pr
 		return nil, fmt.Errorf("recorriendo propuestas: %w", err)
 	}
 	return propuestas, nil
+}
+
+// EstadoDeLasPropuestas cuenta en que quedo cada tarjeta de esta
+// conversacion: cual sigue pendiente, cual confirmo el usuario y cual
+// descarto.
+//
+// Existe por un bug concreto: del ir y venir con las herramientas no queda
+// nada en el hilo (ver pasosDe), asi que lo UNICO que el modelo vuelve a leer
+// de una tarjeta es la frase con que la anuncio — "te la dejo preparada,
+// confirmala ahi". En el turno siguiente esa frase sigue ahi aunque la tarjeta
+// ya no: el usuario la guardo, la descarto o caduco. Sin este dato el modelo
+// manda a confirmar una tarjeta que no esta en pantalla, que es justo lo que
+// el usuario reporto.
+func (s *Store) EstadoDeLasPropuestas(ctx context.Context, usuarioID, conversacionID int64) ([]PropuestaConEstado, error) {
+	// Las ultimas, no todas: una conversacion larga no puede ir engordando el
+	// prompt (y la cuenta del proveedor) tarjeta a tarjeta.
+	const q = `
+		SELECT id, tipo, datos, creada_en, estado, movimiento_id
+		FROM agente_propuestas
+		WHERE usuario_id = $1 AND conversacion_id = $2
+		ORDER BY id DESC
+		LIMIT $3`
+
+	filas, err := s.db.QueryContext(ctx, q, usuarioID, conversacionID, PropuestasDeContexto)
+	if err != nil {
+		return nil, fmt.Errorf("consultando el estado de las propuestas: %w", err)
+	}
+	defer filas.Close()
+
+	estado := []PropuestaConEstado{}
+	for filas.Next() {
+		var p PropuestaConEstado
+		var movimientoID sql.NullInt64
+		if err := filas.Scan(&p.ID, &p.Tipo, &p.Datos, &p.CreadaEn, &p.Estado, &movimientoID); err != nil {
+			return nil, fmt.Errorf("leyendo el estado de una propuesta: %w", err)
+		}
+		p.Guardada = movimientoID.Valid
+		// Caducada es lo mismo que le pasa a la tarjeta en pantalla: sigue
+		// 'pendiente' en la base, pero ya no se puede confirmar.
+		p.Caducada = p.Estado == EstadoPropuestaPendiente && time.Since(p.CreadaEn) > VigenciaPropuesta
+		estado = append(estado, p)
+	}
+	if err := filas.Err(); err != nil {
+		return nil, fmt.Errorf("recorriendo el estado de las propuestas: %w", err)
+	}
+
+	// La consulta va al reves (las ultimas primero); el modelo las lee mejor
+	// en el orden en que pasaron.
+	slices.Reverse(estado)
+	return estado, nil
 }
 
 // Propuesta devuelve una del usuario, sea cual sea su estado. El estado lo

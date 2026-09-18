@@ -58,6 +58,12 @@ const (
 	// con cuatro se quedaba sin vueltas JUSTO despues de crear la propuesta, y
 	// el usuario terminaba con una tarjeta pendiente y un 503 en pantalla.
 	MaxRondas = 6
+
+	// PropuestasDeContexto es cuantas tarjetas de la conversacion se le
+	// recuerdan al modelo con su estado. Son pocas por la misma razon que
+	// MensajesDeContexto: cada linea se paga en cada llamada, y lo que
+	// importa es en que quedaron las ultimas.
+	PropuestasDeContexto = 6
 )
 
 // Mensaje es una linea del hilo, tal como la pinta el frontend.
@@ -167,6 +173,29 @@ type Propuesta struct {
 	// que la interpreta es la app; aqui viaja tal cual.
 	Datos    json.RawMessage `json:"datos"`
 	CreadaEn time.Time       `json:"creada_en"`
+}
+
+// PropuestaConEstado es una tarjeta con lo que paso despues: la pendiente que
+// el usuario todavia ve, la que confirmo y quedo guardada, la que descarto y
+// la que se le caduco encima.
+//
+// No sale hacia la app: es lo que se le cuenta al MODELO al empezar cada
+// turno, para que no mande a confirmar una tarjeta que ya no esta.
+type PropuestaConEstado struct {
+	ID       int64
+	Tipo     string
+	Datos    json.RawMessage
+	Estado   string
+	CreadaEn time.Time
+
+	// Guardada: la confirmacion llego hasta el final y nacio un movimiento.
+	// No es lo mismo que Estado == confirmada: entre las dos cosas puede
+	// fallar la escritura.
+	Guardada bool
+
+	// Caducada: sigue 'pendiente' pero paso VigenciaPropuesta, asi que ya no
+	// se puede confirmar y la app dejo de pintarla.
+	Caducada bool
 }
 
 // PropuestaNueva es lo que prepara una herramienta antes de guardarse.

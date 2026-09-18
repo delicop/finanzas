@@ -874,6 +874,89 @@ func TestConfirmarCreaElMovimiento(t *testing.T) {
 }
 
 // Dos clics en "Guardar" no pueden dejar el gasto dos veces.
+// EL BUG: el usuario anota algo, guarda la tarjeta y en el mensaje siguiente
+// el agente le dice "revisa la tarjeta y dale aceptar" — pero en pantalla no
+// hay ninguna.
+//
+// Pasaba porque el hilo NO cuenta nada de las tarjetas: del ir y venir con las
+// herramientas solo queda el texto final, así que lo único que el modelo
+// volvía a leer era su propia frase del turno anterior ("te la dejé
+// preparada"), y la daba por cierta para siempre.
+func TestElModeloSabeQueLaTarjetaAnteriorYaSeConfirmo(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	propuesta := e.proponerAlmuerzo(t)
+
+	res := e.confirmar(t, e.ana, propuesta.ID, map[string]any{
+		"categoria_id":  e.categoria,
+		"medio_pago_id": e.efectivo,
+		"tipo":          "pague",
+		"monto":         "45000",
+		"fecha":         "2026-09-16",
+		"descripcion":   "almuerzo",
+	})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("confirmar: %d — %s", res.Code, res.Body.String())
+	}
+
+	// Segundo mensaje: al modelo tiene que llegarle que esa tarjeta ya no está
+	// en pantalla.
+	e.proveedor.guion = []agente.Respuesta{{Contenido: "Listo, ya quedó guardado ese almuerzo."}}
+	if res := e.enviar(t, e.ana, "gracias"); res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	sistema := e.proveedor.sistema
+	if !strings.Contains(sistema, "ESTADO DE LAS TARJETAS") {
+		t.Fatal("el mensaje de sistema no le cuenta al modelo el estado de las tarjetas")
+	}
+	if !strings.Contains(sistema, "CONFIRMÓ") {
+		t.Errorf("no dice que el usuario ya confirmó la tarjeta:\n%s", sistema)
+	}
+	if !strings.Contains(sistema, "NO hay ninguna tarjeta en pantalla") {
+		t.Errorf("no avisa que la pantalla quedó sin tarjetas:\n%s", sistema)
+	}
+}
+
+// Y si aun así manda a confirmar una tarjeta que no existe, no sale a
+// pantalla: se le devuelve el aviso y se le deja rehacer la respuesta.
+func TestNoSaleUnaRespuestaQueMandaAUnaTarjetaInexistente(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+
+	// El modelo propone con una categoría que no existe —la herramienta se la
+	// rechaza— y aun así contesta como si la tarjeta hubiera quedado.
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerMovimiento,
+			`{"tipo":"pague","monto":"45000","fecha":"2026-09-16","descripcion":"almuerzo","categoria":"Comida","medio_pago":"Efectivo"}`),
+		{Contenido: "Listo, te lo dejé preparado: revisa la tarjeta y dale a guardar."},
+		{Contenido: "¿En qué categoría lo pongo? Las tuyas son Negocio."},
+	}
+
+	res := e.enviar(t, e.ana, "pagué 45 mil de almuerzo")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Mensaje    agente.Mensaje     `json:"mensaje"`
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+
+	if len(envio.Propuestas) != 0 {
+		t.Fatalf("propuestas = %d: la herramienta rechazó la categoría, no debería haber ninguna", len(envio.Propuestas))
+	}
+	if strings.Contains(strings.ToLower(envio.Mensaje.Contenido), "revisa la tarjeta") {
+		t.Errorf("salió a pantalla una respuesta que manda a una tarjeta que no existe: %q", envio.Mensaje.Contenido)
+	}
+
+	// El aviso es interno: se le da al modelo, no se guarda en el hilo.
+	if strings.Contains(envio.Mensaje.Contenido, "aviso del sistema") {
+		t.Errorf("el aviso interno se le mostró al usuario: %q", envio.Mensaje.Contenido)
+	}
+}
+
 func TestConfirmarDosVecesNoDuplica(t *testing.T) {
 	e := nuevoEntorno(t, 10)
 	propuesta := e.proponerAlmuerzo(t)

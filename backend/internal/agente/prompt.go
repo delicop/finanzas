@@ -1,6 +1,7 @@
 package agente
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,13 +13,103 @@ import (
 // Se construye en cada llamada en vez de guardarse en la base porque tiene que
 // llevar la fecha de hoy. Sin ella el modelo no sabe a que mes se refiere
 // "este mes" y termina inventando una fecha.
-func instrucciones(nombreUsuario string, ahora time.Time) string {
+func instrucciones(nombreUsuario string, ahora time.Time, tarjetas []PropuestaConEstado) string {
 	nombre := strings.TrimSpace(nombreUsuario)
 	if nombre == "" {
 		nombre = "el usuario"
 	}
 
-	return fmt.Sprintf(plantilla, nombre, fechaEnEspanol(ahora))
+	return fmt.Sprintf(plantilla, nombre, fechaEnEspanol(ahora), estadoDeLasTarjetas(tarjetas))
+}
+
+// estadoDeLasTarjetas es el parrafo que le dice al modelo en que quedo cada
+// tarjeta que preparo antes en esta conversacion.
+//
+// Sin esto el modelo solo tiene su propia frase del turno pasado ("te la dejo
+// preparada, confirmala ahi") y la da por cierta para siempre: manda a
+// confirmar una tarjeta que el usuario ya guardo, o dice que algo "todavia no
+// esta registrado" cuando ya lo esta. En una app de plata las dos cosas son
+// mentiras caras.
+func estadoDeLasTarjetas(tarjetas []PropuestaConEstado) string {
+	if len(tarjetas) == 0 {
+		return "En esta conversación todavía no has preparado ninguna tarjeta. " +
+			"Si el usuario te cuenta algo que haya que anotar, prepárala ahora con la herramienta que toque."
+	}
+
+	var b strings.Builder
+	b.WriteString("Esto es lo que pasó con las tarjetas que preparaste antes en esta conversación:\n")
+
+	pendientes := 0
+	for _, t := range tarjetas {
+		b.WriteString("- ")
+		b.WriteString(resumenDeTarjeta(t))
+		b.WriteString(": ")
+		switch {
+		case t.Estado == EstadoPropuestaConfirmada && t.Guardada:
+			b.WriteString("el usuario la CONFIRMÓ y ya quedó registrada en sus cuentas. " +
+				"No le pidas que la confirme otra vez ni digas que sigue sin registrarse.")
+		case t.Estado == EstadoPropuestaConfirmada:
+			b.WriteString("el usuario la confirmó.")
+		case t.Estado == EstadoPropuestaDescartada:
+			b.WriteString("el usuario la DESCARTÓ, no se registró nada. Si vuelve a pedírtelo, prepárala de nuevo.")
+		case t.Caducada:
+			b.WriteString("CADUCÓ sin confirmarse y ya no está en pantalla. No se registró nada: " +
+				"si todavía lo quiere anotar, prepárala de nuevo.")
+		default:
+			pendientes++
+			b.WriteString("sigue PENDIENTE en pantalla, esperando que la confirme.")
+		}
+		b.WriteString("\n")
+	}
+
+	if pendientes == 0 {
+		b.WriteString("\nAhora mismo NO hay ninguna tarjeta en pantalla.")
+	}
+	return b.String()
+}
+
+// resumenDeTarjeta describe una tarjeta en una linea, con lo poco que hace
+// falta para reconocerla. Los campos se leen del JSON que pinta la app: los
+// tres tipos comparten monto, descripcion y con quien es, que es justo lo que
+// el usuario recordaria.
+func resumenDeTarjeta(t PropuestaConEstado) string {
+	var datos struct {
+		Tipo        string `json:"tipo"`
+		Monto       string `json:"monto"`
+		Descripcion string `json:"descripcion"`
+		AQuien      string `json:"a_quien"`
+		Categoria   string `json:"categoria"`
+	}
+	// Si el JSON no se deja leer, la linea sale mas pobre pero el estado —que
+	// es lo que importa— se sigue contando.
+	_ = json.Unmarshal(t.Datos, &datos)
+
+	partes := []string{}
+	switch t.Tipo {
+	case TipoPropuestaMarcarPagado:
+		partes = append(partes, "saldar la deuda")
+	case TipoPropuestaAbono:
+		partes = append(partes, "abono")
+	default:
+		if datos.Tipo != "" {
+			partes = append(partes, datos.Tipo)
+		} else {
+			partes = append(partes, "movimiento")
+		}
+	}
+	if datos.Monto != "" {
+		partes = append(partes, "de "+datos.Monto)
+	}
+	if datos.Descripcion != "" {
+		partes = append(partes, "(\""+datos.Descripcion+"\")")
+	}
+	if datos.AQuien != "" {
+		partes = append(partes, "con "+datos.AQuien)
+	}
+	if datos.Categoria != "" {
+		partes = append(partes, "en "+datos.Categoria)
+	}
+	return strings.Join(partes, " ")
 }
 
 // El texto es largo a proposito: cada parrafo evita un comportamiento concreto
@@ -73,6 +164,28 @@ revisa, corrige y confirma. Despues de usarlas NUNCA digas "listo, lo
 registre" ni "ya quedo guardado": lo que se dice es que lo preparaste y que lo
 confirme ahi. Decir que ya quedo, cuando no ha quedado, es la peor mentira
 posible en una app de plata.
+
+LAS TARJETAS NO SE MENCIONAN DE MEMORIA
+Una tarjeta solo esta en pantalla si la acabas de preparar en ESTE turno con
+una de las herramientas proponer_, o si abajo dice que sigue PENDIENTE. En
+cualquier otro caso NO existe: no digas "revisala", "confirmala" ni "dale a
+guardar", porque el usuario no va a encontrar nada y va a creer que la app se
+dano.
+
+Esto pasa sobre todo entre un turno y el siguiente: del turno pasado te queda
+tu propia frase ("te la deje preparada"), pero la tarjeta pudo haberse
+confirmado, descartado o caducado desde entonces. Lo que vale es el estado de
+aqui abajo, no lo que dijiste antes.
+
+Y si la herramienta te devolvio un error, NO hay tarjeta: corrige lo que te
+senala y vuelve a llamarla, o preguntale al usuario lo que falte. Nunca
+respondas como si la hubieras preparado.
+
+ESTADO DE LAS TARJETAS
+%s
+
+Cuando te cuente algo nuevo que haya que anotar, preparalo con la herramienta
+aunque se parezca a algo de antes: cada cosa necesita su propia tarjeta.
 
 LA CATEGORIA Y EL MEDIO SE BUSCAN, NO SE PIENSAN
 Cada movimiento necesita categoria y medio de pago, y los dos tienen que salir

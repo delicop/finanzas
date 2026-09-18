@@ -208,7 +208,18 @@ func (h *Handler) Enviar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respuesta, err := h.responder(r.Context(), usuarioID, nombre, historial)
+	// En que quedaron las tarjetas de esta conversacion. Va al modelo junto
+	// con el hilo porque el hilo NO lo cuenta: ahi solo esta la frase con que
+	// las anuncio, y desde entonces el usuario pudo confirmarlas, descartarlas
+	// o dejarlas caducar. Sin esto manda a confirmar tarjetas que ya no estan
+	// en pantalla.
+	tarjetas, err := h.store.EstadoDeLasPropuestas(r.Context(), usuarioID, conversacionID)
+	if err != nil {
+		httpx.ErrorInterno(w, r, err, "agente: leyendo el estado de las propuestas")
+		return
+	}
+
+	respuesta, err := h.responder(r.Context(), usuarioID, nombre, historial, tarjetas)
 	if err != nil {
 		h.responderFallo(w, r, err)
 		return
@@ -270,12 +281,16 @@ type respuestaFinal struct {
 // proveedor —otros segundos y otra fraccion de centavo—, y un modelo que se
 // queda pidiendo datos en bucle costaria hasta que el router corte la
 // peticion a los 30s.
-func (h *Handler) responder(ctx context.Context, usuarioID int64, nombre string, historial []Mensaje) (respuestaFinal, error) {
+func (h *Handler) responder(ctx context.Context, usuarioID int64, nombre string, historial []Mensaje, tarjetas []PropuestaConEstado) (respuestaFinal, error) {
 	var final respuestaFinal
 
-	sistema := instrucciones(nombre, time.Now())
+	sistema := instrucciones(nombre, time.Now(), tarjetas)
 	esquemas := h.catalogo.Esquemas()
 	pasos := pasosDe(historial)
+
+	// Solo se le corrige una vez: si a la segunda insiste, peor es quedarse
+	// sin rondas y responderle un 503 a alguien que solo conto un gasto.
+	corregido := false
 
 	for range MaxRondas {
 		respuesta, err := h.proveedor.Completar(ctx, sistema, pasos, esquemas)
@@ -290,6 +305,17 @@ func (h *Handler) responder(ctx context.Context, usuarioID int64, nombre string,
 
 		// Sin llamadas, el modelo ya redacto: termino el ciclo.
 		if len(respuesta.Llamadas) == 0 {
+			// ...salvo que este mandando al usuario a una tarjeta que no
+			// existe. Se le dice una sola vez y se le deja rehacer la
+			// respuesta: es una llamada mas, pero solo en el caso malo.
+			if !corregido && mandaAUnaTarjetaQueNoExiste(respuesta.Contenido, final.Propuestas, tarjetas) {
+				corregido = true
+				pasos = append(pasos,
+					Paso{Rol: RolAgente, Contenido: respuesta.Contenido},
+					Paso{Rol: RolUsuario, Contenido: avisoSinTarjeta})
+				continue
+			}
+
 			final.Contenido = respuesta.Contenido
 			return final, nil
 		}
@@ -327,6 +353,53 @@ func (h *Handler) responder(ctx context.Context, usuarioID int64, nombre string,
 	}
 
 	return final, ErrDemasiadasRondas
+}
+
+// avisoSinTarjeta es lo que se le devuelve al modelo cuando anuncia una
+// tarjeta que no existe. Entra como un turno mas de la conversacion, no se
+// guarda en el hilo y el usuario nunca lo ve.
+const avisoSinTarjeta = `[aviso del sistema, no lo repitas] Acabas de mandar al usuario a confirmar una tarjeta, ` +
+	`y en su pantalla NO hay ninguna: no la preparaste en este turno. ` +
+	`Si hay algo que anotar, llama ahora a la herramienta proponer_ que corresponda —revisando el error que te ` +
+	`devolvio antes, si te devolvio uno—. Si te falta un dato, preguntaselo. ` +
+	`Vuelve a escribir tu respuesta sin mencionar ninguna tarjeta que no exista.`
+
+// frasesDeTarjeta son las formas en que el agente manda a confirmar. Se busca
+// la frase entera y no la palabra "tarjeta" suelta: "no tienes ninguna tarjeta
+// pendiente" es una respuesta correcta y no puede disparar la correccion.
+var frasesDeTarjeta = []string{
+	"confirmala", "confírmala", "confirmalo", "confírmalo",
+	"confirma la tarjeta", "confirma ahi", "confirma ahí",
+	"revisa la tarjeta", "revisala", "revísala", "revisalos", "revísalos",
+	"en la tarjeta", "la tarjeta de arriba", "la tarjeta que te deje", "la tarjeta que te dejé",
+	"dale a guardar", "dale guardar", "dale aceptar", "dale a aceptar",
+	"te la deje preparada", "te la dejé preparada",
+}
+
+// mandaAUnaTarjetaQueNoExiste atrapa la mentira mas cara de este chat: decirle
+// al usuario "dale aceptar ahi" cuando en su pantalla no hay nada.
+//
+// Pasa cuando la herramienta rechaza los argumentos del modelo (una categoria
+// que no existe, un monto raro) y el modelo, en vez de corregir, responde como
+// si la tarjeta hubiera quedado. Y pasa entre turnos, porque del turno pasado
+// solo le queda su propia frase. El estado de las tarjetas del prompt lo
+// previene; esto lo atrapa cuando aun asi se le va.
+func mandaAUnaTarjetaQueNoExiste(contenido string, nuevas []PropuestaNueva, tarjetas []PropuestaConEstado) bool {
+	// Si preparo una en este turno, la tarjeta existe: no hay nada que mirar.
+	if len(nuevas) > 0 {
+		return false
+	}
+	// Ni si quedo alguna pendiente de antes: esa si esta en pantalla.
+	for _, t := range tarjetas {
+		if t.Estado == EstadoPropuestaPendiente && !t.Caducada {
+			return false
+		}
+	}
+
+	texto := strings.ToLower(contenido)
+	return slices.ContainsFunc(frasesDeTarjeta, func(frase string) bool {
+		return strings.Contains(texto, frase)
+	})
 }
 
 // pasosDe convierte el hilo guardado en la conversacion que ve el modelo.
