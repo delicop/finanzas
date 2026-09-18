@@ -156,6 +156,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	h.limitado.exito(ip)
 
+	// Para el panel: desde cuando no aparece este cliente.
+	h.store.RegistrarAcceso(r.Context(), usuario.ID)
+
 	httpx.JSON(w, http.StatusOK, loginResponse{
 		Token:    token,
 		ExpiraEn: expira,
@@ -189,6 +192,14 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorInterno(w, r, err, "me: armando la ficha")
 		return
 	}
+
+	// Aqui pasa cada vez que alguien abre la app con la sesion ya iniciada,
+	// que es la mayoria de las veces: es la señal buena de "sigue usandolo".
+	// Un admin mirando la cuenta de un cliente NO cuenta como visita suya.
+	if _, observando := httpx.Observador(r.Context()); !observando {
+		h.store.RegistrarAcceso(r.Context(), usuarioID)
+	}
+
 	httpx.JSON(w, http.StatusOK, ficha)
 }
 

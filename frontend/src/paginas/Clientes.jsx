@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { adminApi, negocioApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useEsMovil } from '../lib/useEsMovil'
-import { formatearFecha, formatearMonto } from '../lib/formato'
+import { diasHasta, formatearFecha, formatearMonto } from '../lib/formato'
 import Modal from '../componentes/Modal'
 
 // Los clientes del servidor: quién existe, en qué plan está y qué puede hacer.
@@ -142,6 +142,10 @@ export default function Clientes() {
                 <div className="tenue sub">
                   {u.email} · {u.movimientos} mov{u.movimientos === 1 ? '' : 's'}.
                 </div>
+                <div className="sub uso-movil">
+                  <UltimaVez cuando={u.ultima_actividad} /> ·{' '}
+                  <Frecuencia dias={u.dias_activos} />
+                </div>
                 <SelectorPlan
                   usuario={u}
                   planes={planes}
@@ -168,6 +172,8 @@ export default function Clientes() {
                   <th></th>
                   <th>Plan</th>
                   <th className="num">Movimientos</th>
+                  <th>Última vez</th>
+                  <th className="num">Frecuencia</th>
                   <th>Desde</th>
                   <th className="acciones"></th>
                   <th></th>
@@ -200,6 +206,12 @@ export default function Clientes() {
                       />
                     </td>
                     <td className="num tenue">{u.movimientos}</td>
+                    <td className="nowrap">
+                      <UltimaVez cuando={u.ultima_actividad} />
+                    </td>
+                    <td className="num">
+                      <Frecuencia dias={u.dias_activos} />
+                    </td>
                     <td className="tenue nowrap">{formatearFecha(u.creado_en.slice(0, 10))}</td>
                     <td className="acciones" onClick={(e) => e.stopPropagation()}>
                       <AccionesUsuario
@@ -255,6 +267,52 @@ export default function Clientes() {
         />
       )}
     </>
+  )
+}
+
+// Cuánto hace que no aparece este cliente.
+//
+// El panel ya decía cuántos movimientos tiene cada uno, pero eso no contesta
+// si TODAVÍA lo usa: mil movimientos de hace ocho meses y mil de esta semana
+// se veían exactamente igual. Para cobrar —o para llamar a alguien antes de
+// que se vaya en silencio— lo que importa es esta columna.
+function UltimaVez({ cuando }) {
+  if (!cuando) return <span className="tenue">sin registro</span>
+
+  const dias = diasHasta(cuando.slice(0, 10))
+  // diasHasta cuenta hacia adelante; hacia atrás viene en negativo.
+  const hace = -dias
+
+  let texto
+  if (hace <= 0) texto = 'hoy'
+  else if (hace === 1) texto = 'ayer'
+  else if (hace < 7) texto = `hace ${hace} días`
+  else if (hace < 30) texto = `hace ${Math.floor(hace / 7)} sem.`
+  else if (hace < 365) texto = `hace ${Math.floor(hace / 30)} mes${hace < 60 ? '' : 'es'}`
+  else texto = formatearFecha(cuando.slice(0, 10))
+
+  // El color es el aviso: verde esta semana, ámbar el mes, rojo más de un mes
+  // sin volver. Es lo que se mira de un vistazo cuando la lista es larga.
+  const tono = hace < 7 ? 'positivo' : hace < 30 ? 'advertencia' : 'negativo'
+  return (
+    <span className={tono} title={formatearFecha(cuando.slice(0, 10))}>
+      {texto}
+    </span>
+  )
+}
+
+// Con qué frecuencia lo usa: en cuántos días distintos de los últimos 30 hizo
+// algo. Dos cuentas pueden tener la misma "última vez" y ser cosas muy
+// distintas — una entró ayer por primera vez en el mes, la otra entra a diario.
+function Frecuencia({ dias }) {
+  const de = 30
+  if (!dias) return <span className="tenue">—</span>
+
+  const tono = dias >= 15 ? 'positivo' : dias >= 5 ? 'advertencia' : 'tenue'
+  return (
+    <span className={tono} title={`Usó la app ${dias} de los últimos ${de} días`}>
+      {dias}/{de}
+    </span>
   )
 }
 

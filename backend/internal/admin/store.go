@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -48,7 +49,33 @@ type UsuarioAdmin struct {
 	Ciclo string `json:"ciclo"`
 	// Si su plan incluye el asistente.
 	PlanIA bool `json:"plan_ia"`
+
+	// --- Si de verdad lo usan -------------------------------------------
+	//
+	// Un conteo de movimientos no contesta eso: mil movimientos de hace ocho
+	// meses y mil de esta semana se ven igual. Estas tres si.
+
+	// UltimoAcceso es la ultima vez que abrio la app. Nulo en las cuentas que
+	// no han vuelto desde que existe la columna.
+	UltimoAcceso *time.Time `json:"ultimo_acceso"`
+
+	// UltimaActividad es la ultima señal de vida, venga de donde venga: abrir
+	// la app, anotar un movimiento, registrar un abono o escribirle al
+	// asistente. Va aparte del acceso porque se puede calcular hacia atras,
+	// con los datos que ya estaban: el dia que esto se estreno, las cuentas
+	// viejas ya tenian una fecha que mostrar.
+	UltimaActividad *time.Time `json:"ultima_actividad"`
+
+	// DiasActivos es en cuantos dias DISTINTOS de los ultimos 30 hizo algo.
+	// Es la medida de frecuencia: 22 de 30 es alguien que vive en la app, 2
+	// de 30 es alguien que la abrio dos veces y la dejo.
+	DiasActivos int `json:"dias_activos"`
 }
+
+// DiasDeFrecuencia es la ventana con la que se mide si usan la app. Treinta
+// dias porque el cobro es mensual: es la misma pregunta que "¿le sirvio este
+// mes lo que pago?".
+const DiasDeFrecuencia = 30
 
 type Store struct {
 	db *sql.DB
@@ -56,23 +83,80 @@ type Store struct {
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-// Listar devuelve todas las cuentas con su conteo de datos.
+// columnasUsuario es la ficha completa del cliente, escrita UNA vez.
+//
+// Estaba copiada en Listar y en PorID, y eso ya costo: al agregar las cifras de
+// uso se actualizo una sola, asi que la lista las mostraba y la respuesta de
+// editar un cliente las devolvia en cero — pisando en pantalla lo que se
+// acababa de ver. Con la consulta en un solo sitio eso no se puede repetir.
+//
+// La ventana se interpola con fmt y no va como parametro a proposito: es una
+// constante de este paquete, no un dato de nadie, y como parametro chocaria con
+// la numeracion del $1 de PorID.
+var columnasUsuario = fmt.Sprintf(`
+		u.id, u.email, u.nombre, u.rol, u.activo, u.creado_en,
+		(SELECT count(*) FROM movimientos m WHERE m.usuario_id = u.id),
+		(SELECT count(*) FROM categorias  c WHERE c.usuario_id = u.id),
+		u.plan_id, coalesce(p.nombre, ''),
+		coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
+		               ELSE p.precio_mensual END)::text, ''),
+		u.ciclo_pago, coalesce(p.incluye_ia, false),
+		u.ultimo_acceso,
+		-- La ultima señal de vida: la mas reciente entre abrir la app y las
+		-- tres cosas que escribe una persona usandola. greatest() ignora los
+		-- nulos, asi que quien nunca ha escrito nada pero entro ayer sigue
+		-- teniendo fecha.
+		greatest(
+		    u.ultimo_acceso,
+		    (SELECT max(m.creado_en) FROM movimientos     m WHERE m.usuario_id = u.id),
+		    (SELECT max(a.creado_en) FROM abonos          a WHERE a.usuario_id = u.id),
+		    (SELECT max(g.creado_en) FROM agente_mensajes g WHERE g.usuario_id = u.id AND g.rol = 'usuario')
+		),
+		-- Frecuencia: en cuantos dias DISTINTOS de la ventana hizo algo. Los
+		-- dias se cuentan en la hora de Colombia y no en UTC: algo anotado a
+		-- las 8 de la noche es de ese dia, no del siguiente.
+		(SELECT count(DISTINCT dia) FROM (
+		    SELECT (m.creado_en AT TIME ZONE 'America/Bogota')::date AS dia
+		      FROM movimientos m
+		     WHERE m.usuario_id = u.id AND m.creado_en > now() - interval '%[1]d days'
+		    UNION
+		    SELECT (a.creado_en AT TIME ZONE 'America/Bogota')::date
+		      FROM abonos a
+		     WHERE a.usuario_id = u.id AND a.creado_en > now() - interval '%[1]d days'
+		    UNION
+		    SELECT (g.creado_en AT TIME ZONE 'America/Bogota')::date
+		      FROM agente_mensajes g
+		     WHERE g.usuario_id = u.id AND g.rol = 'usuario'
+		       AND g.creado_en > now() - interval '%[1]d days'
+		) d)`, DiasDeFrecuencia)
+
+const desdeUsuario = `
+	FROM usuarios u
+	LEFT JOIN planes p ON p.id = u.plan_id`
+
+// fila es lo que devuelven QueryRow y Rows: asi un solo escaneo sirve para la
+// lista y para una ficha suelta.
+type fila interface{ Scan(dst ...any) error }
+
+func escanearUsuario(f fila) (*UsuarioAdmin, error) {
+	var u UsuarioAdmin
+	err := f.Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo,
+		&u.CreadoEn, &u.Movimientos, &u.Categorias,
+		&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA,
+		&u.UltimoAcceso, &u.UltimaActividad, &u.DiasActivos)
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// Listar devuelve todas las cuentas con su conteo de datos y sus cifras de uso.
 //
 // Los conteos van como subconsultas y no como JOIN + GROUP BY: con dos tablas
 // distintas colgando del mismo usuario, el JOIN multiplica las filas y los
 // totales salen inflados (cada movimiento se contaria una vez por categoria).
 func (s *Store) Listar(ctx context.Context) ([]UsuarioAdmin, error) {
-	const q = `
-		SELECT u.id, u.email, u.nombre, u.rol, u.activo, u.creado_en,
-		       (SELECT count(*) FROM movimientos m WHERE m.usuario_id = u.id),
-		       (SELECT count(*) FROM categorias  c WHERE c.usuario_id = u.id),
-		       u.plan_id, coalesce(p.nombre, ''),
-		       coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
-		                      ELSE p.precio_mensual END)::text, ''),
-		       u.ciclo_pago, coalesce(p.incluye_ia, false)
-		FROM usuarios u
-		LEFT JOIN planes p ON p.id = u.plan_id
-		ORDER BY u.creado_en`
+	q := `SELECT ` + columnasUsuario + desdeUsuario + ` ORDER BY u.creado_en`
 
 	filas, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -83,13 +167,11 @@ func (s *Store) Listar(ctx context.Context) ([]UsuarioAdmin, error) {
 	// Slice inicializado (no nil) para que el JSON sea [] y no null.
 	lista := []UsuarioAdmin{}
 	for filas.Next() {
-		var u UsuarioAdmin
-		if err := filas.Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo,
-			&u.CreadoEn, &u.Movimientos, &u.Categorias,
-			&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA); err != nil {
+		u, err := escanearUsuario(filas)
+		if err != nil {
 			return nil, fmt.Errorf("leyendo usuario: %w", err)
 		}
-		lista = append(lista, u)
+		lista = append(lista, *u)
 	}
 	if err := filas.Err(); err != nil {
 		return nil, fmt.Errorf("recorriendo usuarios: %w", err)
@@ -161,42 +243,18 @@ func (s *Store) Actualizar(ctx context.Context, id int64, c Cambios) (*UsuarioAd
 }
 
 func (s *Store) PorID(ctx context.Context, id int64) (*UsuarioAdmin, error) {
-	const q = `
-		SELECT u.id, u.email, u.nombre, u.rol, u.activo, u.creado_en,
-		       (SELECT count(*) FROM movimientos m WHERE m.usuario_id = u.id),
-		       (SELECT count(*) FROM categorias  c WHERE c.usuario_id = u.id),
-		       u.plan_id, coalesce(p.nombre, ''),
-		       coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
-		                      ELSE p.precio_mensual END)::text, ''),
-		       u.ciclo_pago, coalesce(p.incluye_ia, false)
-		FROM usuarios u
-		LEFT JOIN planes p ON p.id = u.plan_id
-		WHERE u.id = $1`
+	q := `SELECT ` + columnasUsuario + desdeUsuario + ` WHERE u.id = $1`
 
-	var u UsuarioAdmin
-	err := s.db.QueryRowContext(ctx, q, id).Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol,
-		&u.Activo, &u.CreadoEn, &u.Movimientos, &u.Categorias,
-		&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA)
-
+	u, err := escanearUsuario(s.db.QueryRowContext(ctx, q, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoEncontrado
 	}
 	if err != nil {
 		return nil, fmt.Errorf("consultando usuario: %w", err)
 	}
-	return &u, nil
+	return u, nil
 }
 
-// Eliminar borra la cuenta y TODO lo que cuelga de ella.
-//
-// Las filas se las lleva el ON DELETE CASCADE de la base, pero las facturas
-// viven en el disco y ahi no llega ninguna llave foranea: por eso la funcion
-// devuelve sus rutas, para que el handler las borre. Si no, cada cliente
-// eliminado dejaria sus archivos ocupando la tarjeta de la Raspberry para
-// siempre, sin una sola fila que dijera de quien eran.
-//
-// El orden importa: primero se leen las rutas, despues se borra. Al reves ya
-// no habria a quien preguntarle cuales eran.
 func (s *Store) Eliminar(ctx context.Context, id int64) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

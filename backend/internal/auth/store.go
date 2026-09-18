@@ -98,6 +98,29 @@ func (s *Store) Contar(ctx context.Context) (int, error) {
 }
 
 // ActualizarPassword cambia el hash de la contrasena.
+// RegistrarAcceso anota que esta cuenta acaba de abrir la app.
+//
+// Se llama al entrar con la clave y tambien cuando el frontend valida el token
+// guardado (GET /me), que es lo que pasa cada vez que alguien abre la app sin
+// tener que volver a escribir la contrasena. Con solo el login, quien entra
+// todos los dias con la sesion abierta se veria como si no volviera nunca.
+//
+// El UPDATE lleva su propio freno: solo escribe si lo anotado ya esta viejo.
+// Sin eso, cada refresco de pantalla seria una escritura mas sobre la misma
+// fila, y para contestar "¿lo usan?" sobra con saber el dia.
+//
+// No devuelve error a proposito: esto es telemetria del panel, no parte de
+// entrar. Que falle no puede impedirle a nadie usar la app.
+func (s *Store) RegistrarAcceso(ctx context.Context, id int64) {
+	const q = `
+		UPDATE usuarios
+		SET ultimo_acceso = now()
+		WHERE id = $1
+		  AND (ultimo_acceso IS NULL OR ultimo_acceso < now() - interval '15 minutes')`
+
+	_, _ = s.db.ExecContext(ctx, q, id)
+}
+
 func (s *Store) ActualizarPassword(ctx context.Context, id int64, passwordHash string) error {
 	const q = `UPDATE usuarios SET password_hash = $1 WHERE id = $2`
 

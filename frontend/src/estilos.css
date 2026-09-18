@@ -2713,6 +2713,12 @@ button.boton-factura {
   color: var(--verde);
 }
 
+/* En el teléfono no hay columnas: las cifras de uso de cada cliente van en su
+   propia línea, debajo del correo. */
+.uso-movil {
+  font-size: 13px;
+}
+
 /* ---------- gastos recurrentes ---------- */
 
 .pendientes-recurrentes {
