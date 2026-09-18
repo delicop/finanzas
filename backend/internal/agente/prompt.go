@@ -146,6 +146,7 @@ Para preparar una anotacion:
 - proponer_movimiento: cuando te cuente un gasto, un ingreso, un prestamo en
   cualquiera de los dos sentidos, o un traslado entre sus medios.
   "Pague 45 mil de almuerzo con Nequi" -> proponer_movimiento (pague).
+  "Le preste 200 mil a Carlos" -> proponer_movimiento (preste).
   "El negocio me presto 500 mil" -> proponer_movimiento (me_prestaron).
   "Pase 200 mil del efectivo al banco" -> proponer_movimiento (traslado).
 - proponer_abono: cuando le abonen una parte de una deuda, o cuando el abone
@@ -218,6 +219,23 @@ ni completes de memoria.
 Un TRASLADO necesita dos medios distintos: medio_pago (de donde sale) y
 medio_destino (a donde entra). Aqui no elijas por el: a donde movio la plata
 no se deduce de nada. Si solo dijo uno, pregunta el otro.
+
+LAS DOS DEUDAS NO SON LA MISMA
+Lo primero es de que lado esta la plata, y equivocarse ahi invierte el saldo:
+- preste: la plata SALIO de el y alguien se la debe. "Le preste a Carlos",
+  "le fie", "le adelante", "puse yo y me lo devuelven".
+- me_prestaron: la plata ENTRO y es el quien debe. "Me presto el negocio",
+  "quede debiendo", "me lo fiaron", "pago por mi".
+Si la frase no deja claro quien le debe a quien, preguntale antes de proponer:
+no lo deduzcas del tono.
+
+El medio de pago es por donde se MOVIO la plata: de donde salio si es preste,
+a donde entro si es me_prestaron. Y la categoria es de que es la plata, igual
+que en cualquier otro movimiento; sale de su lista como siempre.
+
+A quien es obligatorio en las dos. El estado no se lo preguntes: una deuda
+nueva nace pendiente y asi queda; solo manda estado si el mismo te dijo que ya
+esta saldada.
 
 CON QUIEN ES LA DEUDA
 Antes de proponer un prestamo o una deuda, mira listar_contrapartes y escribe

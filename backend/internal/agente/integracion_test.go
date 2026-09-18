@@ -1157,6 +1157,142 @@ func TestCobrarUnPrestamo(t *testing.T) {
 	}
 }
 
+// Anotar una DEUDA es el camino más largo del chat, y por ahí se rompía: un
+// préstamo necesita listar_contrapartes además de las dos listas de siempre,
+// y con eso se pasaba del tope de rondas. El usuario recibía un 503 ("el
+// asistente se enredó consultando tus datos"), sin tarjeta y con el mensaje ya
+// descontado de su cuota.
+func TestUnPrestamoCabeEnElTopeDeRondas(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+
+	// El modelo pide las herramientas de a una, que es lo normal, y sigue el
+	// orden que le exige el prompt antes de escribir el nombre de alguien. Y
+	// se equivoca una vez —la categoría que se imaginó no existe—, que es lo
+	// que de verdad hay que aguantar: sin margen para un tropiezo, el camino
+	// más largo del chat termina siempre en 503.
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaContrapartes, `{}`),
+		pideHerramienta(agente.HerramientaMovimientos, `{"tipo":"preste","limite":5}`),
+		pideHerramienta(agente.HerramientaCategorias, `{}`),
+		pideHerramienta(agente.HerramientaMedios, `{}`),
+		pideHerramienta(agente.HerramientaProponerMovimiento,
+			`{"tipo":"preste","monto":"200000","fecha":"2026-09-18","descripcion":"préstamo","categoria":"Préstamos","medio_pago":"Efectivo","a_quien":"Carlos"}`),
+		pideHerramienta(agente.HerramientaProponerMovimiento,
+			`{"tipo":"preste","monto":"200000","fecha":"2026-09-18","descripcion":"préstamo","categoria":"Negocio","medio_pago":"Efectivo","a_quien":"Carlos"}`),
+		{Contenido: "Te preparé el préstamo de $200.000 a Carlos; confírmalo ahí."},
+	}
+
+	res := e.enviar(t, e.ana, "le presté 200 mil a Carlos")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+	if len(envio.Propuestas) != 1 {
+		t.Fatalf("propuestas = %d, se esperaba 1", len(envio.Propuestas))
+	}
+}
+
+// Y el estado no le cuesta una ronda: una deuda nueva nace pendiente. Antes,
+// omitirlo —que es lo que hace un modelo al que nadie le dijo que era
+// obligatorio— se llevaba una vuelta entera en un rechazo de la validación.
+func TestUnaDeudaNuevaNacePendienteSinGastarUnaRonda(t *testing.T) {
+	casos := []struct {
+		tipo   string
+		texto  string
+		aQuien string
+	}{
+		{tipo: movimientos.TipoPreste, texto: "le presté 200 mil a Carlos", aQuien: "Carlos"},
+		{tipo: movimientos.TipoMePrestaron, texto: "el negocio me prestó 500 mil", aQuien: "Negocio 2"},
+	}
+
+	for _, caso := range casos {
+		t.Run(caso.tipo, func(t *testing.T) {
+			e := nuevoEntorno(t, 10)
+
+			// Sin "estado": el modelo no lo mandó.
+			e.proveedor.guion = []agente.Respuesta{
+				pideHerramienta(agente.HerramientaProponerMovimiento, fmt.Sprintf(
+					`{"tipo":%q,"monto":"200000","fecha":"2026-09-18","descripcion":"préstamo","categoria":"Negocio","medio_pago":"Efectivo","a_quien":%q}`,
+					caso.tipo, caso.aQuien)),
+				{Contenido: "Te lo preparé; confírmalo ahí."},
+			}
+
+			res := e.enviar(t, e.ana, caso.texto)
+			if res.Code != http.StatusOK {
+				t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+			}
+
+			var envio struct {
+				Propuestas []agente.Propuesta `json:"propuestas"`
+			}
+			if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+				t.Fatalf("respuesta ilegible: %v", err)
+			}
+			if len(envio.Propuestas) != 1 {
+				t.Fatalf("propuestas = %d: la deuda se rechazó por el estado que falta", len(envio.Propuestas))
+			}
+
+			var datos struct {
+				Tipo   string `json:"tipo"`
+				Estado string `json:"estado"`
+				AQuien string `json:"a_quien"`
+			}
+			if err := json.Unmarshal(envio.Propuestas[0].Datos, &datos); err != nil {
+				t.Fatalf("datos ilegibles: %v", err)
+			}
+			if datos.Estado != movimientos.EstadoPendiente {
+				t.Errorf("estado = %q, se esperaba pendiente", datos.Estado)
+			}
+			if datos.Tipo != caso.tipo || datos.AQuien != caso.aQuien {
+				t.Errorf("la tarjeta quedó con %+v", datos)
+			}
+		})
+	}
+}
+
+// Lo contrario también: si el usuario dijo que ya se la pagaron, manda el
+// modelo y no el valor por defecto.
+func TestSiLaDeudaYaEstaSaldadaElModeloMandaElEstado(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerMovimiento,
+			`{"tipo":"preste","monto":"200000","fecha":"2026-09-18","descripcion":"préstamo","categoria":"Negocio","medio_pago":"Efectivo","a_quien":"Carlos","estado":"pagado"}`),
+		{Contenido: "Te lo preparé; confírmalo ahí."},
+	}
+
+	res := e.enviar(t, e.ana, "le presté 200 mil a Carlos el lunes y ya me los devolvió")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+	if len(envio.Propuestas) != 1 {
+		t.Fatalf("propuestas = %d, se esperaba 1", len(envio.Propuestas))
+	}
+
+	var datos struct {
+		Estado string `json:"estado"`
+	}
+	if err := json.Unmarshal(envio.Propuestas[0].Datos, &datos); err != nil {
+		t.Fatalf("datos ilegibles: %v", err)
+	}
+	if datos.Estado != movimientos.EstadoPagado {
+		t.Errorf("estado = %q: el valor por defecto le pisó lo que dijo el usuario", datos.Estado)
+	}
+}
+
 // El préstamo de otro no existe para el agente, aunque el modelo acierte el id.
 func TestNoSePuedeProponerSobreElPrestamoDeOtro(t *testing.T) {
 	e := nuevoEntorno(t, 10)

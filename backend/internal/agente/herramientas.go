@@ -183,9 +183,10 @@ func (c *Catalogo) Esquemas() []Herramienta {
 						"usa ese mismo, escrito igual",
 				},
 				"estado": map[string]any{
-					"type":        "string",
-					"enum":        []string{movimientos.EstadoPendiente, movimientos.EstadoPagado},
-					"description": "Solo para preste y me_prestaron: si ya está saldada o sigue pendiente",
+					"type": "string",
+					"enum": []string{movimientos.EstadoPendiente, movimientos.EstadoPagado},
+					"description": "Solo para preste y me_prestaron: en qué va la deuda. " +
+						"Si no te dijo que ya se saldó, no lo mandes: se toma como pendiente, que es lo normal en una deuda nueva",
 				},
 				"cobrar_el": map[string]any{
 					"type": "string",
@@ -726,6 +727,24 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		return texto(aviso), nil
 	}
 
+	tipo := strings.TrimSpace(args.Tipo)
+
+	// Una deuda nueva nace pendiente, y decirlo aquí ahorra una ronda entera.
+	//
+	// El formulario SÍ obliga a elegir estado —ahí la persona está viendo los
+	// dos botones—, pero el modelo no tiene forma de saber que es obligatorio
+	// hasta que la validación se lo rechaza, y esa ronda perdida es justo la
+	// que hacía que un préstamo (que además necesita listar_contrapartes) se
+	// pasara del tope y terminara en un 503 sin tarjeta.
+	//
+	// No es adivinar: "le presté 200 mil a Carlos" es una deuda viva, y si ya
+	// se la pagaron el usuario lo cambia en la tarjeta, que trae el selector.
+	// Cuando el modelo sí manda estado, manda el suyo.
+	estado := strings.TrimSpace(args.Estado)
+	if estado == "" && movimientos.EsDeuda(tipo) {
+		estado = movimientos.EstadoPendiente
+	}
+
 	// Las MISMAS reglas del formulario: monto, fecha, que una deuda traiga a
 	// quién y en qué estado, y que un traslado traiga dos medios distintos. Si
 	// el agente tuviera su propia validación, el día que cambie una regla
@@ -734,12 +753,12 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		CategoriaID:  categoriaID,
 		MedioPagoID:  medioID,
 		MedioCobroID: destinoID,
-		Tipo:         strings.TrimSpace(args.Tipo),
+		Tipo:         tipo,
 		Monto:        strings.TrimSpace(args.Monto),
 		Fecha:        strings.TrimSpace(args.Fecha),
 		Descripcion:  strings.TrimSpace(args.Descripcion),
 		AQuien:       strings.TrimSpace(args.AQuien),
-		Estado:       strings.TrimSpace(args.Estado),
+		Estado:       estado,
 		CobrarEl:     strings.TrimSpace(args.CobrarEl),
 	}
 

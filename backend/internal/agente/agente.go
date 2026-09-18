@@ -50,14 +50,18 @@ const (
 	// y segundos—, y el techo existe para que una pregunta rara no se
 	// convierta en un bucle caro.
 	//
-	// Son seis y no cuatro por el orden que le pide el prompt antes de anotar
-	// un gasto: listar_categorias, listar_medios_pago, a veces
-	// listar_movimientos para ver donde vienen quedando los parecidos,
-	// proponer_movimiento, y una ultima vuelta para redactar. Un modelo que
-	// pida las herramientas de a una —que es lo normal— necesita esas cinco;
-	// con cuatro se quedaba sin vueltas JUSTO despues de crear la propuesta, y
-	// el usuario terminaba con una tarjeta pendiente y un 503 en pantalla.
-	MaxRondas = 6
+	// Son ocho por lo que cuesta anotar una DEUDA, que es el camino mas largo:
+	// listar_contrapartes (el prompt lo exige antes de escribir un nombre),
+	// listar_categorias, listar_medios_pago, a veces listar_movimientos para
+	// ver donde vienen quedando los parecidos, proponer_movimiento y una
+	// ultima vuelta para redactar. Un modelo que pida las herramientas de a
+	// una —que es lo normal— ya va en seis sin haberse equivocado en nada.
+	//
+	// Con seis, un prestamo se pasaba del tope y el usuario recibia un 503
+	// ("el asistente se enredo") sin tarjeta y con el mensaje ya cobrado. El
+	// techo de verdad no es este numero sino el middleware.Timeout del router
+	// (30s), que corta igual; este solo evita el bucle absurdo.
+	MaxRondas = 8
 
 	// PropuestasDeContexto es cuantas tarjetas de la conversacion se le
 	// recuerdan al modelo con su estado. Son pocas por la misma razon que
