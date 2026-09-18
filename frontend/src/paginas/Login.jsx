@@ -32,8 +32,10 @@ export default function Login() {
   return (
     <div className="pantalla-centrada">
       <form className="tarjeta" onSubmit={onSubmit} noValidate>
+        {/* El rótulo dice qué es la app antes que el nombre: quien llega aquí
+            por un enlace no tiene por qué saber qué es "Finanzas". */}
+        <span className="kicker">Tus gastos, ingresos y préstamos</span>
         <h1>Finanzas</h1>
-        <p className="subtitulo">Ingresa para ver tus movimientos</p>
 
         {error && <div className="alerta">{error}</div>}
 

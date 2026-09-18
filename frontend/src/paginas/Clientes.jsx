@@ -101,7 +101,12 @@ export default function Clientes() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Clientes</h1>
+        <div>
+          <span className="kicker">
+            {usuarios.length} cuenta{usuarios.length === 1 ? '' : 's'}
+          </span>
+          <h1>Clientes</h1>
+        </div>
         <button onClick={() => setCreando(true)}>Nuevo cliente</button>
       </div>
 

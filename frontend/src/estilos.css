@@ -248,6 +248,11 @@ a:hover {
   color: var(--color-neutral-700);
 }
 
+/* La cifra que se vino a ver. El oro aquí no avisa de nada: destaca. */
+.destacado-oro {
+  color: var(--color-accent-700);
+}
+
 /* El saldo es LA cifra de "¿dónde está la plata?". Se destaca con la serif de
    los títulos, no con negrita. */
 .saldo-fuerte {
@@ -438,8 +443,11 @@ a:hover {
   gap: var(--space-3);
 }
 
-/* El balance manda: ficha más ancha, cifra grande y el borde en oro. */
-.fila-tarjetas .metrica:first-child {
+/* La métrica que manda: ficha más ancha, cifra grande y el borde en oro.
+   Es una clase y no ":first-child" porque en cada pantalla la protagonista es
+   otra — en el Resumen es el balance, en el panel del negocio es lo cobrado, y
+   no siempre van de primeras. */
+.metrica.principal {
   grid-column: span 2;
   border-color: var(--color-accent);
   box-shadow: var(--shadow-sm);
@@ -468,11 +476,11 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
-.fila-tarjetas .metrica:first-child strong {
+.metrica.principal strong {
   font-size: 40px;
 }
 
-.fila-tarjetas .metrica:first-child > span:first-child {
+.metrica.principal > span:first-child {
   color: var(--color-accent-700);
 }
 
@@ -1337,7 +1345,7 @@ button.menor-peligro:hover:not(:disabled) {
     grid-template-columns: 1fr 1fr;
   }
 
-  .fila-tarjetas .metrica:first-child strong {
+  .metrica.principal strong {
     font-size: 34px;
   }
 
@@ -1613,9 +1621,9 @@ button.menor-peligro:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 
 .etiquetas-usuario {
@@ -1644,26 +1652,30 @@ button.menor-peligro:hover:not(:disabled) {
 
 /* La clave recién generada se muestra UNA vez: tiene que poder copiarse de un
    vistazo y sin confundir una l con un 1. */
+/* La clave recién generada se muestra UNA vez: tiene que poder copiarse de un
+   vistazo. Va sobre el papel y no sobre la superficie del aviso, para que se
+   despegue del texto que la rodea. */
 .clave-generada {
   font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 15px;
   letter-spacing: 1px;
   padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--hover);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
   user-select: all;
 }
 
 /* Las trazas de pánico son largas y no se pueden cortar sin volverlas
    inservibles: mejor scroll propio que reventar el ancho de la página. */
 .traza-error {
-  margin: 8px 0 0;
-  padding: 10px;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
   max-height: 260px;
   overflow: auto;
-  background: var(--superficie-2);
-  border: 1px solid var(--borde);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
@@ -1677,8 +1689,9 @@ button.menor-peligro:hover:not(:disabled) {
 .selector-plan {
   width: auto;
   min-width: 150px;
+  min-height: 30px;
   margin: 0;
-  padding: 5px 8px;
+  padding: 3px 8px;
   font-size: 13px;
 }
 
@@ -1754,18 +1767,23 @@ td.acciones .acciones-fila button {
 }
 
 .mes-actual {
-  color: var(--tenue);
-  font-size: 14px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 /* Cifra grande del tablero del negocio. A diferencia de .monto-grande, NO
-   trae color: el suyo lo pone el significado (verde lo cobrado, ámbar lo que
-   falta). Así una clase de tamaño no le gana a una de color por orden. */
+   trae color: el suyo lo pone el significado. Hoy eso quiere decir que lo
+   COBRADO va en oro (es lo que se vino a mirar) y el resto en tinta. */
 .cifra-negocio {
-  margin: 4px 0;
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: 400;
   font-size: 28px;
-  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Dos cifras enfrentadas dentro de una tarjeta del teléfono: esperado contra
@@ -1773,10 +1791,10 @@ td.acciones .acciones-fila button {
 .par-cifras {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--borde);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
 }
 
 .par-cifras > div {
@@ -1790,7 +1808,10 @@ td.acciones .acciones-fila button {
 }
 
 .par-cifras strong {
-  font-size: 16px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {
@@ -1809,9 +1830,8 @@ td.acciones .acciones-fila button {
   }
 
   .mes-actual {
-    font-size: 15px;
-    color: var(--texto);
-    font-weight: 600;
+    font-size: 17px;
+    color: var(--color-text);
   }
 
   /* Tres métricas en dos columnas dejan la tercera sola y a media línea.
@@ -1833,448 +1853,185 @@ td.acciones .acciones-fila button {
 }
 
 /* ---------------------------------------------------------------------------
-   Asistente, con forma de chat de WhatsApp
-   Cabecera del contacto, burbujas a cada lado sobre un fondo propio y el
-   cajón de escribir abajo. Los colores son los de WhatsApp en cada tema, para
-   que se reconozca a primera vista qué es y cómo se usa.
+   Asistente, como una consulta
+
+   Antes esto imitaba a WhatsApp: cabecera verde, burbujas a cada lado, fondo
+   propio. Se reconocía a primera vista qué era y cómo se usaba, y eso valía.
+   Pero era una isla dentro de la app — su propio juego de colores, su propia
+   tipografía, sus propias reglas — y en una app de papel se veía pegado.
+
+   Ahora es lo que en realidad es: una consulta. La pregunta como titular, la
+   respuesta como texto corrido con un filete de oro al margen, y lo que
+   preparó en su ficha aparte. Mismos tokens que el resto.
    -------------------------------------------------------------------------*/
-:root {
-  --wa-cabecera: #202c33;
-  --wa-fondo: #0b141a;
-  --wa-mio: #005c4b;
-  --wa-agente: #202c33;
-  --wa-texto: #e9edef;
-  --wa-tenue: #8696a0;
-  --wa-cajon: #202c33;
-  --wa-campo: #2a3942;
-  --wa-verde: #00a884;
-  --wa-check: #53bdeb;
-  --wa-sistema: #182229;
-}
 
-:root[data-tema='claro'] {
-  --wa-cabecera: #008069;
-  --wa-fondo: #efeae2;
-  --wa-mio: #d9fdd3;
-  --wa-agente: #ffffff;
-  --wa-texto: #111b21;
-  --wa-tenue: #667781;
-  --wa-cajon: #f0f2f5;
-  --wa-campo: #ffffff;
-  --wa-verde: #00a884;
-  --wa-check: #53bdeb;
-  --wa-sistema: #ffeecd;
-}
-
-.wa {
+.wa,
+.wa-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  background-color: var(--wa-fondo);
-  /* El punteado tenue del fondo de WhatsApp, hecho con un gradiente para no
-     cargar una imagen. */
-  background-image: radial-gradient(rgba(127, 127, 127, 0.08) 1px, transparent 1px);
-  background-size: 18px 18px;
-  color: var(--wa-texto);
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--borde);
+  background: var(--color-bg);
 }
 
+/* El chat ocupa toda su caja: la cabecera arriba, el hilo creciendo en medio
+   y el cajón abajo. */
+.wa {
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* La cabecera: quién responde y qué se puede hacer con el hilo. */
 .wa-cabecera {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--wa-cabecera);
-  color: #fff;
-  flex-shrink: 0;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-divider);
+  color: var(--color-text);
 }
 
-.wa-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--wa-verde);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.wa-contacto {
+.wa-cabecera-titulo {
   display: flex;
   flex-direction: column;
   min-width: 0;
   flex: 1;
-  line-height: 1.25;
 }
 
-.wa-contacto strong {
-  font-size: 16px;
+.wa-cabecera-titulo strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 20px;
 }
 
-.wa-contacto span {
-  font-size: 12px;
-  opacity: 0.8;
+.wa-cabecera-titulo span {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
 }
 
-.wa-contacto span.wa-escribiendo {
-  color: #7fe3c7;
-  opacity: 1;
+.wa-cabecera button {
+  color: var(--color-text);
+  border-color: var(--color-divider);
 }
 
-button.wa-icono {
-  background: none;
-  border: 0;
-  color: #fff;
-  font-size: 22px;
-  line-height: 1;
-  padding: 4px 6px;
-  min-height: 0;
-  cursor: pointer;
+.wa-cabecera button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
 }
 
-.wa-titulo {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* El menú de los tres puntos. */
-.wa-menu {
-  position: relative;
-}
-
-.wa-menu-lista {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 5;
-  min-width: 230px;
-  padding: 6px 0;
-  border-radius: 8px;
-  background: var(--wa-agente);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  display: flex;
-  flex-direction: column;
-}
-
-.wa-menu-lista button {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--wa-texto);
-  text-align: left;
-  font-size: 14.5px;
-  font-weight: 400;
-  padding: 11px 18px;
-  min-height: 0;
-}
-
-.wa-menu-lista button:hover,
-.wa-menu-lista button:focus-visible {
-  background: var(--wa-cajon);
-}
-
-.wa-menu-lista button.peligro {
-  color: var(--rojo);
-}
-
-/* "Guardado. ¿Necesitas algo más?" con sus dos respuestas. */
-.wa-algo-mas {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 14px;
-}
-
-.wa-algo-mas p {
-  margin: 0;
-}
-
-/* Las conversaciones guardadas, como la lista de chats de WhatsApp. */
-.wa-lista {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: var(--wa-agente);
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
-}
-
-.wa-lista li + li {
-  border-top: 1px solid var(--wa-cajon);
-}
-
-.wa-lista button {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--wa-texto);
-  text-align: left;
-  padding: 12px 14px;
-  font-weight: 400;
-}
-
-.wa-lista button:hover {
-  background: var(--wa-cajon);
-}
-
-.wa-lista strong {
-  font-size: 15px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-.wa-lista span {
-  font-size: 12.5px;
-  color: var(--wa-tenue);
-}
-
+/* El hilo. Sin fondo propio: es la misma página. */
 .wa-hilo {
   flex: 1;
-  min-height: 0;
   overflow-y: auto;
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 14px 5% 10px;
+  gap: var(--space-4);
 }
 
-.wa-burbuja {
-  position: relative;
-  max-width: 80%;
-  padding: 6px 9px 4px;
-  border-radius: 8px;
-  font-size: 14.5px;
-  line-height: 1.4;
-  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
-  margin-bottom: 4px;
+/* Una pregunta tuya: se lee como el titular de la sección que viene abajo,
+   no como un globo de chat. */
+.wa-burbuja.wa-mio {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 22px;
+  line-height: 1.2;
+  color: var(--color-text);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-divider);
 }
 
-.wa-burbuja p {
+.wa-burbuja.wa-mio p {
   margin: 0;
-  /* Los saltos de línea se respetan y una URL larguísima parte en vez de
-     estirar la burbuja fuera de la pantalla. */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.wa-mio {
-  align-self: flex-end;
-  background: var(--wa-mio);
-  border-top-right-radius: 0;
+/* La respuesta: texto corrido con el filete de oro al margen, como una cita
+   en un libro. */
+.wa-burbuja.wa-agente {
+  border-left: 2px solid var(--color-accent);
+  padding-left: var(--space-3);
 }
 
-.wa-agente {
-  align-self: flex-start;
-  background: var(--wa-agente);
-  border-top-left-radius: 0;
+.wa-burbuja.wa-agente p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-/* Las "colitas" de las burbujas, arriba de cada lado. */
-.wa-mio::after,
-.wa-agente::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 8px;
-  height: 10px;
+/* De dónde salieron las cifras. En itálica y pequeño, como una nota al pie:
+   no es la respuesta, es su procedencia — pero quien lee un número en una app
+   de plata tiene derecho a saber qué miró el agente. */
+.wa-fuente {
+  margin: var(--space-1) 0 0 !important;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--tenue);
 }
 
-.wa-mio::after {
-  right: -8px;
-  background: linear-gradient(to bottom left, transparent 50%, var(--wa-mio) 50%);
-  transform: scaleY(-1);
-}
-
-.wa-agente::after {
-  left: -8px;
-  background: linear-gradient(to bottom right, transparent 50%, var(--wa-agente) 50%);
-  transform: scaleY(-1);
-}
-
-.wa-puntos::after {
+/* La hora deja de mostrarse: en un chat dice cuándo llegó cada mensaje, pero
+   en una consulta de una sola sesión no le aporta nada a nadie. */
+.wa-hora {
   display: none;
 }
 
-.wa-burbuja p.wa-fuente {
-  margin-top: 3px;
-  font-size: 11.5px;
+/* El estado "escribiendo…" */
+.wa-escribiendo {
+  border-left: 2px solid var(--color-divider);
+  padding-left: var(--space-3);
+  font-size: 14px;
   font-style: italic;
-  color: var(--wa-tenue);
+  color: var(--tenue);
 }
 
-.wa-hora {
-  display: block;
-  text-align: right;
-  font-size: 11px;
-  color: var(--wa-tenue);
-  margin-top: 2px;
-}
-
-.wa-check {
-  color: var(--wa-check);
-  letter-spacing: -3px;
-}
-
-/* Avisos del sistema: el cartelito centrado de WhatsApp. */
+/* Los avisos del sistema dentro del hilo (límite alcanzado, chat terminado). */
 .wa-sistema {
   align-self: center;
   max-width: 90%;
-  margin: 6px 0;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background: var(--wa-sistema);
-  color: var(--wa-texto);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
   font-size: 13px;
+  color: var(--tenue);
   text-align: center;
-  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
 }
 
-.wa-ok {
-  color: var(--wa-verde);
-  font-weight: 600;
-}
-
-.wa-error {
-  color: var(--rojo);
-}
-
-.wa-bienvenida {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  margin: auto 0;
-}
-
-.chat-sugerencias {
+/* Las preguntas sugeridas. */
+.wa-sugerencias {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
+  gap: var(--space-1);
 }
 
-.wa .chip {
-  background: var(--wa-agente);
-  color: var(--wa-verde);
-  border-color: transparent;
-  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
-  font-size: 13px;
-}
-
-/* "escribiendo...": los tres puntos que laten. */
-.wa-puntos {
-  display: flex;
-  gap: 4px;
-  padding: 12px 14px;
-}
-
-.wa-puntos span {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--wa-tenue);
-  animation: wa-latido 1.2s infinite ease-in-out;
-}
-
-.wa-puntos span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.wa-puntos span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes wa-latido {
-  0%,
-  80%,
-  100% {
-    opacity: 0.3;
-    transform: translateY(0);
-  }
-  40% {
-    opacity: 1;
-    transform: translateY(-3px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wa-puntos span {
-    animation: none;
-  }
-}
-
-/* Las tarjetas que esperan confirmación van como una burbuja más del agente. */
-.wa .propuesta {
-  align-self: flex-start;
-  width: 92%;
-  background: var(--wa-agente);
-  color: var(--wa-texto);
-  border: 1px solid var(--wa-verde);
-  margin: 4px 0;
-}
-
-.wa-restantes {
-  margin: 0;
-  padding: 4px 12px;
-  font-size: 12px;
-  text-align: center;
-  color: var(--wa-tenue);
-  background: var(--wa-cajon);
-}
-
-.wa-escribir {
+/* El cajón de escribir. */
+.wa-cajon {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--wa-cajon);
-  flex-shrink: 0;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
 }
 
-.wa-escribir textarea {
+.wa-cajon textarea {
   flex: 1;
+  min-height: 36px;
+  max-height: 90px;
   resize: none;
-  border: 0;
-  border-radius: 21px;
-  padding: 10px 16px;
-  min-height: 42px;
-  max-height: 120px;
-  line-height: 1.4;
-  background: var(--wa-campo);
-  color: var(--wa-texto);
-  font-size: 15px;
-}
-
-.wa-escribir textarea:focus {
-  outline: none;
+  /* Sobre el papel y no sobre la superficie: el campo tiene que despegarse de
+     la barra que lo rodea. */
+  background: var(--color-bg);
 }
 
 button.wa-enviar {
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
-  border-radius: 50%;
-  padding: 0;
-  background: var(--wa-verde);
-  color: #fff;
-  font-size: 18px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 button.wa-enviar:disabled {
@@ -2282,19 +2039,27 @@ button.wa-enviar:disabled {
 }
 
 button.wa-microfono {
-  font-size: 19px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 17px;
+  color: var(--color-text);
+  border-color: var(--color-divider);
 }
 
-/* Grabando: rojo y latiendo, para que no quede el micrófono abierto sin
-   darse cuenta. */
+/* Grabando: el oro relleno y latiendo. Es el único sitio de la app donde un
+   botón se rellena, y es a propósito — un micrófono abierto sin que nadie se
+   dé cuenta es peor que una excepción al sistema. */
 button.wa-microfono.grabando {
-  background: var(--rojo);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-bg);
   animation: wa-grabando 1.2s infinite ease-in-out;
 }
 
 @keyframes wa-grabando {
   50% {
-    box-shadow: 0 0 0 8px rgba(255, 107, 107, 0.25);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent);
   }
 }
 
@@ -2317,12 +2082,16 @@ button.burbuja-asistente {
   min-height: 58px;
   padding: 0;
   border-radius: 50%;
-  background: var(--wa-verde);
-  color: #fff;
-  font-size: 26px;
+  /* La única cosa redonda y con fondo de toda la app: flota sobre el
+     contenido y tiene que separarse de él. El fondo es la superficie del
+     papel, no un color de marca. */
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  font-size: 24px;
   display: grid;
   place-items: center;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-md);
   transition: transform 0.15s;
 }
 
@@ -2419,26 +2188,39 @@ button.burbuja-asistente:focus-visible {
    algo que espera una decisión.
    -------------------------------------------------------------------------*/
 .propuesta {
-  border: 1px solid var(--acento);
-  border-radius: 12px;
-  background: var(--superficie-2);
-  padding: 14px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .propuesta-encabezado {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
-  font-size: 14px;
 }
 
+.propuesta-encabezado strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+}
+
+/* "Nada se ha guardado todavía" se lee como una etiqueta, no como una nota al
+   pie: es la advertencia que evita que alguien crea que ya quedó. */
 .propuesta-encabezado .tenue {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 11px;
 }
 
 .propuesta-resumen {
@@ -2449,7 +2231,7 @@ button.burbuja-asistente:focus-visible {
 .propuesta-campos {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-2) var(--space-3);
 }
 
 /* Base fija para que en escritorio quepan varios campos por fila y en el
@@ -2474,14 +2256,14 @@ button.burbuja-asistente:focus-visible {
 .propuesta-acciones {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .chat-guardado {
   margin: 0;
   align-self: flex-start;
   font-size: 13px;
-  color: var(--verde);
+  color: var(--color-accent-700);
 }
 
 /* ---------------------------------------------------------------------------
@@ -2647,7 +2429,7 @@ button.burbuja-asistente:focus-visible {
 }
 
 .interruptor input:checked + .interruptor-pista {
-  background: var(--wa-verde);
+  background: var(--color-accent);
 }
 
 .interruptor input:checked + .interruptor-pista::after {
@@ -2832,17 +2614,17 @@ button.wa-clip {
   flex-shrink: 0;
   background: none;
   border: 0;
-  color: var(--wa-tenue);
-  font-size: 22px;
+  color: var(--tenue);
+  font-size: 20px;
 }
 
 button.wa-clip:hover:not(:disabled) {
-  color: var(--wa-texto);
+  color: var(--color-text);
 }
 
 .wa-adjunto-pendiente {
-  padding: 8px 12px 0;
-  background: var(--wa-cajon);
+  padding: var(--space-2) var(--space-3) 0;
+  background: var(--color-surface);
 }
 
 .wa-adjunto-pendiente p {
@@ -2855,9 +2637,9 @@ button.wa-clip:hover:not(:disabled) {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--wa-campo, var(--superficie));
-  border: 1px solid var(--borde);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
   min-width: 0;
 }
 
@@ -3277,4 +3059,202 @@ button.boton-factura {
 }
 .ficha-medio.sin-registrar .barra-oro > i {
   background: var(--color-neutral-500);
+}
+
+/* ---------- las piezas sueltas del asistente ---------- */
+
+/* Los botones de ícono de la cabecera (volver, menú). */
+button.wa-icono {
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--color-text);
+  font-size: 19px;
+  line-height: 1;
+}
+
+button.wa-icono:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+/* Lo primero que se ve al abrir: qué es esto y qué se le puede pedir. */
+.wa-bienvenida {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.wa-titulo {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 20px;
+}
+
+/* Confirmaciones y errores dentro del hilo. El error no va en rojo: va con el
+   filete de oro, igual que las alertas del resto de la app. */
+.wa-ok {
+  color: var(--color-accent-700);
+}
+
+.wa-error {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.wa-algo-mas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* Cuántos mensajes le quedan hoy. Va bajo el cajón, discreto: importa cuando
+   se acaba, no antes. */
+.wa-restantes {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: 11px;
+  color: var(--tenue);
+  background: var(--color-surface);
+  text-align: right;
+}
+
+/* El menú de la cabecera. */
+.wa-menu {
+  position: relative;
+}
+
+.wa-menu-lista {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.wa-menu-lista button {
+  justify-content: flex-start;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 14px;
+  padding: var(--space-2);
+}
+
+.wa-menu-lista button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.wa-menu-lista button.peligro {
+  color: var(--color-neutral-700);
+}
+
+/* La lista de conversaciones guardadas. */
+.wa-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wa-lista li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+/* Los ✓✓ eran de WhatsApp: en una consulta no hay "entregado" ni "leído". */
+.wa-check {
+  display: none;
+}
+
+/* Las preguntas sugeridas: botones sueltos, no un segmentado. Por eso hay que
+   deshacer lo que .chip hereda del control de tipos, que sí va pegado. */
+.chat-sugerencias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chat-sugerencias .chip {
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.chat-sugerencias .chip:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* Título y fecha de una conversación guardada, apilados. */
+.wa-contacto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.wa-contacto span {
+  font-size: 12px;
+  color: var(--tenue);
+}
+
+/* "Está consultando": tres puntos que laten en el margen, en el mismo sitio
+   donde va a aparecer la respuesta. */
+.wa-puntos {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-height: 22px;
+}
+
+.wa-puntos span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: wa-latido 1.2s infinite ease-in-out;
+}
+
+.wa-puntos span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.wa-puntos span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes wa-latido {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wa-puntos span {
+    animation: none;
+    opacity: 0.6;
+  }
 }

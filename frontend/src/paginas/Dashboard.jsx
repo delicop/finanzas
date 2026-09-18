@@ -83,6 +83,7 @@ export default function Dashboard() {
       <div className="fila-tarjetas">
         <Metrica
           titulo="Balance"
+          principal
           monto={totales.balance}
           nota="Recibido − Pagado − Por cobrar + Por pagar"
         />
@@ -286,9 +287,9 @@ function Contraparte({ c }) {
 // `barra` es una proporción de 0 a 1 para el filete de abajo. Es lo único de
 // esta pantalla que se calcula en el navegador, y se puede: no es una cifra
 // que alguien lea, es el ancho de una línea.
-function Metrica({ titulo, monto, nota, signo, barra }) {
+function Metrica({ titulo, monto, nota, signo, barra, principal = false }) {
   return (
-    <div className="tarjeta metrica">
+    <div className={`tarjeta metrica ${principal ? 'principal' : ''}`}>
       <span>{titulo}</span>
       <strong>
         {signo ? `${signo} ` : ''}

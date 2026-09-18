@@ -103,7 +103,10 @@ export default function Negocio() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Negocio</h1>
+        <div>
+          <span className="kicker">Tablero del mes</span>
+          <h1>Negocio</h1>
+        </div>
 
         {/* En el teléfono las flechas quedan a los lados y el mes en medio:
             "← Mes anterior" y "Mes siguiente →" no caben en una línea de 360px
@@ -155,7 +158,7 @@ export default function Negocio() {
 
             <article className="tarjeta metrica destacada">
               <span>Cobrado</span>
-              <strong className="cifra-negocio positivo">
+              <strong className="cifra-negocio destacado-oro">
                 {formatearMonto(resumen.cobrado)}
               </strong>
               <span className="metrica-nota">

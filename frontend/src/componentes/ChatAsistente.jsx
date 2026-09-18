@@ -295,8 +295,6 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     }
   }
 
-  const estado = enviando ? 'escribiendo...' : 'en línea'
-
   return (
     <section className="wa">
       <header className="wa-cabecera">
@@ -305,12 +303,9 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
             ←
           </button>
         )}
-        <div className="wa-avatar" aria-hidden="true">
-          ✦
-        </div>
-        <div className="wa-contacto">
+        <div className="wa-cabecera-titulo">
+          <span>{sinConfigurar ? 'Sin conectar' : enviando ? 'Consultando' : 'Consulta'}</span>
           <strong>Asistente</strong>
-          <span className={enviando ? 'wa-escribiendo' : ''}>{sinConfigurar ? 'sin conectar' : estado}</span>
         </div>
         {!soloLectura && !sinConfigurar && !cargando && (
           <MenuChat

@@ -65,7 +65,10 @@ export default function Errores() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Errores del servidor</h1>
+        <div>
+          <span className="kicker">Bitácora</span>
+          <h1>Errores del servidor</h1>
+        </div>
         <button className="secundario" onClick={limpiar}>
           Limpiar resueltos
         </button>

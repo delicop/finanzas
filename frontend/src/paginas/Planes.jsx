@@ -63,7 +63,10 @@ export default function Planes() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Planes</h1>
+        <div>
+          <span className="kicker">Lo que les vendes</span>
+          <h1>Planes</h1>
+        </div>
         <button onClick={() => setEditando(nuevo)}>Nuevo plan</button>
       </div>
 
