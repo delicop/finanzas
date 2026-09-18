@@ -310,3 +310,122 @@ insoportable si estás corrigiendo un dígito en la mitad.
 
 La solución es no guardar *la posición* del cursor sino **cuántos dígitos**
 había antes de él: los puntos van y vienen, los dígitos no.
+
+
+## Una deuda no es de todo o nada
+
+`estado` era `pendiente` o `pagado`. En la vida real casi nunca es así: "te doy
+50 esta semana y el resto el otro mes". Sin poder anotar el abono, la única
+salida era marcarlo pagado (y perder la cuenta de lo que falta) o dejarlo
+pendiente (y que el dashboard siguiera diciendo que te deben el total).
+
+Ahora lo que se debe es `monto − suma de abonos`. **El campo `estado` dejó de
+ser la verdad**: es un resumen para poder filtrar e indexar, y se recalcula a
+partir de los abonos dentro de la misma transacción cada vez que uno entra o
+sale. Con una sola puerta, no hay forma de que digan cosas distintas.
+
+Consecuencia: "marcar pagado" no escribe un flag, **registra el abono que
+faltaba**. Y los préstamos que ya estaban cobrados se migraron a un abono por
+el total ([00017](../backend/internal/db/migrations/00017_abonos.sql)). Con dos
+fuentes de verdad (el flag y la tabla) era cuestión de tiempo que se
+contradijeran.
+
+## `medio_cobro_id` cambió de dueño
+
+Guardaba "por dónde te devolvieron el préstamo". Ese dato ahora vive en cada
+abono, que es donde tiene que estar: un préstamo se puede devolver en tres
+pedazos y por tres medios distintos, y una sola columna no puede contarlo.
+
+La columna se quedó, pero ahora es **solo el destino de un traslado**. Un
+`CHECK` lo garantiza. Se prefirió eso a renombrarla porque el rename tocaba
+tests, exportación y frontend sin cambiar nada real.
+
+## Las cuotas son el calendario, no la plata
+
+Un acuerdo de pago se guarda cuota por cuota, y no como una regla ("6 cuotas
+cada 30 días"), porque un acuerdo real se corre: la tercera se pasa para el 15
+y las demás siguen igual. Con una regla calculada no hay dónde anotar esa
+excepción.
+
+Lo que se debe sigue siendo el saldo; las cuotas solo dicen para cuándo se
+quedó de pagar cada pedazo. Una cuota está *cubierta* cuando el acumulado hasta
+ella cabe en lo ya abonado — los abonos las cubren en orden, que es como se
+entiende un acuerdo ("ya voy por la tercera").
+
+## El reparto en cuotas se hace en centavos enteros
+
+La regla del proyecto es que Go nunca hace aritmética con plata. `dinero.Repartir`
+es la excepción, y la diferencia importa: calcula con **enteros de centavos**,
+no con float.
+
+100.000 entre 3 son 3.333.333 centavos y sobra 1: las cuotas salen 33.333,34 /
+33.333,33 / 33.333,33 y suman 100.000 al peso. Con float saldrían tres veces
+33333,333... y el acuerdo no cuadraría con la deuda. Los centavos que sobran
+van en las **primeras** cuotas: si alguien deja de pagar a la mitad, conviene
+que lo ya pagado sea el pedazo más grande.
+
+No se hace en Postgres como el resto de las sumas porque esto no es sumar filas
+de una tabla: es partir un número que ya tenemos.
+
+## Un traslado es UN movimiento, no dos
+
+Pasar plata del efectivo a la cuenta podría ser un "pagué" en el origen y un
+"recibí" en el destino. Con eso, los totales de recibido y pagado se inflarían
+con plata que nunca entró ni salió de verdad, y habría que mantener las dos
+filas sincronizadas al editar o al borrar.
+
+Una sola fila con `medio_pago_id` (de dónde sale) y `medio_cobro_id` (a dónde
+entra) dice lo mismo sin mentirle a ningún total. El balance general no se
+mueve; los dos saldos por medio sí.
+
+## Lo que te prestan SUMA al balance
+
+Sorprende, y por eso está escrito en varios sitios. El balance de esta app
+responde "cuánta plata tengo", no "cuánto valgo": es exactamente la suma de los
+saldos por medio. Si alguien te prestó $500.000, los tienes en el bolsillo —
+aunque los debas.
+
+Lo que se debe se reporta aparte, en `por_pagar`, y en el resumen aparece al
+lado de lo que te deben. Juntarlos en una sola cifra neta escondería justamente
+lo que hay que hacer con cada uno.
+
+## Los recurrentes proponen, no registran
+
+El arriendo no se crea solo el día 1. La app deja una *ocurrencia pendiente* y
+el usuario confirma con un clic, pudiendo corregir el monto antes (que es lo
+que pasa con el recibo de la luz todos los meses).
+
+Si se registrara solo y ese mes no se pagó, o se pagó distinto, el balance
+quedaría mal sin que nadie se entere. **Un gasto inventado es peor que uno
+olvidado**: el olvidado se nota al cuadrar el mes, el inventado no se nota
+nunca.
+
+La idempotencia la da un índice único sobre *(recurrente, fecha)*, igual que en
+los avisos: la tarea puede correr cada hora sin proponer el arriendo veinte
+veces.
+
+## Web Push sin dependencias nuevas
+
+El cifrado de las notificaciones (RFC 8291) y la firma VAPID (RFC 8292) están
+escritos con la librería estándar: `crypto/ecdh`, `crypto/hkdf`, `crypto/aes` y
+el `golang-jwt` que ya estaba. Son unas 150 líneas y evitan meter una
+dependencia más en una app que corre en una Raspberry.
+
+Lo que hace viable esa decisión es la prueba: compara el resultado **byte por
+byte** con el ejemplo del propio RFC. Sin ella, la alternativa honesta habría
+sido usar una librería, porque aquí un error no revienta nada — los avisos
+simplemente no llegan, o llegan y el navegador los descarta en silencio.
+
+## Las contrapartes se agrupan por nombre normalizado
+
+"Carlos", "carlos" y " Carlos " son la misma persona. Agrupar por el texto
+crudo partiría la deuda en pedazos y ninguno de los saldos sería cierto.
+
+No se creó una tabla de personas con su CRUD: por una parte, una contraparte
+puede ser alguien completamente nuevo cada vez, y obligar a registrarla antes
+de anotar un préstamo es fricción en el momento más incómodo. Por otra, el
+formulario sugiere los nombres que ya existen y el asistente los consulta antes
+de proponer, que cubre el caso real sin una pantalla más.
+
+El riesgo que queda es que "Carlos M" y "Carlos" sigan siendo dos. Es un riesgo
+asumido a cambio de no pedir permiso para escribir un nombre.

@@ -6,17 +6,27 @@ import (
 	"time"
 )
 
-// Los tres tipos posibles. Se guardan sin tildes en la base de datos
-// (son valores tecnicos); el frontend los muestra como "Recibí", "Pagué", "Presté".
+// Los tipos posibles. Se guardan sin tildes en la base de datos (son valores
+// tecnicos); el frontend los muestra como "Recibí", "Pagué", "Presté"...
 const (
 	TipoRecibi = "recibi" // entro plata
 	TipoPague  = "pague"  // salio plata
-	TipoPreste = "preste" // salio plata y alguien la debe
+
+	// Las dos deudas, que son simetricas: mismo a_quien, mismo estado, mismos
+	// abonos, mismas cuotas. Lo unico que cambia es de que lado esta la plata.
+	TipoPreste      = "preste"       // salio plata y TE LA DEBEN
+	TipoMePrestaron = "me_prestaron" // entro plata y TU LA DEBES
+
+	// Pasar plata de un medio a otro. No es ni ingreso ni gasto: la misma
+	// plata cambia de bolsillo. Sale por medio_pago_id y entra por
+	// medio_cobro_id, y el balance general no se mueve.
+	TipoTraslado = "traslado"
 )
 
 const (
-	EstadoPendiente = "pendiente"
-	EstadoPagado    = "pagado"
+	EstadoPendiente = "pendiente" // no ha abonado nada
+	EstadoParcial   = "parcial"   // abono algo, falta el resto
+	EstadoPagado    = "pagado"    // saldado
 )
 
 // FormatoFecha es el formato ISO que usa toda la API (YYYY-MM-DD).
@@ -27,13 +37,16 @@ type Movimiento struct {
 	CategoriaID     int64  `json:"categoria_id"`
 	CategoriaNombre string `json:"categoria_nombre"`
 
-	// Medio de pago/recaudo: por donde entro o salio la plata.
-	// Es opcional: los movimientos viejos no lo tienen y no siempre se sabe.
+	// Medio de pago/recaudo: por donde entro o salio la plata. En un traslado
+	// es el ORIGEN.
 	MedioPagoID     *int64  `json:"medio_pago_id"`
 	MedioPagoNombre *string `json:"medio_pago_nombre"`
 
-	// Por donde te devolvieron el prestamo. Solo aplica a 'preste' pagado:
-	// prestas en efectivo y te pueden pagar por transferencia.
+	// Solo para los traslados: a que medio ENTRO la plata.
+	//
+	// Antes esta columna guardaba "por donde te devolvieron el prestamo". Ese
+	// dato ahora vive en cada abono, que es donde tiene que estar: un prestamo
+	// se puede devolver en tres pedazos y por tres medios distintos.
 	MedioCobroID     *int64  `json:"medio_cobro_id"`
 	MedioCobroNombre *string `json:"medio_cobro_nombre"`
 
@@ -46,13 +59,22 @@ type Movimiento struct {
 	Descripcion string `json:"descripcion"`
 
 	// Punteros para que el JSON muestre null (y no "") cuando el tipo
-	// no es 'preste' y estos campos no aplican.
+	// no es una deuda y estos campos no aplican.
 	AQuien *string `json:"a_quien"`
 	Estado *string `json:"estado"`
 
-	// CobrarEl es el dia en que quedaron de devolver el prestamo (AAAA-MM-DD).
-	// Opcional, y solo para 'preste'. Ese dia la app avisa.
+	// CobrarEl es el dia acordado: cuando te devuelven (preste) o cuando te
+	// toca pagar (me_prestaron). Opcional, AAAA-MM-DD. Ese dia la app avisa.
 	CobrarEl *string `json:"cobrar_el"`
+
+	// Lo que ya se abono y lo que falta. Los calcula Postgres sumando la tabla
+	// de abonos; en un movimiento que no es deuda van en "0.00".
+	Abonado string `json:"abonado"`
+	Saldo   string `json:"saldo"`
+	Abonos  int    `json:"abonos"`
+
+	// Cuantas cuotas tiene el acuerdo de pago (0 = no hay acuerdo).
+	Cuotas int `json:"cuotas"`
 
 	Factura *Factura `json:"factura"`
 
@@ -71,16 +93,36 @@ var (
 	ErrCategoriaInvalida = errors.New("la categoria no existe")
 	ErrSinFactura        = errors.New("el movimiento no tiene factura")
 	ErrYaTieneFactura    = errors.New("el movimiento ya tiene una factura")
-	ErrNoEsPrestamo      = errors.New("solo los movimientos de tipo presté tienen estado")
+	ErrNoEsPrestamo      = errors.New("solo los prestamos tienen estado de pago")
 	ErrMedioInvalido     = errors.New("el medio de pago no existe")
-	ErrCobroAntes        = errors.New("la fecha de cobro no puede ser anterior al préstamo")
+	ErrCobroAntes        = errors.New("la fecha de cobro no puede ser anterior al prestamo")
+	ErrMismoMedio        = errors.New("el origen y el destino del traslado son el mismo medio")
+	ErrAbonoDeMas        = errors.New("el abono es mayor que el saldo")
+	ErrSinSaldo          = errors.New("la deuda ya esta saldada")
 )
 
 // EsTipoValido evita que llegue cualquier string a la base de datos.
 func EsTipoValido(t string) bool {
-	return t == TipoRecibi || t == TipoPague || t == TipoPreste
+	switch t {
+	case TipoRecibi, TipoPague, TipoPreste, TipoMePrestaron, TipoTraslado:
+		return true
+	}
+	return false
 }
 
+// EsDeuda: los dos tipos que llevan a_quien, estado, fecha acordada, abonos y
+// cuotas. Se pregunta en muchos sitios; tenerlo en una funcion evita que
+// alguno se olvide de me_prestaron y deje media funcionalidad sin el otro lado.
+func EsDeuda(t string) bool { return t == TipoPreste || t == TipoMePrestaron }
+
 func EsEstadoValido(e string) bool {
-	return e == EstadoPendiente || e == EstadoPagado
+	return e == EstadoPendiente || e == EstadoParcial || e == EstadoPagado
 }
+
+// Los mensajes de error de tipo y estado se repiten en el handler, en la
+// exportacion y en el asistente. En una constante para que los tres digan lo
+// mismo y para que agregar un tipo no deje mensajes viejos por ahi.
+const (
+	TiposValidosMsg   = "Tipo inválido: usa recibi, pague, preste, me_prestaron o traslado"
+	EstadosValidosMsg = "Estado inválido: usa pagado, parcial o pendiente"
+)

@@ -101,13 +101,29 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | GET    | `/api/movimientos/{id}`          | Detalle                                       |
 | PUT    | `/api/movimientos/{id}`          | Editar                                        |
 | DELETE | `/api/movimientos/{id}`          | Eliminar (borra también su factura del disco) |
-| PATCH  | `/api/movimientos/{id}/estado`   | Marcar un préstamo como pagado/pendiente (y por dónde te pagaron) |
+| PATCH  | `/api/movimientos/{id}/estado`   | Saldar una deuda o volverla a pendiente (y por dónde se movió) |
+| GET    | `/api/movimientos/{id}/abonos`   | Los pagos parciales de una deuda              |
+| POST   | `/api/movimientos/{id}/abonos`   | Registrar un abono                            |
+| DELETE | `/api/movimientos/{id}/abonos/{abonoID}` | Deshacer un abono                     |
+| GET    | `/api/movimientos/{id}/cuotas`   | El acuerdo de pago, con qué cuota está cubierta |
+| PUT    | `/api/movimientos/{id}/cuotas`   | Reemplazar el acuerdo entero                  |
+| DELETE | `/api/movimientos/{id}/cuotas`   | Borrar el acuerdo                             |
 | POST   | `/api/movimientos/{id}/factura`  | Adjuntar factura (multipart, campo `factura`) |
 | GET    | `/api/movimientos/{id}/factura`  | Descargar/ver la factura                      |
 | DELETE | `/api/movimientos/{id}/factura`  | Quitar la factura                             |
-| GET    | `/api/dashboard`                 | Resumen: totales, saldo por medio de pago, por categoría y préstamos pendientes |
-| GET    | `/api/notificaciones`            | Tus avisos (resumen semanal, préstamos sin cobrar) |
+| GET    | `/api/dashboard`                 | Resumen: totales, saldo por medio de pago, por categoría y cuentas con cada quien |
+| GET    | `/api/recurrentes`               | Los gastos e ingresos que se repiten          |
+| POST   | `/api/recurrentes`               | Crear una plantilla                           |
+| PUT    | `/api/recurrentes/{id}`          | Editar o pausar                               |
+| DELETE | `/api/recurrentes/{id}`          | Eliminar la plantilla (no los movimientos)    |
+| GET    | `/api/recurrentes/pendientes`    | Lo que toca confirmar                         |
+| POST   | `/api/recurrentes/pendientes/{id}/confirmar` | Crear el movimiento               |
+| DELETE | `/api/recurrentes/pendientes/{id}` | Descartar ("este mes no")                   |
+| GET    | `/api/notificaciones`            | Tus avisos (resumen semanal, deudas sin mover) |
 | POST   | `/api/notificaciones/leidas`     | Marcarlos como leídos                         |
+| GET    | `/api/push`                      | Llave pública y dispositivos suscritos        |
+| POST   | `/api/push`                      | Recibir avisos en este navegador              |
+| DELETE | `/api/push`                      | Dejar de recibirlos (`?endpoint=...`)         |
 | GET    | `/api/agente`                    | Tu conversación con el asistente              |
 | POST   | `/api/agente/mensajes`           | Escribirle al asistente                       |
 | DELETE | `/api/agente`                    | Borrar la conversación y empezar de cero      |
@@ -130,8 +146,13 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | DELETE | `/api/admin/pagos/{id}`          | *(admin)* Deshacer un cobro                   |
 
 Filtros de `/api/movimientos`: `categoria_id`, `medio_pago_id`, `tipo`
-(`recibi`/`pague`/`preste`), `estado` (`pendiente`/`pagado`), `desde`, `hasta`
-(AAAA-MM-DD), `q` (texto en descripción o persona), `limite` (máx. 200), `offset`.
+(`recibi`/`pague`/`preste`/`me_prestaron`/`traslado`), `estado`
+(`pendiente`/`parcial`/`pagado`), `a_quien` (la contraparte exacta), `desde`,
+`hasta` (AAAA-MM-DD), `q` (texto en descripción o persona), `limite` (máx. 200),
+`offset`.
+
+Las rutas de `/api/push` **solo existen** si el servidor tiene llaves VAPID
+configuradas; si no, responden 404 y la app no ofrece activar los avisos.
 
 ### Categorías y medios de pago son dos listas distintas
 
@@ -242,57 +263,111 @@ Formato de error uniforme:
 { "error": "Datos invalidos", "campos": { "monto": "el monto debe ser mayor que cero" } }
 ```
 
-### Cómo cuenta un préstamo
+### Cómo cuenta una deuda
 
 Prestar y que te devuelvan son dos movimientos de plata que **se anulan**:
-salieron $200.000 y volvieron $200.000. Neto: cero.
-
-| Estado      | ¿Cuenta en "por cobrar"? | Efecto en el balance |
-|-------------|--------------------------|----------------------|
-| `pendiente` | Sí                       | Resta el monto       |
-| `pagado`    | No                       | Cero (salió y volvió)|
+salieron $200.000 y volvieron $200.000. Neto: cero. Con pagos parciales la idea
+es la misma, solo que a pedazos, y por eso todo se calcula sobre el **saldo**:
 
 ```
-balance = recibido − pagado − por_cobrar
+saldo = monto − suma de sus abonos
 ```
 
-Por eso al marcar un préstamo como pagado **el balance sube ese monto**: es plata
-que volvió a tu bolsillo. Lo que *no* se hace es sumarlo además a "recibido",
-porque entonces los mismos $200.000 se contarían dos veces.
+| Tipo | Qué pasa con el saldo | Efecto en el balance |
+|---|---|---|
+| `preste` | Es plata tuya que está afuera | **Resta** |
+| `me_prestaron` | Es plata ajena que tienes | **Suma** |
 
-"Recuperado" (préstamos ya devueltos) se muestra aparte, solo informativo: no
-entra en la fórmula del balance.
+```
+balance = recibido − pagado − por_cobrar + por_pagar
+```
 
-### Prestar y cobrar por medios distintos
+Que lo que te prestaron *sume* sorprende al principio, pero es lo correcto: esa
+plata la tienes en el bolsillo, aunque la debas. Cada abono mueve el balance en
+sentido contrario, porque la plata regresa o se va. Lo que *no* se hace es
+sumarla además a "recibido", porque entonces los mismos pesos se contarían dos
+veces.
 
-Un préstamo guarda **dos** medios:
+Una deuda saldada tiene saldo cero y por lo tanto no mueve nada, sin necesidad
+de mirar ningún flag. "Recuperado" y "abonado" se muestran aparte, solo
+informativos.
 
-- `medio_pago_id` → por dónde salió la plata al prestarla
-- `medio_cobro_id` → por dónde volvió cuando te pagaron
+### El estado no es la verdad
 
-Prestas en efectivo y te pueden devolver por transferencia. Al marcar el
-préstamo como pagado la app pregunta por dónde te pagaron, y el saldo baja en
-un medio y sube en el otro.
+`estado` (`pendiente` / `parcial` / `pagado`) es un **resumen para filtrar**,
+no el dato. La verdad son los abonos, y el estado se recalcula a partir de
+ellos en la misma transacción cada vez que uno entra o sale. Con una sola
+puerta, no puede contradecir a la tabla.
+
+Por eso "marcar pagado" no escribe un flag: **registra el abono que faltaba**.
+Y volver a pendiente borra los abonos — es la única acción destructiva de la
+lista, y por eso pregunta.
+
+### Abonar por medios distintos
+
+Prestas en efectivo y te pueden devolver la mitad por transferencia y el resto
+en efectivo. Cada **abono** guarda su propio medio, que es la única forma de
+que eso quede bien en los saldos. Una sola columna en el movimiento no podría
+contarlo.
+
+### El acuerdo de pago
+
+Una deuda puede tener cuotas con su fecha. Las cuotas son el **calendario, no
+la plata**: lo que se debe sigue siendo el saldo. Los abonos las van cubriendo
+en orden, y el día que una vence sin estar cubierta, llega un aviso.
+
+Se guardan una por una (y no como "6 cuotas cada 30 días") porque un acuerdo
+real se corre: la tercera se pasa para el 15 y las demás siguen igual. Con una
+regla calculada no habría dónde anotar esa excepción.
+
+El reparto lo hace el servidor en **centavos enteros**, nunca con float: las
+partes suman siempre el total exacto, y los centavos que sobran van en las
+primeras cuotas.
+
+### Traslados: la misma plata, otro bolsillo
+
+Pasar del efectivo a la cuenta no es ingreso ni gasto. Es **un solo
+movimiento** de tipo `traslado`, con origen (`medio_pago_id`) y destino
+(`medio_cobro_id`).
+
+Con dos movimientos ("pagué" en uno y "recibí" en el otro) los totales se
+inflarían con plata que nunca entró ni salió, y habría que mantener las dos
+filas sincronizadas al editar o borrar. Así, el balance general no se mueve y
+los dos saldos por medio sí.
 
 ### ¿Dónde está la plata?
 
 El resumen muestra cuánto **tienes** en cada medio de pago:
 
 ```
-Recibí = ingresos por ese medio + préstamos devueltos por ese medio
-Pagué  = gastos por ese medio   + préstamos entregados por ese medio
+Recibí = ingresos + lo que te prestaron + abonos que te hicieron + traslados que entraron
+Pagué  = gastos   + lo que prestaste    + abonos que hiciste     + traslados que salieron
 Tengo  = Recibí − Pagué
 ```
 
-Ahí no aparece "por cobrar" a propósito: un préstamo pendiente no está en
+Ahí no aparece "por cobrar" a propósito: un préstamo con saldo no está en
 ningún medio, está con la persona que se lo llevó.
 
 Incluye una fila **"Sin registrar"** con los movimientos que no tienen medio.
 No es decorativa: sin ella los saldos no sumarían el balance general y no habría
 forma de cuadrar los números.
 
-En la lista, un préstamo pagado se muestra en **+ y verde** (la plata volvió) y
-uno pendiente en **− y ámbar** (la plata está afuera).
+En la lista, un préstamo saldado se muestra en **+ y verde** (la plata volvió)
+y uno con saldo en **− y ámbar** (la plata está afuera). "Me prestaron" es al
+revés: **+ ámbar** mientras la debes (entró, pero no es tuya) y **− rojo** una
+vez pagada. Un traslado va en gris: no suma ni resta.
+
+### Cuentas con cada quien
+
+El resumen agrupa las deudas por persona o negocio y muestra cuánto te debe
+cada quien, cuánto le debes y el **neto**. Se agrupa por el nombre normalizado
+(sin mayúsculas ni espacios de sobra): "Carlos", "carlos" y " Carlos " son la
+misma persona, porque si no el saldo quedaría partido y ninguna mitad sería
+cierta.
+
+Cuando hay deuda en los dos sentidos se muestran las dos cifras y el neto:
+decir solo "te debe 50" cuando además le debes 200 sería cierto y engañoso a la
+vez.
 
 ## Comandos útiles
 
@@ -356,9 +431,15 @@ tar czf facturas.tar.gz backend/uploads/
 
 - [x] Login con JWT, middleware de rutas protegidas
 - [x] Categorías (CRUD)
-- [x] Movimientos (recibí / pagué / presté) + adjuntar factura
+- [x] Movimientos (recibí / pagué / presté / me prestaron / traslado) + adjuntar factura
 - [x] Dashboard (resumen por categoría, total prestado pendiente)
-- [x] Marcar préstamo pagado desde la lista (sin abrir el formulario)
+- [x] Marcar deuda saldada desde la lista (sin abrir el formulario)
+- [x] Traslados entre medios de pago (no cuentan como ingreso ni gasto)
+- [x] Deudas propias: lo que **tú** debes, con las mismas reglas
+- [x] Pagos parciales (abonos) y acuerdos de pago por cuotas
+- [x] Cuentas por persona o negocio, con el neto en los dos sentidos
+- [x] Gastos e ingresos que se repiten: la app los propone y tú confirmas
+- [x] Recordatorio de cobro por WhatsApp (arma el mensaje, tú decides si lo mandas)
 - [x] Interfaz adaptada a teléfono
 - [x] Medios de pago/recaudo (CRUD propio + campo en el movimiento)
 - [x] Saldo por medio de pago en el resumen ("¿dónde está la plata?")
@@ -375,7 +456,9 @@ tar czf facturas.tar.gz backend/uploads/
 - [x] Asistente: preguntarle por tus movimientos y saldos
 - [x] Asistente: registrar movimientos hablando (con confirmación)
 - [x] Asistente: resúmenes y avisos automáticos
-- [x] Tests automáticos del dominio (dinero, auth, movimientos, agente, avisos)
+- [x] Asistente: registrar abonos y reconocer con quién es cada deuda
+- [x] Avisos al celular con la app cerrada (Web Push)
+- [x] Tests automáticos del dominio (dinero, auth, movimientos, agente, avisos, push, recurrentes)
 - [ ] Ajustes finales de despliegue
 
 ## Lo que falta

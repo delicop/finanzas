@@ -369,7 +369,10 @@ func sumarSaldos(r *movimientos.Resumen) string {
 	return strings.Join(partes, " + ")
 }
 
-func TestVolverAPendienteBorraElMedioDeCobro(t *testing.T) {
+// Cobrar un préstamo ya no escribe un flag: registra un abono por lo que
+// faltaba. Volver a pendiente borra esos abonos, y el saldo vuelve a ser el
+// monto completo.
+func TestVolverAPendienteBorraLosAbonos(t *testing.T) {
 	e := nuevoEntorno(t)
 	ctx := context.Background()
 
@@ -382,17 +385,159 @@ func TestVolverAPendienteBorraElMedioDeCobro(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CambiarEstado: %v", err)
 	}
-	if cobrado.MedioCobroID == nil {
-		t.Fatal("no se guardó por dónde pagaron")
+	if cobrado.Abonos != 1 {
+		t.Fatalf("saldar debió dejar un abono, dejó %d", cobrado.Abonos)
+	}
+	if cobrado.Saldo != "0.00" {
+		t.Errorf("saldo después de cobrar = %s, se esperaba 0.00", cobrado.Saldo)
+	}
+
+	abonos, err := e.store.ListarAbonos(ctx, e.usuarioID, p.ID)
+	if err != nil {
+		t.Fatalf("ListarAbonos: %v", err)
+	}
+	if len(abonos) != 1 || abonos[0].MedioID == nil || *abonos[0].MedioID != e.banco {
+		t.Errorf("no quedó registrado por dónde pagaron: %+v", abonos)
 	}
 
 	pendiente, err := e.store.CambiarEstado(ctx, e.usuarioID, p.ID, movimientos.EstadoPendiente, nil)
 	if err != nil {
 		t.Fatalf("CambiarEstado: %v", err)
 	}
-	if pendiente.MedioCobroID != nil {
-		t.Error("al volver a pendiente, el medio de cobro debe quedar vacío: la plata no ha vuelto")
+	if pendiente.Abonos != 0 || pendiente.Saldo != "100000.00" {
+		t.Errorf("al volver a pendiente debe quedar sin abonos y con el saldo completo: abonos=%d saldo=%s",
+			pendiente.Abonos, pendiente.Saldo)
 	}
+}
+
+// Un abono parcial deja la deuda en "parcial" y baja el saldo, sin tocar el
+// monto original.
+func TestAbonoParcial(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	p := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "200000", Fecha: "2026-09-01",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.efectivo),
+	})
+
+	con, err := e.store.Abonar(ctx, e.usuarioID, p.ID, movimientos.AbonoDatos{
+		Monto: "50000", Fecha: "2026-09-10", MedioID: ptr(e.banco),
+	})
+	if err != nil {
+		t.Fatalf("Abonar: %v", err)
+	}
+	if con.Estado == nil || *con.Estado != movimientos.EstadoParcial {
+		t.Errorf("estado = %v, se esperaba parcial", con.Estado)
+	}
+	if con.Saldo != "150000.00" || con.Abonado != "50000.00" {
+		t.Errorf("saldo = %s, abonado = %s; se esperaba 150000.00 y 50000.00", con.Saldo, con.Abonado)
+	}
+	if con.Monto != "200000.00" {
+		t.Errorf("el monto original no se debe tocar: %s", con.Monto)
+	}
+
+	// El dashboard cuenta el SALDO, no el monto: si contara el monto, el
+	// "te deben" no bajaría nunca aunque fueran pagando.
+	r := e.resumen(t)
+	if r.Totales.PorCobrar != "150000.00" {
+		t.Errorf("por_cobrar = %s, se esperaba 150000.00", r.Totales.PorCobrar)
+	}
+
+	// Abonar más de lo que falta es un error, no un saldo negativo.
+	if _, err := e.store.Abonar(ctx, e.usuarioID, p.ID, movimientos.AbonoDatos{
+		Monto: "150001", Fecha: "2026-09-11",
+	}); !errors.Is(err, movimientos.ErrAbonoDeMas) {
+		t.Errorf("abonar de más devolvió %v, se esperaba ErrAbonoDeMas", err)
+	}
+
+	// El que completa el saldo la deja pagada.
+	saldada, err := e.store.Abonar(ctx, e.usuarioID, p.ID, movimientos.AbonoDatos{
+		Monto: "150000", Fecha: "2026-09-12", MedioID: ptr(e.efectivo),
+	})
+	if err != nil {
+		t.Fatalf("Abonar (el último): %v", err)
+	}
+	if saldada.Estado == nil || *saldada.Estado != movimientos.EstadoPagado {
+		t.Errorf("estado = %v, se esperaba pagado", saldada.Estado)
+	}
+}
+
+// Lo que te prestan a ti entra al bolsillo y suma al balance, aunque lo debas.
+// Es el espejo exacto de prestar.
+func TestDeudaPropiaSumaAlBalance(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoMePrestaron, Monto: "300000", Fecha: "2026-09-01",
+		AQuien: ptr("Negocio 2"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.efectivo),
+	})
+
+	r := e.resumen(t)
+	if r.Totales.PorPagar != "300000.00" {
+		t.Errorf("por_pagar = %s, se esperaba 300000.00", r.Totales.PorPagar)
+	}
+	if r.Totales.Balance != "300000.00" {
+		t.Errorf("balance = %s: la plata prestada está en el bolsillo, aunque se deba", r.Totales.Balance)
+	}
+
+	// Y está en el medio por el que entró.
+	if efectivo := medioLlamado(r, "Efectivo"); efectivo == nil || efectivo.Saldo != "300000.00" {
+		t.Errorf("el saldo en efectivo no refleja lo que le prestaron: %+v", efectivo)
+	}
+
+	// La contraparte sale del lado correcto.
+	if len(r.Contrapartes) != 1 {
+		t.Fatalf("contrapartes = %+v", r.Contrapartes)
+	}
+	c := r.Contrapartes[0]
+	if c.LeDebes != "300000.00" || c.TeDeben != "0.00" || c.Neto != "-300000.00" {
+		t.Errorf("la contraparte quedó del lado equivocado: %+v", c)
+	}
+
+	_ = ctx
+}
+
+// Un traslado mueve los dos saldos por medio y deja el balance general igual.
+func TestTrasladoNoCambiaElBalance(t *testing.T) {
+	e := nuevoEntorno(t)
+
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoRecibi, Monto: "500000", Fecha: "2026-09-01",
+		MedioPagoID: ptr(e.efectivo),
+	})
+	antes := e.resumen(t)
+
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoTraslado, Monto: "200000", Fecha: "2026-09-02",
+		MedioPagoID: ptr(e.efectivo), MedioCobroID: ptr(e.banco),
+	})
+	despues := e.resumen(t)
+
+	if antes.Totales.Balance != despues.Totales.Balance {
+		t.Errorf("el traslado cambió el balance: %s -> %s", antes.Totales.Balance, despues.Totales.Balance)
+	}
+	if despues.Totales.Recibido != "500000.00" || despues.Totales.Pagado != "0.00" {
+		t.Errorf("un traslado no es ingreso ni gasto: recibido=%s pagado=%s",
+			despues.Totales.Recibido, despues.Totales.Pagado)
+	}
+
+	if efectivo := medioLlamado(despues, "Efectivo"); efectivo == nil || efectivo.Saldo != "300000.00" {
+		t.Errorf("saldo en efectivo = %+v, se esperaba 300000.00", efectivo)
+	}
+	if banco := medioLlamado(despues, "Transferencia"); banco == nil || banco.Saldo != "200000.00" {
+		t.Errorf("saldo en Transferencia = %+v, se esperaba 200000.00", banco)
+	}
+}
+
+func medioLlamado(r *movimientos.Resumen, nombre string) *movimientos.ResumenMedio {
+	for i := range r.Medios {
+		if r.Medios[i].Nombre == nombre {
+			return &r.Medios[i]
+		}
+	}
+	return nil
 }
 
 // Nadie puede tocar datos de otro usuario aunque adivine el id (IDOR).
@@ -568,8 +713,8 @@ func TestPrestamoConFechaDeCobro(t *testing.T) {
 		MedioPagoID: ptr(e.efectivo), CobrarEl: ptr("2026-09-12"),
 	})
 	r := e.resumen(t)
-	if len(r.Deudores) != 1 || r.Deudores[0].ProximoCobro == nil || *r.Deudores[0].ProximoCobro != "2026-09-12" {
-		t.Errorf("deudores = %+v", r.Deudores)
+	if len(r.Contrapartes) != 1 || r.Contrapartes[0].ProximaFecha == nil || *r.Contrapartes[0].ProximaFecha != "2026-09-12" {
+		t.Errorf("contrapartes = %+v", r.Contrapartes)
 	}
 
 	// Al volverlo "pagué", la fecha se va con a_quien y estado.

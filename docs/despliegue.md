@@ -162,6 +162,42 @@ sirve `sw.js`, `index.html` y el manifest con `Cache-Control: no-cache` para
 que las versiones nuevas lleguen. Si se cambia la lógica de `sw.js`, subir
 `VERSION` dentro del archivo.
 
+## Avisos al celular (Web Push)
+
+Para que los avisos lleguen con la app cerrada hacen falta dos cosas, y las
+dos son requisito del navegador, no nuestro:
+
+1. **HTTPS.** Web Push no funciona por HTTP (salvo en localhost). Si entras a
+   la Raspberry por IP y sin certificado, el interruptor de avisos **no
+   aparece** — la app funciona igual y los avisos se leen en la campana.
+2. **Llaves VAPID**, que se generan una sola vez:
+
+```bash
+cd backend && go run ./cmd/vapid
+```
+
+Pega las tres líneas que imprime en el `.env` de la Raspberry y reinicia:
+
+```bash
+docker compose up -d backend
+docker compose logs backend | grep push   # "notificaciones push activas"
+```
+
+Si falta una de las tres variables, el backend **no arranca** y dice cuál
+falta: configurar solo una casi siempre significa que se copió mal el `.env`, y
+fallar al arrancar es mejor que quedarse esperando avisos que nunca van a
+salir.
+
+Después, cada quien activa los avisos en **su** dispositivo con el botón 📴 de
+la barra superior. El celular y el computador son dos suscripciones distintas.
+
+En iPhone hay que instalar la app primero (Compartir › *Agregar a inicio*):
+Safari no permite push desde una pestaña normal.
+
+Si algún día se cambian las llaves, todos los que ya tenían los avisos
+activados tienen que volver a activarlos. No es grave, pero no se hace sin
+motivo.
+
 ## Si algo falla
 
 ```bash

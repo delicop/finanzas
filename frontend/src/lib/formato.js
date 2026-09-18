@@ -70,55 +70,115 @@ export function finDeMes(iso) {
   return `${anio}-${String(mes).padStart(2, '0')}-${String(ultimo).padStart(2, '0')}`
 }
 
-// Cuánto falta para una fecha de cobro, dicho como lo diría una persona.
-// Devuelve { texto, tono } con tono 'vencido', 'hoy' o 'pronto' (o null si
-// falta más de una semana, que no merece resaltarse).
-export function faltaParaCobrar(iso, hoy = hoyISO()) {
+// Días entre hoy y una fecha. Negativo si ya pasó.
+//
+// Date.UTC para contar días exactos: con fechas locales, un cambio de horario
+// puede hacer que dos días den 0,96 y se redondee mal.
+export function diasHasta(iso, hoy = hoyISO()) {
   const [a1, m1, d1] = hoy.split('-').map(Number)
   const [a2, m2, d2] = iso.split('-').map(Number)
-  // Date.UTC para contar días exactos, sin horas de verano de por medio.
-  const dias = Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86400000)
+  return Math.round((Date.UTC(a2, m2 - 1, d2) - Date.UTC(a1, m1 - 1, d1)) / 86400000)
+}
+
+// Cuánto falta para una fecha acordada, dicho como lo diría una persona.
+//
+// `propio` invierte la frase: cuando la deuda es tuya no es "te paga el
+// viernes" sino "le pagas el viernes". Es la misma fecha y el mismo color,
+// pero la acción es la contraria y decirla al revés confunde de verdad.
+//
+// Devuelve { texto, tono } con tono 'vencido', 'hoy' o 'pronto' (o null si
+// falta más de una semana, que no merece resaltarse).
+export function faltaParaCobrar(iso, hoy = hoyISO(), propio = false) {
+  const dias = diasHasta(iso, hoy)
+  const verbo = propio ? 'le pagas' : 'te paga'
 
   if (dias < 0) {
     const n = -dias
     return { texto: `venció hace ${n} día${n === 1 ? '' : 's'}`, tono: 'vencido' }
   }
-  if (dias === 0) return { texto: 'te paga hoy', tono: 'hoy' }
-  if (dias === 1) return { texto: 'te paga mañana', tono: 'pronto' }
-  if (dias <= 7) return { texto: `te paga en ${dias} días`, tono: 'pronto' }
-  return { texto: `te paga el ${formatearFecha(iso)}`, tono: null }
+  if (dias === 0) return { texto: `${verbo} hoy`, tono: 'hoy' }
+  if (dias === 1) return { texto: `${verbo} mañana`, tono: 'pronto' }
+  if (dias <= 7) return { texto: `${verbo} en ${dias} días`, tono: 'pronto' }
+  return { texto: `${verbo} el ${formatearFecha(iso)}`, tono: null }
 }
 
 export const ETIQUETAS_TIPO = {
   recibi: 'Recibí',
   pague: 'Pagué',
   preste: 'Presté',
+  me_prestaron: 'Me prestaron',
+  traslado: 'Traslado',
 }
 
 export const ETIQUETAS_ESTADO = {
   pendiente: 'Pendiente',
-  pagado: 'Pagado',
+  parcial: 'Abonado a medias',
+  pagado: 'Saldado',
 }
 
-// Decide como se ve el monto de un movimiento en la lista.
+// Los dos tipos que son una deuda: llevan a quién, estado, abonos y cuotas.
+// Lo único que cambia entre ellos es de qué lado está la plata.
+export function esDeuda(movimiento) {
+  return movimiento.tipo === 'preste' || movimiento.tipo === 'me_prestaron'
+}
+
+// Si la deuda es TUYA (te prestaron a ti). Cambia casi todos los textos.
+export function esDeudaPropia(movimiento) {
+  return movimiento.tipo === 'me_prestaron'
+}
+
+// Decide cómo se ve el monto de un movimiento en la lista.
 //
-// La regla que no es obvia: un préstamo PAGADO se muestra en "+" y en verde,
-// porque esa plata ya volvió a tu bolsillo. Uno pendiente se muestra en "−"
-// y en ámbar: salió y todavía está afuera.
+// Las reglas que no son obvias:
+//  - Un préstamo YA SALDADO se muestra en "+" y en verde: esa plata volvió.
+//    Uno con saldo, en "−" y en ámbar: salió y todavía está afuera.
+//  - "Me prestaron" es al revés: entró plata (por eso "+"), pero la debes,
+//    y por eso va en ámbar y no en verde. Cuando ya la pagaste, sale en "−"
+//    rojo: al final del camino, esa plata se fue.
+//  - Un traslado no suma ni resta: la misma plata cambió de bolsillo.
 export function estiloMonto(movimiento) {
-  const prestamoDevuelto = movimiento.tipo === 'preste' && movimiento.estado === 'pagado'
+  const saldada = movimiento.estado === 'pagado'
 
-  if (movimiento.tipo === 'recibi' || prestamoDevuelto) {
-    return { signo: '+', clase: 'positivo' }
+  switch (movimiento.tipo) {
+    case 'recibi':
+      return { signo: '+', clase: 'positivo' }
+    case 'preste':
+      return saldada ? { signo: '+', clase: 'positivo' } : { signo: '−', clase: 'advertencia' }
+    case 'me_prestaron':
+      return saldada ? { signo: '−', clase: 'negativo' } : { signo: '+', clase: 'advertencia' }
+    case 'traslado':
+      return { signo: '↔', clase: 'neutro' }
+    default:
+      return { signo: '−', clase: 'negativo' }
   }
-  if (movimiento.tipo === 'preste') {
-    return { signo: '−', clase: 'advertencia' }
-  }
-  return { signo: '−', clase: 'negativo' }
 }
 
-export function esPrestamo(movimiento) {
-  return movimiento.tipo === 'preste'
+// El mensaje de WhatsApp para recordar un cobro, ya listo para enviar.
+//
+// Se arma aquí y no en el servidor porque no se manda nada: se abre WhatsApp
+// con el texto escrito y la persona decide si lo envía, a quién y cuándo. La
+// app nunca le escribe a nadie por su cuenta.
+export function mensajeDeCobro(movimiento) {
+  const quien = (movimiento.a_quien ?? '').trim()
+  const saldo = formatearMonto(movimiento.saldo ?? movimiento.monto)
+  const concepto = (movimiento.descripcion ?? '').trim()
+
+  let texto = `Hola${quien ? ' ' + quien : ''}, `
+  texto += `te escribo para recordarte los ${saldo}`
+  if (concepto) texto += ` de ${concepto}`
+  texto += ` que quedaron pendientes desde el ${formatearFecha(movimiento.fecha)}`
+  if (movimiento.cobrar_el) {
+    texto += `. Habíamos quedado para el ${formatearFecha(movimiento.cobrar_el)}`
+  }
+  texto += '. ¿Me confirmas cuándo puedes? Gracias.'
+  return texto
+}
+
+// El enlace que abre WhatsApp con el mensaje escrito. Sin número: lo elige la
+// persona en su lista de contactos, que es más rápido y evita que la app
+// guarde teléfonos que nadie le pidió guardar.
+export function enlaceWhatsApp(texto) {
+  return `https://wa.me/?text=${encodeURIComponent(texto)}`
 }
 
 /* ---------------------------------------------------------------------------

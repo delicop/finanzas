@@ -46,6 +46,11 @@ services:
       LLM_MODELO: ${LLM_MODELO:-deepseek-chat}
       LLM_TIMEOUT_SEGUNDOS: ${LLM_TIMEOUT_SEGUNDOS:-25}
       LLM_LIMITE_DIARIO: ${LLM_LIMITE_DIARIO:-50}
+      # Los avisos al celular. Sin las tres, el backend arranca sin push y los
+      # avisos se quedan en la campana de la app.
+      PUSH_VAPID_PUBLIC: ${PUSH_VAPID_PUBLIC:-}
+      PUSH_VAPID_PRIVATE: ${PUSH_VAPID_PRIVATE:-}
+      PUSH_CONTACTO: ${PUSH_CONTACTO:-}
     ports:
       - "${API_PORT_HOST:-8080}:8080"
     volumes:

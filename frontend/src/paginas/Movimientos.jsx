@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { categoriasApi, mediosApi, movimientosApi } from '../lib/api'
+import { categoriasApi, dashboardApi, mediosApi, movimientosApi } from '../lib/api'
 import {
   ETIQUETAS_ESTADO,
   ETIQUETAS_TIPO,
+  enlaceWhatsApp,
+  esDeuda,
+  esDeudaPropia,
   estiloMonto,
   formatearFecha,
   formatearMonto,
+  mensajeDeCobro,
 } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
 import { useAlGuardarMovimiento } from '../lib/eventos'
@@ -14,6 +18,7 @@ import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import VisorFactura from '../componentes/VisorFactura'
 import ModalCobro from '../componentes/ModalCobro'
+import ModalAbonos from '../componentes/ModalAbonos'
 import ModalExportar from '../componentes/ModalExportar'
 import FechaCobro from '../componentes/FechaCobro'
 
@@ -38,9 +43,15 @@ export default function Movimientos() {
   // Id del movimiento cuyo estado se está guardando, para desactivar su botón
   // y que un doble toque no mande dos peticiones.
   const [cambiandoEstado, setCambiandoEstado] = useState(null)
-  // Préstamo que se está marcando como pagado (abre el modal del medio de cobro).
+  // Deuda que se está saldando (abre el modal del medio).
   const [cobrando, setCobrando] = useState(null)
+  // Deuda cuyos abonos y acuerdo se están mirando.
+  const [abonando, setAbonando] = useState(null)
   const [exportando, setExportando] = useState(false)
+  // Los nombres con los que ya hay cuentas, para sugerirlos en el formulario.
+  // Sin sugerencias, "Carlos" y "Carlos M" terminan siendo dos deudores
+  // distintos con la mitad del saldo cada uno.
+  const [contrapartes, setContrapartes] = useState([])
 
   const filtros = {
     categoria_id: params.get('categoria_id') ?? '',
@@ -85,6 +96,11 @@ export default function Movimientos() {
   useEffect(() => {
     categoriasApi.listar().then(setCategorias).catch(() => {})
     mediosApi.listar().then(setMedios).catch(() => {})
+    dashboardApi
+      .resumen()
+      .then((r) => setContrapartes((r.contrapartes ?? []).map((c) => c.nombre)))
+      // Si falla, el formulario funciona igual: se escribe el nombre a mano.
+      .catch(() => {})
   }, [])
 
   function cambiarFiltro(clave, valor) {
@@ -112,13 +128,26 @@ export default function Movimientos() {
     }
   }
 
-  // Marcar pagado / pendiente desde la lista, sin abrir el formulario.
+  // Saldar / volver a pendiente desde la lista, sin abrir el formulario.
   //
-  // Marcar PAGADO abre antes un modal para saber por dónde te pagaron:
-  // puede ser un medio distinto al que usaste para prestar.
-  // Volver a PENDIENTE no pregunta nada: la plata simplemente no ha vuelto.
+  // SALDAR abre antes un modal para saber por dónde se movió la plata: puede
+  // ser un medio distinto al que se usó para prestar. Por dentro no marca un
+  // flag, registra el abono que faltaba.
+  //
+  // VOLVER A PENDIENTE borra todos los abonos, y por eso se pregunta cuando
+  // hay varios: es la única acción de esta pantalla que destruye datos que el
+  // usuario escribió a mano.
   function alternarEstado(m) {
-    if (m.estado === 'pagado') {
+    if (m.estado === 'pagado' || m.estado === 'parcial') {
+      const hayVarios = m.abonos > 1
+      if (
+        hayVarios &&
+        !confirm(
+          `Esta deuda tiene ${m.abonos} abonos registrados. Volverla a pendiente los borra todos. ¿Seguir?`,
+        )
+      ) {
+        return
+      }
       guardarEstado(m, 'pendiente', 0)
       return
     }
@@ -149,6 +178,7 @@ export default function Movimientos() {
   const acciones = {
     onEditar: setEditando,
     onEliminar: eliminar,
+    onAbonar: setAbonando,
     // Revisando la cuenta de otro, la lista se vuelve un informe: se puede
     // abrir una factura, pero no marcar pagado, ni editar, ni borrar.
     soloLectura,
@@ -222,6 +252,8 @@ export default function Movimientos() {
                 <option value="recibi">Recibí</option>
                 <option value="pague">Pagué</option>
                 <option value="preste">Presté</option>
+                <option value="me_prestaron">Me prestaron</option>
+                <option value="traslado">Traslados</option>
               </select>
             </div>
 
@@ -250,7 +282,8 @@ export default function Movimientos() {
               >
                 <option value="">Todos</option>
                 <option value="pendiente">Pendiente</option>
-                <option value="pagado">Pagado</option>
+                <option value="parcial">Abonado a medias</option>
+                <option value="pagado">Saldado</option>
               </select>
             </div>
 
@@ -369,6 +402,7 @@ export default function Movimientos() {
           movimiento={editando}
           categorias={categorias}
           medios={medios}
+          contrapartes={contrapartes}
           onCerrar={() => setEditando(null)}
           onGuardado={async () => {
             setEditando(null)
@@ -387,6 +421,20 @@ export default function Movimientos() {
           medios={medios}
           onCerrar={() => setCobrando(null)}
           onConfirmar={(medioCobroID) => guardarEstado(cobrando, 'pagado', medioCobroID)}
+        />
+      )}
+
+      {abonando && (
+        <ModalAbonos
+          movimiento={abonando}
+          medios={medios}
+          onCerrar={() => setAbonando(null)}
+          onCambio={(actualizada) => {
+            // La fila de atrás se actualiza sola: si no, la lista quedaría
+            // mostrando el saldo de antes del abono.
+            setAbonando(actualizada)
+            setMovimientos((prev) => prev.map((x) => (x.id === actualizada.id ? actualizada : x)))
+          }}
         />
       )}
 
@@ -411,24 +459,53 @@ function Monto({ m }) {
 }
 
 // Acciones PRINCIPALES: las que se usan seguido y valen un botón grande.
-// "Marcar pagado" (solo si el préstamo está pendiente) y "Factura".
-function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, cambiandoEstado, soloLectura }) {
-  const pendiente = m.tipo === 'preste' && m.estado === 'pendiente' && !soloLectura
+//
+// En una deuda con saldo son tres, y el orden importa: "Abonos" primero
+// porque un pago parcial es lo más común, "Saldar" después, y el recordatorio
+// de WhatsApp al final (solo cuando te deben a ti: no tendría sentido
+// recordarte a ti mismo lo que debes).
+function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, onAbonar, cambiandoEstado, soloLectura }) {
+  const conSaldo = esDeuda(m) && m.estado !== 'pagado' && !soloLectura
+  const propia = esDeudaPropia(m)
   const ocupado = cambiandoEstado === m.id
 
-  if (!pendiente && !m.factura) return null
+  const hayAlgo = conSaldo || m.factura || (esDeuda(m) && m.abonos > 0 && !soloLectura)
+  if (!hayAlgo) return null
 
   return (
     <div className="acciones-principales">
-      {pendiente && (
+      {esDeuda(m) && !soloLectura && (
+        <button
+          className="principal-abonar"
+          onClick={() => onAbonar(m)}
+          title={propia ? 'Registrar un pago o armar el acuerdo' : 'Registrar un abono o armar el acuerdo'}
+        >
+          Abonos{m.abonos > 0 ? ` (${m.abonos})` : ''}
+        </button>
+      )}
+      {conSaldo && (
         <button
           className="principal-pagar"
           disabled={ocupado}
           onClick={() => onAlternarEstado(m)}
-          title="Marcar que ya te pagaron"
+          title={propia ? 'Marcar que ya se la pagaste toda' : 'Marcar que ya te pagaron todo'}
         >
-          {ocupado ? 'Guardando...' : '✓ Marcar pagado'}
+          {ocupado ? 'Guardando...' : propia ? '✓ Ya le pagué' : '✓ Ya me pagó'}
         </button>
+      )}
+      {conSaldo && !propia && (
+        // Un enlace y no un botón: abre WhatsApp con el mensaje escrito y es
+        // la persona quien decide a quién se lo manda y si lo manda. La app
+        // nunca le escribe a nadie por su cuenta.
+        <a
+          className="principal-recordar"
+          href={enlaceWhatsApp(mensajeDeCobro(m))}
+          target="_blank"
+          rel="noreferrer"
+          title="Abrir WhatsApp con el recordatorio escrito"
+        >
+          Recordar
+        </a>
       )}
       {m.factura && (
         <button className="principal-factura" onClick={() => onVerFactura(m)}>
@@ -442,7 +519,9 @@ function AccionesPrincipales({ m, onVerFactura, onAlternarEstado, cambiandoEstad
 // Acciones SECUNDARIAS: se usan poco, así que van discretas a un lado.
 // "Marcar pendiente" vive aquí porque es deshacer, no la acción del día a día.
 function AccionesSecundarias({ m, onEditar, onEliminar, onAlternarEstado, cambiandoEstado, soloLectura }) {
-  const yaPagado = m.tipo === 'preste' && m.estado === 'pagado'
+  // "Volver a pendiente" solo aparece cuando hay algo que deshacer, y deshace
+  // de verdad: borra los abonos.
+  const conAbonos = esDeuda(m) && m.abonos > 0
   const ocupado = cambiandoEstado === m.id
 
   // Sin acciones que ofrecer, el contenedor tampoco: si no, quedan huecos
@@ -451,9 +530,9 @@ function AccionesSecundarias({ m, onEditar, onEliminar, onAlternarEstado, cambia
 
   return (
     <div className="acciones-secundarias">
-      {yaPagado && (
+      {conAbonos && (
         <button className="menor" disabled={ocupado} onClick={() => onAlternarEstado(m)}>
-          {ocupado ? '...' : 'Marcar pendiente'}
+          {ocupado ? '...' : 'Volver a pendiente'}
         </button>
       )}
       <button className="menor" onClick={() => onEditar(m)}>
@@ -466,17 +545,48 @@ function AccionesSecundarias({ m, onEditar, onEliminar, onAlternarEstado, cambia
   )
 }
 
-function DetallePrestamo({ m }) {
-  if (m.tipo !== 'preste') return null
+// El renglón de detalle de una deuda o de un traslado.
+//
+// Muestra el SALDO y no el monto cuando ya hay abonos: si mostrara el monto,
+// una deuda de 500.000 con 400.000 devueltos seguiría gritando 500.000, que
+// es justamente lo que los pagos parciales vienen a arreglar.
+function DetalleMovimiento({ m }) {
+  if (m.tipo === 'traslado') {
+    return (
+      <div className="sub">
+        <span className="traslado-ruta">
+          {m.medio_pago_nombre} → {m.medio_cobro_nombre}
+        </span>
+        <span className="tenue">no cambia el total</span>
+      </div>
+    )
+  }
+
+  if (!esDeuda(m)) return null
+
+  const propia = esDeudaPropia(m)
+  const conSaldo = m.estado !== 'pagado'
+
   return (
     <div className="sub">
-      {m.a_quien}
+      <span className="deuda-quien">
+        {propia ? `le debes a ${m.a_quien}` : m.a_quien}
+      </span>
       <span className={`estado estado-${m.estado}`}>{ETIQUETAS_ESTADO[m.estado]}</span>
-      {/* La fecha acordada solo importa mientras no han pagado. */}
-      {m.estado === 'pendiente' && <FechaCobro fecha={m.cobrar_el} conFecha />}
-      {m.medio_cobro_nombre && (
-        <span className="cobrado-por">te pagó por {m.medio_cobro_nombre}</span>
+
+      {m.abonos > 0 && conSaldo && (
+        <span className="saldo-pendiente">
+          faltan {formatearMonto(m.saldo)} de {formatearMonto(m.monto)}
+        </span>
       )}
+      {m.cuotas > 0 && (
+        <span className="tenue">
+          {m.cuotas} cuota{m.cuotas === 1 ? '' : 's'}
+        </span>
+      )}
+
+      {/* La fecha acordada solo importa mientras quede saldo. */}
+      {conSaldo && <FechaCobro fecha={m.cobrar_el} conFecha propia={propia} />}
     </div>
   )
 }
@@ -497,7 +607,7 @@ function FilaMovimiento(props) {
       </td>
       <td>
         {m.descripcion || <span className="tenue">—</span>}
-        <DetallePrestamo m={m} />
+        <DetalleMovimiento m={m} />
       </td>
       <td className="num nowrap">
         <Monto m={m} />
@@ -535,7 +645,7 @@ function TarjetaMovimiento(props) {
         <Monto m={m} />
       </div>
 
-      <DetallePrestamo m={m} />
+      <DetalleMovimiento m={m} />
 
       <div className="tarjeta-mov-acciones">
         <AccionesPrincipales {...props} />

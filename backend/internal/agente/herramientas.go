@@ -39,16 +39,18 @@ func NuevoCatalogo(m *movimientos.Store, c *categorias.Store, me *medios.Store) 
 // Los nombres son los que ve el modelo; tambien son los que la app le muestra
 // al usuario debajo de la respuesta.
 const (
-	HerramientaResumen     = "resumen"
-	HerramientaMovimientos = "listar_movimientos"
-	HerramientaCategorias  = "listar_categorias"
-	HerramientaMedios      = "listar_medios_pago"
+	HerramientaResumen      = "resumen"
+	HerramientaMovimientos  = "listar_movimientos"
+	HerramientaCategorias   = "listar_categorias"
+	HerramientaMedios       = "listar_medios_pago"
+	HerramientaContrapartes = "listar_contrapartes"
 
 	// Las dos que preparan una escritura. Ojo con el nombre: "proponer", no
 	// "crear". No escriben nada — dejan una tarjeta para que el usuario
 	// confirme —, y el nombre es lo primero que lee el modelo.
 	HerramientaProponerMovimiento = "proponer_movimiento"
 	HerramientaProponerPagado     = "proponer_marcar_pagado"
+	HerramientaProponerAbono      = "proponer_abono"
 )
 
 const (
@@ -69,9 +71,9 @@ func (c *Catalogo) Esquemas() []Herramienta {
 	return []Herramienta{
 		{
 			Nombre: HerramientaResumen,
-			Descripcion: "Devuelve el resumen financiero del usuario: totales (recibido, pagado, por cobrar, balance), " +
-				"el saldo que tiene en cada medio de pago, el desglose por categoría y quién le debe plata. " +
-				"Úsala para cualquier pregunta sobre cuánto tiene, cuánto lleva gastado o quién le debe.",
+			Descripcion: "Devuelve el resumen financiero del usuario: totales (recibido, pagado, por cobrar, por pagar, balance), " +
+				"el saldo que tiene en cada medio de pago, el desglose por categoría, quién le debe plata y a quién le debe él. " +
+				"Úsala para cualquier pregunta sobre cuánto tiene, cuánto lleva gastado, quién le debe o cuánto debe.",
 			Parametros: objeto(nil),
 		},
 		{
@@ -82,13 +84,14 @@ func (c *Catalogo) Esquemas() []Herramienta {
 			Parametros: objeto(map[string]any{
 				"tipo": map[string]any{
 					"type":        "string",
-					"enum":        []string{movimientos.TipoRecibi, movimientos.TipoPague, movimientos.TipoPreste},
-					"description": "recibi = entró plata, pague = salió plata, preste = se la llevó alguien y la debe",
+					"enum":        tiposDeMovimiento,
+					"description": descripcionDeTipos,
 				},
 				"estado": map[string]any{
-					"type":        "string",
-					"enum":        []string{movimientos.EstadoPendiente, movimientos.EstadoPagado},
-					"description": "Solo aplica a los préstamos: si ya se lo devolvieron o no",
+					"type": "string",
+					"enum": []string{movimientos.EstadoPendiente, movimientos.EstadoParcial, movimientos.EstadoPagado},
+					"description": "Solo aplica a las deudas (preste y me_prestaron): pendiente = no ha abonado nada, " +
+						"parcial = abonó una parte, pagado = ya está saldada",
 				},
 				"categoria": map[string]any{
 					"type":        "string",
@@ -129,13 +132,15 @@ func (c *Catalogo) Esquemas() []Herramienta {
 		{
 			Nombre: HerramientaProponerMovimiento,
 			Descripcion: "Prepara un movimiento para que el usuario lo confirme. NO lo registra: le aparece una tarjeta " +
-				"con los datos, que puede corregir antes de guardar. Úsala cuando te cuente un gasto, un ingreso o un préstamo " +
-				"('pagué 45 mil de almuerzo con Nequi'). Si te falta la categoría o el medio de pago, pregúntale: no los inventes.",
+				"con los datos, que puede corregir antes de guardar. Úsala cuando te cuente un gasto, un ingreso, un préstamo " +
+				"en cualquiera de los dos sentidos, o un traslado entre sus medios de pago " +
+				"('pagué 45 mil de almuerzo con Nequi', 'el negocio me prestó 500 mil', 'pasé 200 mil del efectivo al banco'). " +
+				"Si te falta la categoría o el medio de pago, pregúntale: no los inventes.",
 			Parametros: objeto(map[string]any{
 				"tipo": map[string]any{
 					"type":        "string",
-					"enum":        []string{movimientos.TipoRecibi, movimientos.TipoPague, movimientos.TipoPreste},
-					"description": "recibi = entró plata, pague = salió plata, preste = se la llevó alguien y la debe",
+					"enum":        tiposDeMovimiento,
+					"description": descripcionDeTipos,
 				},
 				"monto": map[string]any{
 					"type":        "string",
@@ -157,40 +162,107 @@ func (c *Catalogo) Esquemas() []Herramienta {
 					"type":        "string",
 					"description": "Nombre exacto de un medio de pago existente: por dónde entró o salió la plata (obligatorio)",
 				},
+				"medio_destino": map[string]any{
+					"type": "string",
+					"description": "SOLO para tipo traslado: el medio de pago al que ENTRA la plata. " +
+						"En un traslado, medio_pago es de dónde sale y medio_destino a dónde entra. " +
+						"Tienen que ser distintos",
+				},
 				"a_quien": map[string]any{
-					"type":        "string",
-					"description": "Solo para tipo preste: a quién se le prestó",
+					"type": "string",
+					"description": "Solo para preste y me_prestaron: con quién es la deuda (persona o negocio). " +
+						"Antes de inventar un nombre nuevo, mira listar_contrapartes: si ya existe uno parecido, " +
+						"usa ese mismo, escrito igual",
 				},
 				"estado": map[string]any{
 					"type":        "string",
 					"enum":        []string{movimientos.EstadoPendiente, movimientos.EstadoPagado},
-					"description": "Solo para tipo preste: si ya se lo devolvieron o sigue pendiente",
+					"description": "Solo para preste y me_prestaron: si ya está saldada o sigue pendiente",
 				},
 				"cobrar_el": map[string]any{
 					"type": "string",
-					"description": "Solo para tipo preste y opcional: AAAA-MM-DD del día en que quedó de pagar " +
-						"('me paga el viernes'). Ese día la app le avisa. Si no lo dijo, no lo pongas",
+					"description": "Solo para preste y me_prestaron, opcional: AAAA-MM-DD del día acordado " +
+						"('me paga el viernes', 'le pago el 30'). Ese día la app le avisa. Si no lo dijo, no lo pongas",
 				},
 			}),
 		},
 		{
 			Nombre: HerramientaProponerPagado,
-			Descripcion: "Prepara el cobro de un préstamo para que el usuario lo confirme ('ya me pagó Juan'). NO lo marca: " +
-				"le aparece una tarjeta para confirmarlo. Antes busca el préstamo con listar_movimientos " +
-				"(tipo=preste, estado=pendiente) para saber su id.",
+			Descripcion: "Prepara el SALDO COMPLETO de una deuda para que el usuario lo confirme " +
+				"('ya me pagó Juan', 'ya le pagué todo al negocio'). NO lo marca: le aparece una tarjeta para confirmarlo. " +
+				"Si solo le abonaron una parte, usa proponer_abono en vez de esta. " +
+				"Antes busca la deuda con listar_movimientos (tipo=preste o me_prestaron) para saber su id.",
 			Parametros: objeto(map[string]any{
 				"movimiento_id": map[string]any{
 					"type":        "integer",
-					"description": "Id del préstamo, tal como salió en listar_movimientos",
+					"description": "Id de la deuda, tal como salió en listar_movimientos",
 				},
 				"medio_cobro": map[string]any{
 					"type":        "string",
-					"description": "Nombre del medio por donde le devolvieron la plata. Si no lo dijo, déjalo vacío y que lo elija él",
+					"description": "Nombre del medio por donde se movió la plata al saldar. Si no lo dijo, déjalo vacío y que lo elija él",
 				},
 			}),
 		},
+		{
+			Nombre: HerramientaProponerAbono,
+			Descripcion: "Prepara un ABONO PARCIAL a una deuda para que el usuario lo confirme " +
+				"('Carlos me abonó 50 mil', 'le pagué 100 mil de lo que le debo'). NO lo registra: le aparece una tarjeta. " +
+				"Úsala cuando el monto sea MENOR que la deuda; si le pagaron todo, usa proponer_marcar_pagado. " +
+				"Antes busca la deuda con listar_movimientos para saber su id y cuánto falta.",
+			Parametros: objeto(map[string]any{
+				"movimiento_id": map[string]any{
+					"type":        "integer",
+					"description": "Id de la deuda, tal como salió en listar_movimientos",
+				},
+				"monto": map[string]any{
+					"type":        "string",
+					"description": "Solo el número, sin puntos ni signos: 50000",
+				},
+				"fecha": map[string]any{
+					"type":        "string",
+					"description": "AAAA-MM-DD. Si no dijo cuándo, usa hoy",
+				},
+				"medio": map[string]any{
+					"type":        "string",
+					"description": "Nombre del medio por donde se movió el abono. Si no lo dijo, déjalo vacío y que lo elija él",
+				},
+				"nota": map[string]any{
+					"type":        "string",
+					"description": "Opcional, en pocas palabras: para qué o por qué fue este abono",
+				},
+			}),
+		},
+		{
+			Nombre: HerramientaContrapartes,
+			Descripcion: "Lista las personas y negocios con los que el usuario tiene cuentas pendientes, " +
+				"con cuánto le deben, cuánto les debe y el neto. Úsala ANTES de proponer un préstamo para " +
+				"escribir el nombre igual que como ya está guardado, y para responder '¿cuánto me debe X?'. " +
+				"Si un nombre además es una categoría del usuario, viene marcado con es_categoria: díselo, " +
+				"porque son dos cosas distintas que se llaman igual.",
+			Parametros: objeto(nil),
+		},
 	}
 }
+
+// Los tipos que el modelo puede usar, y como se los explicamos.
+//
+// En variables y no escritos dos veces: el enum aparece en listar_movimientos y
+// en proponer_movimiento, y el dia que se agregue un tipo tiene que aparecer en
+// los dos. Con el texto duplicado, lo normal es que se actualice uno solo y el
+// modelo termine sin poder registrar la mitad de las cosas.
+var tiposDeMovimiento = []string{
+	movimientos.TipoRecibi,
+	movimientos.TipoPague,
+	movimientos.TipoPreste,
+	movimientos.TipoMePrestaron,
+	movimientos.TipoTraslado,
+}
+
+const descripcionDeTipos = "recibi = entró plata; " +
+	"pague = salió plata; " +
+	"preste = se la llevó alguien y TE la debe; " +
+	"me_prestaron = te la dieron y TÚ la debes; " +
+	"traslado = pasó plata de un medio de pago suyo a otro (no es ingreso ni gasto)"
 
 // Resultado es lo que deja una herramienta: el JSON que vuelve al modelo y,
 // cuando preparo una escritura, la propuesta que el usuario tendra que
@@ -226,11 +298,15 @@ func (c *Catalogo) Ejecutar(ctx context.Context, usuarioID int64, llamada Llamad
 		texto, err = c.listarCategorias(ctx, usuarioID)
 	case HerramientaMedios:
 		texto, err = c.listarMedios(ctx, usuarioID)
+	case HerramientaContrapartes:
+		texto, err = c.listarContrapartes(ctx, usuarioID)
 
 	case HerramientaProponerMovimiento:
 		return c.proponerMovimiento(ctx, usuarioID, llamada.Argumentos)
 	case HerramientaProponerPagado:
 		return c.proponerMarcarPagado(ctx, usuarioID, llamada.Argumentos)
+	case HerramientaProponerAbono:
+		return c.proponerAbono(ctx, usuarioID, llamada.Argumentos)
 
 	default:
 		texto = errorParaElModelo("no existe una herramienta llamada %q", llamada.Nombre)
@@ -248,11 +324,11 @@ func (c *Catalogo) Ejecutar(ctx context.Context, usuarioID int64, llamada Llamad
 // responder, y todo eso son tokens que se pagan.
 
 type resumenParaModelo struct {
-	Totales    movimientos.Totales `json:"totales"`
-	Medios     []medioParaModelo   `json:"medios"`
-	Categorias []rubroParaModelo   `json:"categorias"`
-	Deudores   []deudorParaModelo  `json:"deudores"`
-	Nota       string              `json:"nota"`
+	Totales      movimientos.Totales     `json:"totales"`
+	Medios       []medioParaModelo       `json:"medios"`
+	Categorias   []rubroParaModelo       `json:"categorias"`
+	Contrapartes []contraparteParaModelo `json:"contrapartes"`
+	Nota         string                  `json:"nota"`
 }
 
 type medioParaModelo struct {
@@ -265,12 +341,25 @@ type rubroParaModelo struct {
 	Recibido  string `json:"recibido"`
 	Pagado    string `json:"pagado"`
 	PorCobrar string `json:"por_cobrar"`
+	PorPagar  string `json:"por_pagar"`
 	Balance   string `json:"balance"`
 }
 
-type deudorParaModelo struct {
-	AQuien string `json:"a_quien"`
-	Debe   string `json:"debe"`
+// contraparteParaModelo es con quien hay cuentas pendientes, en los dos
+// sentidos. Los nombres de los campos estan escritos para que el modelo no se
+// confunda de lado: es el error mas caro que puede cometer aqui.
+type contraparteParaModelo struct {
+	Nombre string `json:"nombre"`
+	// TeDebe: lo que esta persona le debe AL USUARIO.
+	TeDebe string `json:"te_debe"`
+	// LeDebes: lo que EL USUARIO le debe a esta persona.
+	LeDebes string `json:"le_debes"`
+	// Neto positivo = a favor del usuario; negativo = en contra.
+	Neto string `json:"neto"`
+	// EsCategoria: este nombre tambien es una categoria del usuario.
+	EsCategoria bool `json:"es_categoria,omitempty"`
+	// ProximaFecha es el dia acordado mas cercano de sus deudas vivas.
+	ProximaFecha string `json:"proxima_fecha,omitempty"`
 }
 
 func (c *Catalogo) resumen(ctx context.Context, usuarioID int64) (string, error) {
@@ -282,12 +371,14 @@ func (c *Catalogo) resumen(ctx context.Context, usuarioID int64) (string, error)
 	// Los slices arrancan vacios y no nil: un "deudores": null le da al modelo
 	// una cosa mas que interpretar, y "[]" ya dice lo que hay que decir.
 	salida := resumenParaModelo{
-		Totales:    resumen.Totales,
-		Medios:     []medioParaModelo{},
-		Categorias: []rubroParaModelo{},
-		Deudores:   []deudorParaModelo{},
+		Totales:      resumen.Totales,
+		Medios:       []medioParaModelo{},
+		Categorias:   []rubroParaModelo{},
+		Contrapartes: []contraparteParaModelo{},
 		Nota: "Todas las cifras ya vienen sumadas por la base de datos. " +
-			"Cópialas tal cual: no sumes, no restes, no conviertas.",
+			"Cópialas tal cual: no sumes, no restes, no conviertas. " +
+			"por_cobrar es lo que le deben al usuario y por_pagar lo que él debe; " +
+			"las dos son saldos, ya descontados los abonos.",
 	}
 
 	for _, m := range resumen.Medios {
@@ -299,12 +390,11 @@ func (c *Catalogo) resumen(ctx context.Context, usuarioID int64) (string, error)
 			Recibido:  cat.Recibido,
 			Pagado:    cat.Pagado,
 			PorCobrar: cat.PorCobrar,
+			PorPagar:  cat.PorPagar,
 			Balance:   cat.Balance,
 		})
 	}
-	for _, d := range resumen.Deudores {
-		salida.Deudores = append(salida.Deudores, deudorParaModelo{AQuien: d.AQuien, Debe: d.Total})
-	}
+	salida.Contrapartes = contrapartesParaModelo(resumen.Contrapartes)
 
 	return aJSON(salida)
 }
@@ -332,8 +422,16 @@ type movimientoParaModelo struct {
 	Descripcion string `json:"descripcion"`
 	Categoria   string `json:"categoria"`
 	MedioPago   string `json:"medio_pago,omitempty"`
-	AQuien      string `json:"a_quien,omitempty"`
-	Estado      string `json:"estado,omitempty"`
+	// MedioDestino solo aparece en los traslados: a donde entro la plata.
+	MedioDestino string `json:"medio_destino,omitempty"`
+	AQuien       string `json:"a_quien,omitempty"`
+	Estado       string `json:"estado,omitempty"`
+	// Saldo es lo que FALTA de una deuda (monto menos abonos), y Abonado lo
+	// que ya se movio. Sin estos dos el modelo diria "te deben 500.000" de un
+	// prestamo del que ya devolvieron 400.
+	Saldo   string `json:"saldo,omitempty"`
+	Abonado string `json:"abonado,omitempty"`
+	Cuotas  int    `json:"cuotas_del_acuerdo,omitempty"`
 }
 
 type listaParaModelo struct {
@@ -413,7 +511,7 @@ func (c *Catalogo) listarMovimientos(ctx context.Context, usuarioID int64, crudo
 
 	salida := listaParaModelo{Total: total, Movimientos: []movimientoParaModelo{}}
 	for _, m := range lista {
-		salida.Movimientos = append(salida.Movimientos, movimientoParaModelo{
+		fila := movimientoParaModelo{
 			ID:          m.ID,
 			Fecha:       m.Fecha,
 			Tipo:        m.Tipo,
@@ -423,7 +521,16 @@ func (c *Catalogo) listarMovimientos(ctx context.Context, usuarioID int64, crudo
 			MedioPago:   valor(m.MedioPagoNombre),
 			AQuien:      valor(m.AQuien),
 			Estado:      valor(m.Estado),
-		})
+		}
+		if m.Tipo == movimientos.TipoTraslado {
+			fila.MedioDestino = valor(m.MedioCobroNombre)
+		}
+		if movimientos.EsDeuda(m.Tipo) {
+			fila.Saldo = m.Saldo
+			fila.Abonado = m.Abonado
+			fila.Cuotas = m.Cuotas
+		}
+		salida.Movimientos = append(salida.Movimientos, fila)
 	}
 
 	if total > len(lista) {
@@ -550,15 +657,16 @@ func errorParaElModelo(formato string, args ...any) string {
 // usuario tiene que poder verlo ANTES, no descubrirlo cuadrando el mes.
 
 type argumentosMovimientoNuevo struct {
-	Tipo        string `json:"tipo"`
-	Monto       string `json:"monto"`
-	Fecha       string `json:"fecha"`
-	Descripcion string `json:"descripcion"`
-	Categoria   string `json:"categoria"`
-	MedioPago   string `json:"medio_pago"`
-	AQuien      string `json:"a_quien"`
-	Estado      string `json:"estado"`
-	CobrarEl    string `json:"cobrar_el"`
+	Tipo         string `json:"tipo"`
+	Monto        string `json:"monto"`
+	Fecha        string `json:"fecha"`
+	Descripcion  string `json:"descripcion"`
+	Categoria    string `json:"categoria"`
+	MedioPago    string `json:"medio_pago"`
+	MedioDestino string `json:"medio_destino"`
+	AQuien       string `json:"a_quien"`
+	Estado       string `json:"estado"`
+	CobrarEl     string `json:"cobrar_el"`
 }
 
 // datosMovimiento es lo que pinta la tarjeta: los ids para que los selectores
@@ -572,9 +680,12 @@ type datosMovimiento struct {
 	Categoria   string `json:"categoria"`
 	MedioPagoID int64  `json:"medio_pago_id"`
 	MedioPago   string `json:"medio_pago"`
-	AQuien      string `json:"a_quien,omitempty"`
-	Estado      string `json:"estado,omitempty"`
-	CobrarEl    string `json:"cobrar_el,omitempty"`
+	// Solo en los traslados: a donde entra la plata.
+	MedioDestinoID int64  `json:"medio_destino_id,omitempty"`
+	MedioDestino   string `json:"medio_destino,omitempty"`
+	AQuien         string `json:"a_quien,omitempty"`
+	Estado         string `json:"estado,omitempty"`
+	CobrarEl       string `json:"cobrar_el,omitempty"`
 }
 
 func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crudos json.RawMessage) (Resultado, error) {
@@ -599,19 +710,29 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		return texto(aviso), nil
 	}
 
-	// Las MISMAS reglas del formulario: monto, fecha, y que "presté" traiga a
-	// quién y en qué estado. Si el agente tuviera su propia validación, el día
-	// que cambie una regla tendría también su propio bug.
+	destinoID, destino, aviso, err := c.resolverMedio(ctx, usuarioID, args.MedioDestino, "medio_destino")
+	if err != nil {
+		return Resultado{}, err
+	}
+	if aviso != "" {
+		return texto(aviso), nil
+	}
+
+	// Las MISMAS reglas del formulario: monto, fecha, que una deuda traiga a
+	// quién y en qué estado, y que un traslado traiga dos medios distintos. Si
+	// el agente tuviera su propia validación, el día que cambie una regla
+	// tendría también su propio bug.
 	entrada := movimientos.Entrada{
-		CategoriaID: categoriaID,
-		MedioPagoID: medioID,
-		Tipo:        strings.TrimSpace(args.Tipo),
-		Monto:       strings.TrimSpace(args.Monto),
-		Fecha:       strings.TrimSpace(args.Fecha),
-		Descripcion: strings.TrimSpace(args.Descripcion),
-		AQuien:      strings.TrimSpace(args.AQuien),
-		Estado:      strings.TrimSpace(args.Estado),
-		CobrarEl:    strings.TrimSpace(args.CobrarEl),
+		CategoriaID:  categoriaID,
+		MedioPagoID:  medioID,
+		MedioCobroID: destinoID,
+		Tipo:         strings.TrimSpace(args.Tipo),
+		Monto:        strings.TrimSpace(args.Monto),
+		Fecha:        strings.TrimSpace(args.Fecha),
+		Descripcion:  strings.TrimSpace(args.Descripcion),
+		AQuien:       strings.TrimSpace(args.AQuien),
+		Estado:       strings.TrimSpace(args.Estado),
+		CobrarEl:     strings.TrimSpace(args.CobrarEl),
 	}
 
 	datos, campos := movimientos.Validar(entrada)
@@ -622,17 +743,19 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 	}
 
 	propuesta := datosMovimiento{
-		Tipo:        datos.Tipo,
-		Monto:       datos.Monto, // ya normalizado por dinero
-		Fecha:       datos.Fecha,
-		Descripcion: datos.Descripcion,
-		CategoriaID: categoriaID,
-		Categoria:   categoria,
-		MedioPagoID: medioID,
-		MedioPago:   medio,
-		AQuien:      valor(datos.AQuien),
-		Estado:      valor(datos.Estado),
-		CobrarEl:    valor(datos.CobrarEl),
+		Tipo:           datos.Tipo,
+		Monto:          datos.Monto, // ya normalizado por dinero
+		Fecha:          datos.Fecha,
+		Descripcion:    datos.Descripcion,
+		CategoriaID:    categoriaID,
+		Categoria:      categoria,
+		MedioPagoID:    medioID,
+		MedioPago:      medio,
+		MedioDestinoID: destinoID,
+		MedioDestino:   destino,
+		AQuien:         valor(datos.AQuien),
+		Estado:         valor(datos.Estado),
+		CobrarEl:       valor(datos.CobrarEl),
 	}
 
 	instruccion := "NO está registrado todavía. Al usuario le apareció una tarjeta con estos datos " +
@@ -644,6 +767,12 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		instruccion += " Como es un gasto, pregúntale también si tiene la foto o el PDF de la factura: " +
 			"puede adjuntarla en la misma tarjeta con el botón 📎 Adjuntar factura antes de guardar. " +
 			"Si ya te dijo que la adjuntó, no se lo vuelvas a pedir."
+	}
+	if datos.Tipo == movimientos.TipoTraslado {
+		// El traslado es el único tipo que no cambia el balance, y eso
+		// sorprende si nadie lo dice.
+		instruccion += " Aclárale que un traslado no cambia cuánta plata tiene en total: " +
+			"solo la mueve de " + medio + " a " + destino + "."
 	}
 
 	confirmacion, err := aJSON(map[string]any{
@@ -667,8 +796,13 @@ type argumentosMarcarPagado struct {
 }
 
 type datosMarcarPagado struct {
-	MovimientoID int64  `json:"movimiento_id"`
-	AQuien       string `json:"a_quien"`
+	MovimientoID int64 `json:"movimiento_id"`
+	// Tipo dice de qué lado está la plata: 'preste' (te pagan) o
+	// 'me_prestaron' (pagas tú). La tarjeta cambia el texto según esto.
+	Tipo   string `json:"tipo"`
+	AQuien string `json:"a_quien"`
+	// Monto es el SALDO que falta, no el monto original: si ya abonaron una
+	// parte, saldar es poner el resto.
 	Monto        string `json:"monto"`
 	Fecha        string `json:"fecha"`
 	Descripcion  string `json:"descripcion"`
@@ -694,11 +828,11 @@ func (c *Catalogo) proponerMarcarPagado(ctx context.Context, usuarioID int64, cr
 		return Resultado{}, fmt.Errorf("herramienta proponer_marcar_pagado: %w", err)
 	}
 
-	if m.Tipo != movimientos.TipoPreste {
-		return texto(errorParaElModelo("ese movimiento no es un préstamo, así que no se puede marcar como pagado")), nil
+	if !movimientos.EsDeuda(m.Tipo) {
+		return texto(errorParaElModelo("ese movimiento no es una deuda, así que no se puede marcar como saldado")), nil
 	}
 	if valor(m.Estado) == movimientos.EstadoPagado {
-		return texto(errorParaElModelo("ese préstamo ya está marcado como pagado")), nil
+		return texto(errorParaElModelo("esa deuda ya está saldada")), nil
 	}
 
 	// El medio de cobro es opcional: si no se sabe por dónde devolvieron la
@@ -713,19 +847,28 @@ func (c *Catalogo) proponerMarcarPagado(ctx context.Context, usuarioID int64, cr
 
 	propuesta := datosMarcarPagado{
 		MovimientoID: m.ID,
+		Tipo:         m.Tipo,
 		AQuien:       valor(m.AQuien),
-		Monto:        m.Monto,
+		// El SALDO, no el monto: de un préstamo de 500.000 con 400.000 ya
+		// abonados, saldarlo es registrar los 100.000 que faltan.
+		Monto:        m.Saldo,
 		Fecha:        m.Fecha,
 		Descripcion:  m.Descripcion,
 		MedioCobroID: medioID,
 		MedioCobro:   medio,
 	}
 
+	instruccion := "Todavía NO está saldada. Al usuario le apareció una tarjeta para confirmarlo. " +
+		"Dile en una frase de qué deuda se trata y pídele que confirme ahí, eligiendo por dónde se movió la plata."
+	if m.Abonos > 0 {
+		instruccion += " Ojo: esa deuda ya tenía abonos, así que lo que se va a registrar es solo lo que faltaba (" +
+			m.Saldo + "), no el monto original. Díselo."
+	}
+
 	confirmacion, err := aJSON(map[string]any{
-		"estado":    "pendiente de confirmación",
-		"preparado": propuesta,
-		"instruccion": "Todavía NO está marcado como pagado. Al usuario le apareció una tarjeta para confirmarlo. " +
-			"Dile en una frase de qué préstamo se trata y pídele que confirme ahí, eligiendo por dónde le pagaron.",
+		"estado":      "pendiente de confirmación",
+		"preparado":   propuesta,
+		"instruccion": instruccion,
 	})
 	if err != nil {
 		return Resultado{}, err

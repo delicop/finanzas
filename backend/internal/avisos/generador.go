@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
+	"finanzas/internal/movimientos"
+	"finanzas/internal/push"
+	"finanzas/internal/recurrentes"
 	"finanzas/internal/suscripciones"
 )
 
@@ -14,13 +18,25 @@ import (
 // pocas horas; volver a evaluarlo todo es barato y, como cada aviso lleva su
 // clave de periodo, repetir una corrida no repite un aviso.
 type Generador struct {
-	store    *Store
-	negocio  *suscripciones.Store
-	redactor Redactor // opcional: sin modelo configurado, es nil
+	store       *Store
+	negocio     *suscripciones.Store
+	recurrentes *recurrentes.Store
+	redactor    Redactor // opcional: sin modelo configurado, es nil
+
+	// notificador manda el aviso ademas al celular. Opcional: sin llaves VAPID
+	// configuradas es nil y todo lo demas funciona igual, con el aviso
+	// quedandose en la campana de la app.
+	notificador *push.Notificador
 }
 
-func NuevoGenerador(store *Store, negocio *suscripciones.Store, redactor Redactor) *Generador {
-	return &Generador{store: store, negocio: negocio, redactor: redactor}
+func NuevoGenerador(store *Store, negocio *suscripciones.Store, rec *recurrentes.Store, redactor Redactor, notificador *push.Notificador) *Generador {
+	return &Generador{
+		store:       store,
+		negocio:     negocio,
+		recurrentes: rec,
+		redactor:    redactor,
+		notificador: notificador,
+	}
 }
 
 // Correr evalua los avisos para cada cuenta activa y devuelve cuantos
@@ -58,8 +74,11 @@ func (g *Generador) paraUsuario(ctx context.Context, d Destinatario, ahora time.
 	for _, regla := range []func(context.Context, Destinatario, time.Time) (int, error){
 		g.resumenSemanal,
 		g.prestamosPendientes,
+		g.deudasPropias,
 		g.cobrosDelMes,
 		g.cobrosDelDia,
+		g.cuotasVencidas,
+		g.recurrentesPendientes,
 	} {
 		n, err := regla(ctx, d, ahora)
 		creados += n
@@ -114,6 +133,9 @@ func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora ti
 	if !esCero(semana.Prestado) {
 		fmt.Fprintf(&base, " Además prestaste %s.", pesos(semana.Prestado))
 	}
+	if !esCero(semana.MePrestaron) {
+		fmt.Fprintf(&base, " Y te prestaron %s.", pesos(semana.MePrestaron))
+	}
 
 	return g.guardar(ctx, d, Nuevo{
 		UsuarioID: d.ID,
@@ -129,7 +151,7 @@ func (g *Generador) resumenSemanal(ctx context.Context, d Destinatario, ahora ti
 // La clave es el mes, no la semana: recordar lo mismo cada siete dias no hace
 // que se lo paguen mas rapido, solo que deje de leer los avisos.
 func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
-	prestamos, err := g.store.PrestamosViejos(ctx, d.ID, DiasPrestamoViejo)
+	prestamos, err := g.store.DeudasViejas(ctx, d.ID, movimientos.TipoPreste, DiasPrestamoViejo)
 	if err != nil {
 		return 0, err
 	}
@@ -152,6 +174,40 @@ func (g *Generador) prestamosPendientes(ctx context.Context, d Destinatario, aho
 	return g.guardar(ctx, d, Nuevo{
 		UsuarioID: d.ID,
 		Tipo:      TipoPrestamosPendientes,
+		Clave:     ahora.Format(formatoMes),
+		Titulo:    titulo,
+		Cuerpo:    base,
+	})
+}
+
+// deudasPropias es el espejo del anterior: lo que TU llevas tiempo debiendo.
+//
+// Va aparte y no mezclado en un solo aviso porque son dos acciones distintas:
+// una se resuelve escribiendole a alguien, la otra sacando plata. Juntarlas en
+// un parrafo ("te deben 300 y debes 200") no le dice a nadie que hacer hoy.
+func (g *Generador) deudasPropias(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
+	deudas, err := g.store.DeudasViejas(ctx, d.ID, movimientos.TipoMePrestaron, DiasPrestamoViejo)
+	if err != nil {
+		return 0, err
+	}
+	if deudas.Cantidad == 0 {
+		return 0, nil
+	}
+
+	titulo := fmt.Sprintf("Debes %s", pesos(deudas.Total))
+
+	base := fmt.Sprintf(
+		"Llevas %d deuda%s sin pagar desde hace más de %d días, por %s en total.",
+		deudas.Cantidad, plural(deudas.Cantidad), DiasPrestamoViejo, pesos(deudas.Total))
+
+	if deudas.AQuien != "" {
+		base += fmt.Sprintf(" La más antigua es con %s, de hace %d días.",
+			deudas.AQuien, deudas.DiasMasViejo)
+	}
+
+	return g.guardar(ctx, d, Nuevo{
+		UsuarioID: d.ID,
+		Tipo:      TipoDeudasPropias,
 		Clave:     ahora.Format(formatoMes),
 		Titulo:    titulo,
 		Cuerpo:    base,
@@ -220,28 +276,170 @@ func (g *Generador) cobrosDelDia(ctx context.Context, d Destinatario, ahora time
 	var fallos []error
 	for _, c := range cobros {
 		quien := strings.TrimSpace(c.AQuien)
+		esHoy := c.CobrarEl == hoy.Format(formatoFecha)
+
+		// Los dos sentidos usan la misma consulta y el mismo ciclo; lo unico
+		// que cambia es de quien es la plata y, por tanto, que tiene que hacer
+		// el usuario hoy.
+		tipo := TipoCobroDelDia
+		if c.Tipo == movimientos.TipoMePrestaron {
+			tipo = TipoPagoDelDia
+		}
 
 		var titulo, base string
-		if c.CobrarEl == hoy.Format(formatoFecha) {
+		switch {
+		case tipo == TipoCobroDelDia && esHoy:
 			titulo = fmt.Sprintf("Hoy te paga %s", quien)
 			base = fmt.Sprintf("Hoy es el día en que %s quedó de devolverte %s", quien, pesos(c.Monto))
-		} else {
+		case tipo == TipoCobroDelDia:
 			titulo = fmt.Sprintf("%s quedó de pagarte el %s", quien, diaEnEspanol(c.CobrarEl))
 			base = fmt.Sprintf("El %s era el día en que %s quedó de devolverte %s, y sigue pendiente",
 				diaEnEspanol(c.CobrarEl), quien, pesos(c.Monto))
+		case esHoy:
+			titulo = fmt.Sprintf("Hoy le pagas a %s", quien)
+			base = fmt.Sprintf("Hoy es el día en que quedaste de devolverle %s a %s", pesos(c.Monto), quien)
+		default:
+			titulo = fmt.Sprintf("Le debías a %s desde el %s", quien, diaEnEspanol(c.CobrarEl))
+			base = fmt.Sprintf("El %s era el día en que quedaste de devolverle %s a %s, y sigue pendiente",
+				diaEnEspanol(c.CobrarEl), pesos(c.Monto), quien)
 		}
-		base += fmt.Sprintf(" (se lo prestaste el %s", diaEnEspanol(c.Fecha))
+
+		if tipo == TipoCobroDelDia {
+			base += fmt.Sprintf(" (se lo prestaste el %s", diaEnEspanol(c.Fecha))
+		} else {
+			base += fmt.Sprintf(" (te lo prestó el %s", diaEnEspanol(c.Fecha))
+		}
 		if desc := strings.TrimSpace(c.Descripcion); desc != "" {
 			base += ": " + desc
 		}
-		base += "). Cuando te pague, márcalo como pagado en Movimientos."
+		if tipo == TipoCobroDelDia {
+			base += "). Cuando te pague, regístralo en Movimientos."
+		} else {
+			base += "). Cuando le pagues, regístralo en Movimientos."
+		}
 
 		n, err := g.guardar(ctx, d, Nuevo{
 			UsuarioID: d.ID,
-			Tipo:      TipoCobroDelDia,
+			Tipo:      tipo,
 			Clave:     fmt.Sprintf("%d:%s", c.MovimientoID, c.CobrarEl),
 			Titulo:    titulo,
 			Cuerpo:    base,
+		})
+		creados += n
+		if err != nil {
+			fallos = append(fallos, err)
+		}
+	}
+	return creados, errors.Join(fallos...)
+}
+
+// cuotasVencidas: una cuota del acuerdo llego a su fecha y los abonos no la
+// cubren.
+//
+// Un aviso POR CUOTA, con su id en la clave. No se junta todo en "tienes 3
+// cuotas vencidas" porque cada una tiene su monto y su fecha, y lo que el
+// usuario necesita saber es cuanto poner para ponerse al dia con la primera.
+func (g *Generador) cuotasVencidas(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
+	hoy := ahora.In(zonaColombia)
+	desde := hoy.AddDate(0, 0, -DiasGraciaCuota)
+
+	cuotas, err := g.store.CuotasVencidas(ctx, d.ID, desde.Format(formatoFecha), hoy.Format(formatoFecha))
+	if err != nil {
+		return 0, err
+	}
+
+	var creados int
+	var fallos []error
+	for _, c := range cuotas {
+		quien := strings.TrimSpace(c.AQuien)
+		esHoy := c.VenceEl == hoy.Format(formatoFecha)
+
+		var titulo, base string
+		if c.Tipo == movimientos.TipoMePrestaron {
+			if esHoy {
+				titulo = fmt.Sprintf("Hoy vence tu cuota %d con %s", c.Numero, quien)
+			} else {
+				titulo = fmt.Sprintf("Se te venció la cuota %d con %s", c.Numero, quien)
+			}
+			base = fmt.Sprintf("La cuota %d de %d del acuerdo con %s vencía el %s y falta %s.",
+				c.Numero, c.DeCuantas, quien, diaEnEspanol(c.VenceEl), pesos(c.Falta))
+		} else {
+			if esHoy {
+				titulo = fmt.Sprintf("Hoy vence la cuota %d de %s", c.Numero, quien)
+			} else {
+				titulo = fmt.Sprintf("%s se atrasó con la cuota %d", quien, c.Numero)
+			}
+			base = fmt.Sprintf("La cuota %d de %d que %s quedó de pagarte vencía el %s y falta %s.",
+				c.Numero, c.DeCuantas, quien, diaEnEspanol(c.VenceEl), pesos(c.Falta))
+		}
+
+		n, err := g.guardar(ctx, d, Nuevo{
+			UsuarioID: d.ID,
+			Tipo:      TipoCuotaVencida,
+			// El id de la cuota, no el numero: si el acuerdo se renegocia, las
+			// cuotas nuevas son otras filas y vuelven a avisar. Es lo correcto
+			// — es un acuerdo distinto.
+			Clave:  fmt.Sprint(c.CuotaID),
+			Titulo: titulo,
+			Cuerpo: base,
+		})
+		creados += n
+		if err != nil {
+			fallos = append(fallos, err)
+		}
+	}
+	return creados, errors.Join(fallos...)
+}
+
+// recurrentesPendientes genera las ocurrencias que tocan y avisa de las que
+// quedan sin resolver.
+//
+// Dos pasos en una regla porque son la misma idea: primero se ponen al dia las
+// ocurrencias (el indice unico impide repetirlas), y despues se avisa de las
+// que estan pendientes. Si el usuario ya confirmo el arriendo, no hay aviso.
+func (g *Generador) recurrentesPendientes(ctx context.Context, d Destinatario, ahora time.Time) (int, error) {
+	if g.recurrentes == nil {
+		return 0, nil
+	}
+
+	hoy := ahora.In(zonaColombia)
+
+	plantillas, err := g.recurrentes.Listar(ctx, d.ID)
+	if err != nil {
+		return 0, err
+	}
+
+	var fallos []error
+	for _, r := range plantillas {
+		if _, err := g.recurrentes.Generar(ctx, r, d.ID, hoy); err != nil {
+			fallos = append(fallos, err)
+		}
+	}
+
+	pendientes, err := g.recurrentes.Pendientes(ctx, d.ID)
+	if err != nil {
+		return 0, errors.Join(append(fallos, err)...)
+	}
+
+	var creados int
+	for _, o := range pendientes {
+		verbo := "pagaste"
+		if o.Tipo == movimientos.TipoRecibi {
+			verbo = "recibiste"
+		}
+
+		titulo := fmt.Sprintf("¿Ya %s %s?", verbo, o.Descripcion)
+		base := fmt.Sprintf("Tocaba el %s: %s por %s con %s. Confírmalo si ya pasó, o córrelo si este mes fue distinto.",
+			diaEnEspanol(o.Fecha), o.Descripcion, pesos(o.Monto), o.MedioPagoNombre)
+
+		n, err := g.guardar(ctx, d, Nuevo{
+			UsuarioID: d.ID,
+			Tipo:      TipoRecurrentePendiente,
+			// El id de la ocurrencia: una por recurrente y fecha, asi que el
+			// aviso tampoco se repite.
+			Clave:  fmt.Sprint(o.ID),
+			Titulo: titulo,
+			Cuerpo: base,
 		})
 		creados += n
 		if err != nil {
@@ -288,7 +486,62 @@ func (g *Generador) guardar(ctx context.Context, d Destinatario, nuevo Nuevo) (i
 	if err != nil {
 		return 0, err
 	}
+
+	g.empujar(ctx, nuevo)
 	return 1, nil
+}
+
+// empujar manda el aviso ademas al celular.
+//
+// NO propaga el error a proposito: el aviso YA quedo guardado y el usuario lo
+// va a ver en la campana. Que el servicio de push de Google este caido no puede
+// hacer que la tarea marque como fallida la generacion de un aviso que si se
+// creo — y menos que se reintente y se duplique.
+func (g *Generador) empujar(ctx context.Context, nuevo Nuevo) {
+	if !g.notificador.Habilitado() {
+		return
+	}
+
+	_, err := g.notificador.Avisar(ctx, nuevo.UsuarioID, push.Mensaje{
+		Titulo: nuevo.Titulo,
+		Cuerpo: nuevo.Cuerpo,
+		URL:    rutaDelAviso(nuevo.Tipo),
+		// La etiqueta agrupa por tipo: un resumen semanal nuevo reemplaza al
+		// de la semana pasada en la bandeja del celular en vez de apilarse.
+		// Los de cuota y cobro llevan su clave porque son de deudas distintas
+		// y cada uno importa por separado.
+		Etiqueta: etiquetaDelAviso(nuevo),
+	})
+	if err != nil {
+		slog.Warn("no se pudo mandar el push de un aviso",
+			"tipo", nuevo.Tipo, "usuario", nuevo.UsuarioID, "error", err)
+	}
+}
+
+// rutaDelAviso es a donde lleva el clic en la notificacion del celular.
+// Abrir la app en la pantalla equivocada es casi tan malo como no avisar.
+func rutaDelAviso(tipo string) string {
+	switch tipo {
+	case TipoCobrosDelMes:
+		return "/admin"
+	case TipoRecurrentePendiente:
+		return "/recurrentes"
+	case TipoResumenSemanal:
+		return "/"
+	default:
+		// Cobros, pagos, cuotas y deudas: todos terminan en la misma lista,
+		// que es donde se registra el abono.
+		return "/movimientos"
+	}
+}
+
+func etiquetaDelAviso(nuevo Nuevo) string {
+	switch nuevo.Tipo {
+	case TipoCobroDelDia, TipoPagoDelDia, TipoCuotaVencida, TipoRecurrentePendiente:
+		return nuevo.Tipo + ":" + nuevo.Clave
+	default:
+		return nuevo.Tipo
+	}
 }
 
 // --------------------------------------------------------------------------

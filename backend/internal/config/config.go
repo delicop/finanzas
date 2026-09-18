@@ -28,6 +28,30 @@ type Config struct {
 	// LLM configura el agente conversacional. Sin llave no se monta: la app
 	// entera funciona igual, simplemente no tiene chat.
 	LLM LLMConfig
+
+	// Push configura las notificaciones al celular. Mismo criterio: sin
+	// llaves, la funcionalidad no existe y los avisos se quedan en la campana.
+	Push PushConfig
+}
+
+// PushConfig son las llaves VAPID con las que el servidor se identifica ante
+// el servicio de push de cada navegador. Se generan una vez con:
+//
+//	go run ./cmd/vapid
+//
+// La publica la ve el navegador (no es secreta); la privada NO se comparte.
+type PushConfig struct {
+	VAPIDPublica string
+	VAPIDPrivada string
+	// Contacto es a quien escribirle si los mensajes dan problemas. Los
+	// servicios de push lo exigen: "mailto:tu@correo.com" o una URL https.
+	Contacto string
+}
+
+// Habilitado: hacen falta las tres. Con dos de tres no se puede mandar nada,
+// asi que arrancar "a medias" solo serviria para fallar en el primer aviso.
+func (p PushConfig) Habilitado() bool {
+	return p.VAPIDPublica != "" && p.VAPIDPrivada != "" && p.Contacto != ""
 }
 
 // LLMConfig apunta a cualquier API compatible con la de OpenAI. Hoy DeepSeek,
@@ -99,6 +123,24 @@ func Load() (*Config, error) {
 
 	if cfg.LLM, err = cargarLLM(); err != nil {
 		return nil, err
+	}
+
+	cfg.Push = PushConfig{
+		VAPIDPublica: strings.TrimSpace(os.Getenv("PUSH_VAPID_PUBLIC")),
+		VAPIDPrivada: strings.TrimSpace(os.Getenv("PUSH_VAPID_PRIVATE")),
+		Contacto:     strings.TrimSpace(os.Getenv("PUSH_CONTACTO")),
+	}
+	// Configurar una sola de las tres casi siempre significa que se copio mal
+	// el .env. Fallar al arrancar es mejor que quedarse esperando avisos que
+	// nunca van a salir.
+	puestas := 0
+	for _, v := range []string{cfg.Push.VAPIDPublica, cfg.Push.VAPIDPrivada, cfg.Push.Contacto} {
+		if v != "" {
+			puestas++
+		}
+	}
+	if puestas != 0 && puestas != 3 {
+		return nil, fmt.Errorf("las notificaciones push necesitan PUSH_VAPID_PUBLIC, PUSH_VAPID_PRIVATE y PUSH_CONTACTO (hay %d de 3); genéralas con: go run ./cmd/vapid", puestas)
 	}
 
 	origins := getEnv("CORS_ORIGINS", "http://localhost:5173")

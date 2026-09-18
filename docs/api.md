@@ -210,37 +210,126 @@ transferencia"… y se vuelve inmanejable.
 | GET | `/api/movimientos/{id}` | Detalle |
 | PUT | `/api/movimientos/{id}` | Editar |
 | DELETE | `/api/movimientos/{id}` | Eliminar (borra también su factura) |
-| PATCH | `/api/movimientos/{id}/estado` | Marcar préstamo pagado/pendiente |
+| PATCH | `/api/movimientos/{id}/estado` | Saldar una deuda o volverla a pendiente |
 | POST | `/api/movimientos/{id}/factura` | Adjuntar (multipart, campo `factura`) |
 | GET | `/api/movimientos/{id}/factura` | Ver o descargar |
 | DELETE | `/api/movimientos/{id}/factura` | Quitar |
 
-**Filtros del listado:** `categoria_id`, `medio_pago_id`, `tipo`
-(`recibi`/`pague`/`preste`), `estado` (`pendiente`/`pagado`), `desde`, `hasta`
-(AAAA-MM-DD), `q` (busca en descripción y en la persona), `limite` (máx. 200),
-`offset`.
+### Los cinco tipos
+
+| `tipo` | Qué es | Campos propios |
+|---|---|---|
+| `recibi` | Entró plata | — |
+| `pague` | Salió plata | — |
+| `preste` | Salió plata y **te la deben** | `a_quien`, `estado`, `cobrar_el` |
+| `me_prestaron` | Entró plata y **tú la debes** | `a_quien`, `estado`, `cobrar_el` |
+| `traslado` | Pasó de un medio tuyo a otro | `medio_cobro_id` (el destino) |
+
+`preste` y `me_prestaron` son **simétricos**: mismos campos, mismos abonos,
+mismas cuotas. Lo único que cambia es de qué lado está la plata — uno resta del
+balance y el otro suma.
+
+Un **traslado** no es ingreso ni gasto: no entra en `recibido` ni en `pagado` y
+el balance general queda igual. Solo mueve los dos saldos por medio, y por eso
+exige dos medios **distintos** (`medio_pago_id` es de dónde sale,
+`medio_cobro_id` a dónde entra).
+
+**Filtros del listado:** `categoria_id`, `medio_pago_id` (en un traslado busca
+por origen **o** destino), `tipo`, `estado` (`pendiente`/`parcial`/`pagado`),
+`a_quien` (la contraparte exacta, sin distinguir mayúsculas ni espacios de
+sobra), `desde`, `hasta` (AAAA-MM-DD), `q` (busca en descripción y en la
+persona), `limite` (máx. 200), `offset`.
 
 **Campos obligatorios al crear:** `categoria_id`, `medio_pago_id`, `tipo`,
-`monto`, `fecha` (y `a_quien` + `estado` si el tipo es `preste`).
-Opcionales: `descripcion`, la factura y, solo para `preste`, `cobrar_el`
-(AAAA-MM-DD, la fecha de pago acordada; no puede ser antes de `fecha`). Ese
-día llega un aviso `cobro_del_dia`.
+`monto`, `fecha`, más `a_quien` + `estado` en las deudas y `medio_cobro_id` en
+un traslado. Opcionales: `descripcion`, la factura y, solo en las deudas,
+`cobrar_el` (AAAA-MM-DD, la fecha acordada; no puede ser antes de `fecha`). Ese
+día llega un aviso `cobro_del_dia` o `pago_del_dia`.
+
+Cada movimiento devuelve además `abonado`, `saldo`, `abonos` y `cuotas`, que
+calcula Postgres. **`saldo` es lo que de verdad se debe**: el monto menos lo
+abonado.
 
 ```bash
+# Un préstamo
 curl -X POST http://localhost:8080/api/movimientos \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"categoria_id":1,"medio_pago_id":2,"tipo":"preste","monto":"200000",
        "fecha":"2026-09-16","descripcion":"Préstamo",
        "a_quien":"Carlos","estado":"pendiente","cobrar_el":"2026-09-30"}'
+
+# Pasar $300.000 del efectivo (2) a Nequi (3)
+curl -X POST http://localhost:8080/api/movimientos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"categoria_id":1,"tipo":"traslado","monto":"300000","fecha":"2026-09-16",
+       "medio_pago_id":2,"medio_cobro_id":3,"descripcion":"Al banco"}'
 ```
 
-Marcar que ya pagaron, indicando por dónde:
+Saldar una deuda entera, indicando por dónde se movió la plata:
 
 ```bash
 curl -X PATCH http://localhost:8080/api/movimientos/7/estado \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"estado":"pagado","medio_cobro_id":3}'
+  -d '{"estado":"pagado","medio_id":3}'
 ```
+
+Por dentro **no escribe un flag**: registra un abono por lo que faltaba. Volver
+a `pendiente` borra todos los abonos de esa deuda. `parcial` no se puede pedir
+por aquí: sale solo de abonar una parte.
+
+### Abonos y acuerdo de pago
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/movimientos/{id}/abonos` | Los abonos de esa deuda |
+| POST | `/api/movimientos/{id}/abonos` | Registrar un abono |
+| DELETE | `/api/movimientos/{id}/abonos/{abonoID}` | Deshacer un abono |
+| GET | `/api/movimientos/{id}/cuotas` | El acuerdo, con qué cuota está cubierta |
+| PUT | `/api/movimientos/{id}/cuotas` | Reemplazar el acuerdo entero |
+| DELETE | `/api/movimientos/{id}/cuotas` | Borrar el acuerdo |
+
+Lo que se debe es `monto − suma de abonos`. El campo `estado` no es la verdad,
+es un resumen para filtrar: lo recalcula la app en la misma transacción cada
+vez que entra o sale un abono (`pendiente` sin abonos, `parcial` con algunos,
+`pagado` cuando el saldo llega a cero). Todas las escrituras devuelven la deuda
+ya actualizada.
+
+```bash
+curl -X POST http://localhost:8080/api/movimientos/7/abonos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"monto":"50000","fecha":"2026-09-20","medio_id":3,"nota":"Primera cuota"}'
+```
+
+Abonar más de lo que falta responde 422; la comparación la hace Postgres sobre
+`NUMERIC`, con la fila bloqueada, para que dos abonos simultáneos no puedan
+pasarse entre los dos.
+
+**Las cuotas son el calendario, no la plata.** Dicen para cuándo se quedó de
+pagar cada pedazo; lo que se debe sigue siendo el saldo. Una cuota está
+`cubierta` cuando el acumulado de cuotas hasta ella cabe en lo ya abonado: los
+abonos las cubren **en orden**.
+
+El acuerdo se puede mandar de dos formas:
+
+```bash
+# Parejo: el servidor reparte el saldo (o `total`) en N cuotas
+curl -X PUT http://localhost:8080/api/movimientos/7/cuotas \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"cantidad":3,"cada":"mensual","primera":"2026-10-06"}'
+
+# A la medida
+curl -X PUT http://localhost:8080/api/movimientos/7/cuotas \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"cuotas":[{"vence_el":"2026-10-06","monto":"100000"},
+                 {"vence_el":"2026-11-06","monto":"50000"}]}'
+```
+
+El reparto lo hace el servidor y no el navegador a propósito: es una división
+de plata, y ahí es donde se pierden los pesos. Se hace en centavos enteros y
+los que sobran van en las primeras cuotas, así que **las partes suman siempre
+el total exacto**. `cada` es `mensual`, `quincenal` o `semanal`; máximo 120
+cuotas. Las cuotas pueden sumar menos que la deuda (un acuerdo puede cubrir
+solo una parte), nunca más.
 
 ### Exportar a Excel o PDF
 
@@ -268,16 +357,84 @@ fórmula.
 
 `GET /api/dashboard` devuelve:
 
-- `totales` — recibido, pagado, por cobrar, recuperado y balance
+- `totales` — recibido, pagado, **por cobrar**, **por pagar**, recuperado,
+  abonado y balance
 - `medios` — cuánto hay en cada medio de pago (**¿dónde está la plata?**)
-- `categorias` — el desglose por categoría
-- `deudores` — quién debe cuánto, con `proximo_cobro` (la fecha de pago más
-  cercana de sus préstamos pendientes, o `null`)
+- `categorias` — el desglose por categoría (con su `por_cobrar` y `por_pagar`)
+- `contrapartes` — con quién hay cuentas pendientes, en los dos sentidos
 
-En `medios` no aparece "por cobrar": un préstamo pendiente no está en ningún
+La fórmula del balance:
+
+```
+balance = recibido − pagado − por_cobrar + por_pagar
+```
+
+`por_cobrar` y `por_pagar` son **saldos**, ya descontados los abonos. Lo que te
+prestaron suma porque de hecho lo tienes en el bolsillo, aunque lo debas. Los
+traslados no entran en ninguna de las cifras.
+
+Cada contraparte trae `te_deben`, `le_debes`, `neto` (positivo = a tu favor),
+`proxima_fecha` y `es_categoria`, que avisa cuando ese nombre también es una
+categoría tuya — son dos cosas distintas que se llaman igual. Se agrupan por el
+nombre **normalizado**: "Carlos", "carlos" y " Carlos " son la misma persona,
+porque si no el saldo quedaría partido en pedazos y ninguno sería cierto.
+
+En `medios` no aparece "por cobrar": un préstamo con saldo no está en ningún
 medio, está con la persona. La suma de los saldos da exactamente el balance
 general, y hay una fila **"Sin registrar"** para los movimientos sin medio —
 sin ella los números no cuadrarían.
+
+## Gastos recurrentes
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/recurrentes` | Las plantillas, con su `proxima_fecha` |
+| POST | `/api/recurrentes` | Crear una |
+| PUT | `/api/recurrentes/{id}` | Editar (o pausar con `activo:false`) |
+| DELETE | `/api/recurrentes/{id}` | Eliminar la plantilla |
+| GET | `/api/recurrentes/pendientes` | Lo que toca confirmar |
+| POST | `/api/recurrentes/pendientes/{id}/confirmar` | Crear el movimiento |
+| DELETE | `/api/recurrentes/pendientes/{id}` | Descartar ("este mes no") |
+
+**La app no registra el gasto sola.** Cuando a un recurrente le toca, la tarea
+de fondo deja una *ocurrencia pendiente* y un aviso; el movimiento nace cuando
+el usuario confirma. Un gasto inventado no se nota nunca; uno olvidado salta al
+cuadrar el mes.
+
+```bash
+curl -X POST http://localhost:8080/api/recurrentes \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"categoria_id":1,"medio_pago_id":2,"tipo":"pague","monto":"900000",
+       "descripcion":"Arriendo","frecuencia":"mensual","dia":5,
+       "desde":"2026-09-01"}'
+```
+
+- `tipo`: solo `recibi` o `pague`. Un préstamo no se repite: cada uno es un
+  acuerdo distinto, con su persona y su fecha.
+- `frecuencia`: `mensual`, `quincenal` (el día pedido y 15 días después) o
+  `semanal`. `dia` es el del mes (1–31) o el de la semana (1 = lunes).
+- El día 31 cae en el **último día** de los meses que no lo tienen: febrero no
+  se salta.
+- `hasta` es opcional. `activo:false` pausa sin borrar el historial.
+
+Confirmar sin cuerpo usa la plantilla tal cual; con cuerpo (un movimiento
+completo) se puede corregir el monto antes, que es lo que pasa con el recibo de
+la luz todos los meses. Eliminar la plantilla **no borra** los movimientos que
+ya se confirmaron: esos fueron plata que sí se movió.
+
+## Avisos al celular (Web Push)
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/push` | La llave pública y cuántos dispositivos tienes |
+| POST | `/api/push` | Registrar este navegador |
+| DELETE | `/api/push?endpoint=...` | Quitarlo |
+
+Estas rutas **solo existen** si el servidor tiene llaves VAPID configuradas; si
+no, responden 404 y la app no ofrece activarlas. El cuerpo del POST es lo que
+devuelve `pushManager.subscribe()` del navegador, tal cual. Ver
+[avisos.md](avisos.md#avisos-al-celular) y
+[despliegue.md](despliegue.md#avisos-al-celular-web-push).
 
 ## Avisos
 
@@ -296,7 +453,8 @@ sin ella los números no cuadrarían.
   "sin_leer": 1 }
 ```
 
-`tipo` es `resumen_semanal`, `cobro_del_dia`, `prestamos_pendientes` o
+`tipo` es `resumen_semanal`, `cobro_del_dia`, `pago_del_dia`, `cuota_vencida`,
+`prestamos_pendientes`, `deudas_propias`, `recurrente_pendiente` o
 `cobros_del_mes` (este último solo le llega al administrador). Los genera una
 tarea del servidor cada hora; ver [avisos.md](avisos.md).
 

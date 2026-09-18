@@ -57,12 +57,14 @@ poder verlo *antes*, no descubrirlo cuadrando el mes.
 
 | Herramienta | Para qué |
 |---|---|
-| `resumen` | Totales, saldo por medio de pago, desglose por categoría y deudores |
+| `resumen` | Totales, saldo por medio de pago, desglose por categoría y cuentas con cada quien |
 | `listar_movimientos` | Movimientos concretos, con filtros |
 | `listar_categorias` | Las categorías del usuario |
 | `listar_medios_pago` | Sus medios de pago |
+| `listar_contrapartes` | Con quién tiene cuentas pendientes, en los dos sentidos |
 | `proponer_movimiento` | **Prepara** un movimiento para confirmar |
-| `proponer_marcar_pagado` | **Prepara** el cobro de un préstamo |
+| `proponer_abono` | **Prepara** un pago parcial de una deuda |
+| `proponer_marcar_pagado` | **Prepara** el saldo completo de una deuda |
 
 Viven en [`herramientas.go`](../backend/internal/agente/herramientas.go) y cada
 una envuelve un `Store` que ya existía: **no hay una sola consulta SQL nueva**.
@@ -74,6 +76,33 @@ van por *nombre*, y el servidor los resuelve contra las listas del usuario. Si
 el nombre no existe, la herramienta responde con la lista de los que sí —y el
 modelo se corrige solo en la siguiente ronda— en vez de devolver una lista
 vacía que parezca un "no tienes nada".
+
+### Abonar o saldar
+
+Entre las dos hay una regla simple, y está escrita en las descripciones que lee
+el modelo: si lo que le dieron alcanza para todo lo que faltaba, es
+`proponer_marcar_pagado`; si es menos, es `proponer_abono`. Cuando no es claro,
+el modelo mira el saldo con `listar_movimientos` antes de decidir.
+
+`listar_movimientos` devuelve `saldo` y `abonado` en cada deuda justamente por
+eso. Sin ellos, el modelo diría "te deben $500.000" de un préstamo del que ya
+devolvieron $400.000 — cierto en el monto original y falso en lo que importa.
+
+Al saldar, lo que se registra es el **saldo**, no el monto: de un préstamo de
+$500.000 con $400.000 abonados, saldarlo es poner los $100.000 que faltan. La
+tarjeta lo dice explícitamente cuando la deuda ya tenía abonos.
+
+### Con quién es la deuda
+
+`listar_contrapartes` existe para un problema concreto: el modelo oye "Carlos
+me abonó 50" y no sabe si "Carlos" es alguien que ya existe o un nombre nuevo.
+Si escribe "Carlos M" donde ya decía "Carlos", quedan como **dos personas
+distintas** y ninguno de los dos saldos es cierto.
+
+La herramienta marca además `es_categoria` cuando ese nombre también es una
+categoría del usuario, y el prompt le pide decirlo en voz alta: prestarle a
+Negocio 2 no es lo mismo que registrar el movimiento *en* la categoría Negocio
+2. Son dos cosas y se llaman igual.
 
 Los resultados van **recortados**: sin ids, sin marcas de tiempo, sin rutas de
 facturas. Nada de eso ayuda a responder y todo eso son tokens que se pagan en

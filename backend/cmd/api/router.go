@@ -17,6 +17,8 @@ import (
 	"finanzas/internal/config"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/push"
+	"finanzas/internal/recurrentes"
 	"finanzas/internal/registro"
 	"finanzas/internal/suscripciones"
 )
@@ -44,6 +46,14 @@ type dependencias struct {
 	// el chat no se monta y la app funciona igual, sin asistente.
 	agente    *agente.Store
 	proveedor agente.Proveedor
+
+	// push existe siempre (para poder borrar suscripciones viejas), pero
+	// enviadorPush es nil sin llaves VAPID y entonces las rutas de push no se
+	// montan: el navegador pregunta, recibe 404 y no ofrece activarlas.
+	push         *push.Store
+	enviadorPush *push.Enviador
+
+	recurrentes *recurrentes.Store
 }
 
 func nuevoRouter(d dependencias) http.Handler {
@@ -93,6 +103,10 @@ func nuevoRouter(d dependencias) http.Handler {
 	categoriasHandler := categorias.NewHandler(categoriasStore)
 	mediosHandler := medios.NewHandler(mediosStore)
 	movimientosHandler := movimientos.NewHandler(movimientosStore, d.almacen)
+	// Los recurrentes escriben movimientos al confirmarse, y lo hacen por el
+	// MISMO store que el formulario: no tienen una puerta propia a la tabla
+	// del dinero.
+	recurrentesHandler := recurrentes.NewHandler(d.recurrentes, movimientosStore)
 	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, d.almacen)
 	// El chat con el asistente. Se arma solo si hay llave del modelo: sin
 	// ella la ruta no se monta y la app funciona exactamente igual, sin chat.
@@ -148,7 +162,14 @@ func nuevoRouter(d dependencias) http.Handler {
 			priv.Mount("/categorias", categoriasHandler.Rutas())
 			priv.Mount("/medios-pago", mediosHandler.Rutas())
 			priv.Mount("/movimientos", movimientosHandler.Rutas())
+			priv.Mount("/recurrentes", recurrentesHandler.Rutas())
 			priv.Get("/dashboard", movimientosHandler.Dashboard)
+
+			// Las notificaciones al celular. Sin llaves VAPID la ruta no
+			// existe, y la app sencillamente no ofrece activarlas.
+			if d.enviadorPush != nil {
+				priv.Mount("/push", push.NewHandler(d.push, d.enviadorPush).Rutas())
+			}
 
 			// Va dentro del grupo privado como todo lo demas. El propio
 			// handler rechaza ademas las peticiones en modo "ver como": el

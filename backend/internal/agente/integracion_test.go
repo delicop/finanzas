@@ -1061,8 +1061,16 @@ func TestCobrarUnPrestamo(t *testing.T) {
 	if *actual.Estado != movimientos.EstadoPagado {
 		t.Errorf("estado = %s", *actual.Estado)
 	}
-	if actual.MedioCobroID == nil || *actual.MedioCobroID != e.banco {
-		t.Errorf("no quedó registrado por dónde le pagaron: %+v", actual.MedioCobroID)
+	// Por dónde le pagaron ya no vive en una columna del movimiento: vive en
+	// el abono que se creó al saldarlo. Un préstamo se puede devolver en tres
+	// pedazos y por tres medios distintos, y una sola columna no podría
+	// contarlo.
+	abonos, err := e.movimientos.ListarAbonos(context.Background(), e.ana, prestamo.ID)
+	if err != nil {
+		t.Fatalf("consultando los abonos: %v", err)
+	}
+	if len(abonos) != 1 || abonos[0].MedioID == nil || *abonos[0].MedioID != e.banco {
+		t.Errorf("no quedó registrado por dónde le pagaron: %+v", abonos)
 	}
 }
 

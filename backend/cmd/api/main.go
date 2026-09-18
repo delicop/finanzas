@@ -16,6 +16,8 @@ import (
 	"finanzas/internal/db"
 	"finanzas/internal/httpx"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/push"
+	"finanzas/internal/recurrentes"
 	"finanzas/internal/registro"
 	"finanzas/internal/suscripciones"
 )
@@ -79,10 +81,32 @@ func run() error {
 		slog.Info("agente conversacional apagado: falta LLM_API_KEY")
 	}
 
+	// Las notificaciones al celular. Sin llaves VAPID no se monta nada: los
+	// avisos siguen existiendo y se leen en la campana, igual que siempre.
+	// Mismo criterio que el chat — lo opcional se apaga solo.
+	var enviadorPush *push.Enviador
+	var notificador *push.Notificador
+	pushStore := push.NewStore(pool)
+
+	if cfg.Push.Habilitado() {
+		enviadorPush, err = push.NuevoEnviador(cfg.Push.VAPIDPublica, cfg.Push.VAPIDPrivada, cfg.Push.Contacto)
+		if err != nil {
+			// Se falla al arrancar y no en el primer aviso: una llave mal
+			// copiada se descubre aqui, no tres dias despues.
+			return err
+		}
+		notificador = push.NuevoNotificador(pushStore, enviadorPush)
+		slog.Info("notificaciones push activas")
+	} else {
+		slog.Info("notificaciones push apagadas: faltan las llaves VAPID (go run ./cmd/vapid)")
+	}
+
 	// Los avisos NO dependen del modelo: sus cifras las calcula Postgres y el
 	// texto base lo arma la app. El modelo, cuando esta, solo lo redacta mejor.
 	avisosStore := avisos.NewStore(pool)
-	generador := avisos.NuevoGenerador(avisosStore, suscripciones.NewStore(pool), redactor)
+	recurrentesStore := recurrentes.NewStore(pool)
+	generador := avisos.NuevoGenerador(avisosStore, suscripciones.NewStore(pool),
+		recurrentesStore, redactor, notificador)
 
 	if cfg.TokenMantenimiento == "" {
 		slog.Warn("TOKEN_MANTENIMIENTO no configurado: la bitácora de errores solo se podrá leer con psql")
@@ -100,13 +124,16 @@ func run() error {
 	}
 
 	router := nuevoRouter(dependencias{
-		cfg:       cfg,
-		pool:      pool,
-		almacen:   almacen,
-		registro:  registroStore,
-		avisos:    avisosStore,
-		agente:    agenteStore,
-		proveedor: proveedor,
+		cfg:          cfg,
+		pool:         pool,
+		almacen:      almacen,
+		registro:     registroStore,
+		avisos:       avisosStore,
+		agente:       agenteStore,
+		proveedor:    proveedor,
+		push:         pushStore,
+		enviadorPush: enviadorPush,
+		recurrentes:  recurrentesStore,
 	})
 
 	srv := &http.Server{

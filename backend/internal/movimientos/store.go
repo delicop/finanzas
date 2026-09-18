@@ -25,10 +25,14 @@ type Datos struct {
 	Monto       string
 	Fecha       string
 	Descripcion string
-	AQuien      *string // solo para tipo 'preste'
-	Estado      *string // solo para tipo 'preste'
-	CobrarEl    *string // solo para tipo 'preste', opcional
-	MedioPagoID *int64  // opcional
+	AQuien      *string // solo para las deudas (preste / me_prestaron)
+	Estado      *string // solo para las deudas
+	CobrarEl    *string // solo para las deudas, opcional
+	MedioPagoID *int64  // de donde sale la plata; en un traslado, el ORIGEN
+
+	// MedioCobroID es el DESTINO de un traslado, y solo eso. Para los demas
+	// tipos va nil: por donde volvio un prestamo lo dice cada abono.
+	MedioCobroID *int64
 }
 
 // Filtros del listado. Los campos vacios simplemente no filtran.
@@ -40,18 +44,63 @@ type Filtros struct {
 	Desde       string
 	Hasta       string
 	Texto       string
-	Limite      int
-	Offset      int
+
+	// AQuien filtra por persona/negocio sin distinguir mayusculas ni espacios
+	// de sobra: es como se agrupan las contrapartes en el resumen, y tiene que
+	// agrupar igual aqui o la lista no cuadraria con el total.
+	AQuien string
+
+	Limite int
+	Offset int
 }
 
 // columnas se repite en varias consultas; mantenerlo en una constante evita
 // que el SELECT y el Scan se desincronicen al agregar un campo.
+//
+// Las cuatro ultimas salen de los LATERAL de abajo: lo abonado, lo que falta,
+// cuantos abonos hay y cuantas cuotas tiene el acuerdo. Las suma Postgres, no
+// Go, igual que todo el dinero de esta app.
 const columnas = `
 	m.id, m.categoria_id, c.nombre, m.medio_pago_id, mp.nombre,
 	m.medio_cobro_id, mc.nombre, m.tipo, m.monto::text, m.fecha,
 	m.descripcion, m.a_quien, m.estado, m.cobrar_el,
 	m.factura_ruta, m.factura_nombre, m.factura_tipo,
-	m.creado_en, m.actualizado_en`
+	m.creado_en, m.actualizado_en,
+	coalesce(ab.abonado, 0)::numeric(14,2)::text,
+	(m.monto - coalesce(ab.abonado, 0))::numeric(14,2)::text,
+	coalesce(ab.cuantos, 0),
+	coalesce(cu.cuantas, 0)`
+
+// unionesDeuda trae lo abonado y las cuotas de cada fila.
+//
+// LATERAL y no dos subconsultas en el SELECT: con LATERAL la suma se calcula
+// UNA vez por fila y sirve para las dos columnas (abonado y saldo). Con
+// subconsultas habria que repetir el mismo sum() dos veces.
+//
+// LEFT: un movimiento sin abonos (o que ni siquiera es una deuda) tiene que
+// salir igual, con 0, no desaparecer del listado.
+const unionesDeuda = `
+	LEFT JOIN LATERAL (
+		SELECT sum(a.monto) AS abonado, count(*) AS cuantos
+		FROM abonos a WHERE a.movimiento_id = m.id
+	) ab ON true
+	LEFT JOIN LATERAL (
+		SELECT count(*) AS cuantas
+		FROM cuotas q WHERE q.movimiento_id = m.id
+	) cu ON true`
+
+// uniones son los JOIN de las consultas de LECTURA. Crear y Actualizar no lo
+// usan porque alli la categoria sale de una CTE, no de la tabla.
+const uniones = `
+	JOIN categorias c ON c.id = m.categoria_id
+	LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
+	LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id` + unionesDeuda
+
+// unionesCTE son los mismos, pero con la categoria saliendo de la CTE `cat`.
+const unionesCTE = `
+	JOIN cat c ON c.id = m.categoria_id
+	LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
+	LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id` + unionesDeuda
 
 // filtrosSQL arma el WHERE del listado y de la exportacion, que filtran igual.
 //
@@ -70,7 +119,16 @@ func filtrosSQL(usuarioID int64, f Filtros) (string, []any) {
 		agregar("m.categoria_id = $%d", f.CategoriaID)
 	}
 	if f.MedioPagoID > 0 {
-		agregar("m.medio_pago_id = $%d", f.MedioPagoID)
+		// En un traslado el medio filtrado puede ser el origen O el destino:
+		// al mirar "lo de Nequi" se esperan las dos puntas. El mismo parametro
+		// va dos veces, por eso no usa el helper de arriba.
+		args = append(args, f.MedioPagoID)
+		n := strconv.Itoa(len(args))
+		condiciones = append(condiciones,
+			"(m.medio_pago_id = $"+n+" OR m.medio_cobro_id = $"+n+")")
+	}
+	if f.AQuien != "" {
+		agregar("lower(btrim(m.a_quien)) = lower(btrim($%d))", f.AQuien)
 	}
 	if f.Tipo != "" {
 		agregar("m.tipo = $%d", f.Tipo)
@@ -118,12 +176,10 @@ func (s *Store) Listar(ctx context.Context, usuarioID int64, f Filtros) ([]Movim
 	listaSQL := fmt.Sprintf(`
 		SELECT %s
 		FROM movimientos m
-		JOIN categorias c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id
+		%s
 		%s
 		ORDER BY m.fecha DESC, m.id DESC
-		LIMIT $%d OFFSET $%d`, columnas, where, len(args)-1, len(args))
+		LIMIT $%d OFFSET $%d`, columnas, uniones, where, len(args)-1, len(args))
 
 	filas, err := s.db.QueryContext(ctx, listaSQL, args...)
 	if err != nil {
@@ -150,10 +206,8 @@ func (s *Store) PorID(ctx context.Context, usuarioID, id int64) (*Movimiento, er
 	q := fmt.Sprintf(`
 		SELECT %s
 		FROM movimientos m
-		JOIN categorias c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id
-		WHERE m.id = $1 AND m.usuario_id = $2`, columnas)
+		%s
+		WHERE m.id = $1 AND m.usuario_id = $2`, columnas, uniones)
 
 	m, err := escanear(s.db.QueryRowContext(ctx, q, id, usuarioID))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -178,36 +232,57 @@ func (s *Store) Crear(ctx context.Context, usuarioID int64, d Datos) (*Movimient
 			SELECT id, nombre FROM categorias WHERE id = $2 AND usuario_id = $1
 		), medio AS (
 			SELECT id FROM medios_pago WHERE id = $9 AND usuario_id = $1
+		), destino AS (
+			SELECT id FROM medios_pago WHERE id = $11 AND usuario_id = $1
 		), ins AS (
 			INSERT INTO movimientos
-				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id, cobrar_el)
-			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio), $10::date
+				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id, cobrar_el, medio_cobro_id)
+			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio), $10::date, (SELECT id FROM destino)
 			FROM cat
 			-- El medio es opcional, pero si viene uno TIENE que ser del usuario.
 			-- Sin este WHERE, un id ajeno o inexistente se guardaria como NULL
 			-- en silencio y el usuario creeria que quedo registrado.
-			WHERE $9::bigint IS NULL OR EXISTS (SELECT 1 FROM medio)
+			-- Lo mismo con el destino del traslado.
+			WHERE ($9::bigint  IS NULL OR EXISTS (SELECT 1 FROM medio))
+			  AND ($11::bigint IS NULL OR EXISTS (SELECT 1 FROM destino))
 			RETURNING *
+		), abono AS (
+			-- Una deuda que nace saldada ("le presté y ya me pagó") nace con
+			-- su abono. Si no, quedaria con estado 'pagado' y saldo completo:
+			-- dos datos que se contradicen. Sin medio, que es lo unico honesto
+			-- cuando el formulario no lo pregunta en ese momento.
+			INSERT INTO abonos (usuario_id, movimiento_id, monto, fecha, medio_id, nota)
+			SELECT $1, ins.id, ins.monto, ins.fecha, NULL, 'Registrado como ya saldado'
+			FROM ins WHERE ins.estado = 'pagado'
 		)
 		SELECT %s
 		FROM ins m
-		JOIN cat c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id`, columnas)
+		%s`, columnas, unionesCTE)
 
 	m, err := escanear(s.db.QueryRowContext(ctx, q,
-		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl))
+		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, s.porQueNoEntro(ctx, usuarioID, d)
 	}
-	if esCobroAntes(err) {
-		return nil, ErrCobroAntes
-	}
 	if err != nil {
-		return nil, fmt.Errorf("creando movimiento: %w", err)
+		return nil, traducirCheck(err, "creando movimiento")
 	}
-	return m, nil
+	return s.relerSiNacioSaldada(ctx, usuarioID, m, d)
+}
+
+// relerSiNacioSaldada vuelve a consultar cuando el INSERT creo tambien un
+// abono en la misma sentencia.
+//
+// Las CTE comparten un unico snapshot: el SELECT final NO ve la fila que la
+// CTE de al lado acaba de insertar, asi que el abonado y el saldo volverian en
+// cero. Es una relectura, no un parche: la alternativa seria calcular a mano
+// en Go unas cifras que Postgres ya sabe dar bien.
+func (s *Store) relerSiNacioSaldada(ctx context.Context, usuarioID int64, m *Movimiento, d Datos) (*Movimiento, error) {
+	if d.Estado == nil || *d.Estado != EstadoPagado || !EsDeuda(d.Tipo) {
+		return m, nil
+	}
+	return s.PorID(ctx, usuarioID, m.ID)
 }
 
 // porQueNoEntro traduce un "no se insertó/actualizó nada" al error concreto.
@@ -238,6 +313,10 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			SELECT id, nombre FROM categorias WHERE id = $3 AND usuario_id = $1
 		), medio AS (
 			SELECT id FROM medios_pago WHERE id = $10 AND usuario_id = $1
+		), destino AS (
+			SELECT id FROM medios_pago WHERE id = $12 AND usuario_id = $1
+		), ab AS (
+			SELECT coalesce(sum(monto), 0) AS abonado FROM abonos WHERE movimiento_id = $2
 		), upd AS (
 			UPDATE movimientos m
 			SET categoria_id   = cat.id,
@@ -246,23 +325,42 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			    fecha          = $6::date,
 			    descripcion    = $7,
 			    a_quien        = $8,
-			    estado         = $9,
+			    -- El estado NO lo decide el formulario si ya hay abonos: lo
+			    -- decide la plata registrada. Lo que el usuario elija solo
+			    -- cuenta cuando no se ha abonado nada todavia, que es el
+			    -- unico caso en que no hay nada que contradecir.
+			    estado = CASE
+			        WHEN $4 NOT IN ('preste', 'me_prestaron')  THEN NULL
+			        WHEN (SELECT abonado FROM ab) >= $5::numeric THEN 'pagado'
+			        WHEN (SELECT abonado FROM ab) > 0            THEN 'parcial'
+			        ELSE $9
+			    END,
 			    medio_pago_id  = (SELECT id FROM medio),
 			    cobrar_el      = $11::date,
+			    medio_cobro_id = (SELECT id FROM destino),
 			    actualizado_en = now()
 			FROM cat
 			WHERE m.id = $2 AND m.usuario_id = $1
 			  AND ($10::bigint IS NULL OR EXISTS (SELECT 1 FROM medio))
+			  AND ($12::bigint IS NULL OR EXISTS (SELECT 1 FROM destino))
 			RETURNING m.*
+		), abono AS (
+			-- Mismo caso que al crear: si la marcan saldada y no tenia ningun
+			-- abono, se crea el que falta para que el saldo cuadre.
+			INSERT INTO abonos (usuario_id, movimiento_id, monto, fecha, medio_id, nota)
+			SELECT $1, upd.id, upd.monto, upd.fecha, NULL, 'Marcado como saldado al editar'
+			FROM upd
+			WHERE upd.estado = 'pagado' AND (SELECT abonado FROM ab) = 0
 		)
 		SELECT %s
 		FROM upd m
-		JOIN cat c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id`, columnas)
+		%s`, columnas, unionesCTE)
 
-	m, err := escanear(s.db.QueryRowContext(ctx, q,
-		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl))
+	// La fila que devuelve esta consulta se descarta a proposito: mas abajo se
+	// relee con PorID, porque el SELECT de aqui no alcanza a ver el abono que
+	// la CTE de al lado pudo haber insertado.
+	_, err := escanear(s.db.QueryRowContext(ctx, q,
+		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// Sin filas puede ser: el movimiento no existe, la categoria no sirve
@@ -276,13 +374,12 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 		}
 		return nil, s.porQueNoEntro(ctx, usuarioID, d)
 	}
-	if esCobroAntes(err) {
-		return nil, ErrCobroAntes
-	}
 	if err != nil {
-		return nil, fmt.Errorf("actualizando movimiento: %w", err)
+		return nil, traducirCheck(err, "actualizando movimiento")
 	}
-	return m, nil
+	// Tras un UPDATE siempre se relee: el estado lo calculo la propia consulta
+	// a partir de los abonos, y pudo quedar distinto del que venia en `d`.
+	return s.PorID(ctx, usuarioID, id)
 }
 
 // Eliminar borra la fila y devuelve la ruta de la factura (si tenia) para que
@@ -426,6 +523,7 @@ func escanear(fila escaneable) (*Movimiento, error) {
 		&m.Descripcion, &aQuien, &estado, &cobrarEl,
 		&facturaRuta, &facturaNombre, &facturaTipo,
 		&m.CreadoEn, &m.ActualizadoEn,
+		&m.Abonado, &m.Saldo, &m.Abonos, &m.Cuotas,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -471,77 +569,22 @@ func escanear(fila escaneable) (*Movimiento, error) {
 	return &m, nil
 }
 
-// CambiarEstado marca un prestamo como pagado o pendiente sin tocar el resto
-// de los campos.
+// traducirCheck convierte el fallo de un CHECK de la base en el error de Go
+// que le corresponde. Validar ya revisa todas estas reglas; esto cubre al que
+// llegue por otro camino (el asistente con una fecha rara, un cliente viejo) y
+// garantiza que el usuario vea un mensaje util y no un 500.
 //
-// Por que existe (y no reusar Actualizar): marcar "ya me pagaron" es UNA
-// accion de un clic desde la lista. Obligar a mandar el movimiento completo
-// significaria abrir el formulario, y ademas cualquier campo que el cliente
-// mande de mas podria pisar datos buenos por accidente.
-//
-// El WHERE incluye tipo = 'preste': un 'recibi' o un 'pague' no tienen estado,
-// y el CHECK de la base de datos lo rechazaria de todos modos.
-func (s *Store) CambiarEstado(ctx context.Context, usuarioID, id int64, estado string, medioCobroID *int64) (*Movimiento, error) {
-	// Al volver a "pendiente" se borra el medio de cobro: la plata todavia
-	// no ha vuelto, asi que no puede haber entrado por ningun lado.
-	// El CHECK de la base de datos tambien lo exige.
-	if estado != EstadoPagado {
-		medioCobroID = nil
-	}
-
-	q := fmt.Sprintf(`
-		WITH medio AS (
-			SELECT id FROM medios_pago WHERE id = $4 AND usuario_id = $3
-		), upd AS (
-			UPDATE movimientos
-			SET estado = $1,
-			    medio_cobro_id = (SELECT id FROM medio),
-			    actualizado_en = now()
-			WHERE id = $2 AND usuario_id = $3 AND tipo = 'preste'
-			  AND ($4::bigint IS NULL OR EXISTS (SELECT 1 FROM medio))
-			RETURNING *
-		)
-		SELECT %s
-		FROM upd m
-		JOIN categorias c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id`, columnas)
-
-	m, err := escanear(s.db.QueryRowContext(ctx, q, estado, id, usuarioID, medioCobroID))
-
-	if errors.Is(err, sql.ErrNoRows) {
-		// Sin filas: o el movimiento no existe, o existe pero no es un prestamo.
-		existe, errExiste := s.existe(ctx, usuarioID, id)
-		if errExiste != nil {
-			return nil, errExiste
-		}
-		if !existe {
-			return nil, ErrNoEncontrado
-		}
-		// Existe: o no es un prestamo, o el medio de cobro no sirve.
-		if medioCobroID != nil {
-			var esPrestamo bool
-			if e := s.db.QueryRowContext(ctx,
-				`SELECT exists(SELECT 1 FROM movimientos WHERE id = $1 AND usuario_id = $2 AND tipo = 'preste')`,
-				id, usuarioID).Scan(&esPrestamo); e != nil {
-				return nil, fmt.Errorf("verificando prestamo: %w", e)
-			}
-			if esPrestamo {
-				return nil, ErrMedioInvalido
-			}
-		}
-		return nil, ErrNoEsPrestamo
-	}
-	if err != nil {
-		return nil, fmt.Errorf("cambiando estado: %w", err)
-	}
-	return m, nil
-}
-
-// esCobroAntes reconoce el CHECK que impide cobrar antes de prestar. Validar
-// ya lo revisa; esto cubre al que llegue por otro camino (el asistente con una
-// fecha rara, un cliente viejo).
-func esCobroAntes(err error) bool {
+// Si el CHECK que fallo no es ninguno de los conocidos, el error sube tal cual
+// para que quede en la bitacora: es un bug nuestro, no un dato malo del usuario.
+func traducirCheck(err error, contexto string) error {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.ConstraintName == "movimientos_cobrar_el_despues_del_prestamo"
+	if errors.As(err, &pgErr) {
+		switch pgErr.ConstraintName {
+		case "movimientos_cobrar_el_despues_del_prestamo":
+			return ErrCobroAntes
+		case "movimientos_traslado_completo":
+			return ErrMismoMedio
+		}
+	}
+	return fmt.Errorf("%s: %w", contexto, err)
 }

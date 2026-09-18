@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { agenteApi, movimientosApi } from '../lib/api'
 import { entradaAMonto, formatearMonto, montoAEntrada, ETIQUETAS_TIPO } from '../lib/formato'
+import { hoyISO } from '../lib/formato'
 import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
 import InputMonto from './InputMonto'
 
@@ -16,7 +17,10 @@ import InputMonto from './InputMonto'
 // muestra y la sube como factura del movimiento al guardarlo.
 export default function PropuestaAgente({ propuesta, categorias, medios, factura, onResuelta }) {
   if (propuesta.tipo === 'marcar_pagado') {
-    return <CobroDePrestamo propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
+    return <SaldarDeuda propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
+  }
+  if (propuesta.tipo === 'abono') {
+    return <AbonoParcial propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
   }
   return (
     <MovimientoNuevo
@@ -38,6 +42,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
   const [descripcion, setDescripcion] = useState(datos.descripcion ?? '')
   const [categoriaID, setCategoriaID] = useState(datos.categoria_id ?? 0)
   const [medioID, setMedioID] = useState(datos.medio_pago_id ?? 0)
+  const [destinoID, setDestinoID] = useState(datos.medio_destino_id ?? 0)
   const [aQuien, setAQuien] = useState(datos.a_quien ?? '')
   const [estado, setEstado] = useState(datos.estado || 'pendiente')
   const [cobrarEl, setCobrarEl] = useState(datos.cobrar_el ?? '')
@@ -50,21 +55,24 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
     if (facturaInicial) setFactura(facturaInicial)
   }
 
-  const esPrestamo = tipo === 'preste'
+  const esDeuda = tipo === 'preste' || tipo === 'me_prestaron'
+  const esPropia = tipo === 'me_prestaron'
+  const esTraslado = tipo === 'traslado'
 
   function cuerpo() {
     return {
       categoria_id: Number(categoriaID),
       medio_pago_id: Number(medioID),
+      // El backend ignora los campos que no aplican al tipo, así que cambiar
+      // de tipo en la tarjeta no obliga a limpiar nada.
+      medio_cobro_id: esTraslado ? Number(destinoID) : 0,
       tipo,
       monto: entradaAMonto(monto),
       fecha,
       descripcion,
-      // El backend ignora estos dos cuando el tipo no es "presté", así que
-      // cambiar de tipo no obliga a limpiar nada.
-      a_quien: esPrestamo ? aQuien : '',
-      estado: esPrestamo ? estado : '',
-      cobrar_el: esPrestamo ? cobrarEl : '',
+      a_quien: esDeuda ? aQuien : '',
+      estado: esDeuda ? estado : '',
+      cobrar_el: esDeuda ? cobrarEl : '',
     }
   }
 
@@ -139,6 +147,29 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
             {campos.medio_pago_id && <span className="error-campo">{campos.medio_pago_id}</span>}
           </div>
 
+          {esTraslado && (
+            <div className="propuesta-campo">
+              <label htmlFor={`destino-${propuesta.id}`}>¿A qué medio entra?</label>
+              <select
+                id={`destino-${propuesta.id}`}
+                value={destinoID}
+                onChange={(e) => setDestinoID(e.target.value)}
+              >
+                <option value={0}>Selecciona</option>
+                {medios
+                  .filter((m) => String(m.id) !== String(medioID))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nombre}
+                    </option>
+                  ))}
+              </select>
+              {campos.medio_cobro_id && (
+                <span className="error-campo">{campos.medio_cobro_id}</span>
+              )}
+            </div>
+          )}
+
           <div className="propuesta-campo crece">
             <label htmlFor={`descripcion-${propuesta.id}`}>Descripción</label>
             <input
@@ -149,10 +180,12 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
             {campos.descripcion && <span className="error-campo">{campos.descripcion}</span>}
           </div>
 
-          {esPrestamo && (
+          {esDeuda && (
             <>
               <div className="propuesta-campo">
-                <label htmlFor={`aquien-${propuesta.id}`}>¿A quién?</label>
+                <label htmlFor={`aquien-${propuesta.id}`}>
+                  {esPropia ? '¿Quién te prestó?' : '¿A quién?'}
+                </label>
                 <input
                   id={`aquien-${propuesta.id}`}
                   value={aQuien}
@@ -169,13 +202,15 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
                   onChange={(e) => setEstado(e.target.value)}
                 >
                   <option value="pendiente">Pendiente</option>
-                  <option value="pagado">Pagado</option>
+                  <option value="pagado">{esPropia ? 'Ya le pagué' : 'Ya me pagó'}</option>
                 </select>
                 {campos.estado && <span className="error-campo">{campos.estado}</span>}
               </div>
 
               <div className="propuesta-campo">
-                <label htmlFor={`cobrar-${propuesta.id}`}>¿Cuándo te paga?</label>
+                <label htmlFor={`cobrar-${propuesta.id}`}>
+                  {esPropia ? '¿Cuándo le pagas?' : '¿Cuándo te paga?'}
+                </label>
                 <input
                   id={`cobrar-${propuesta.id}`}
                   type="date"
@@ -212,27 +247,41 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
   )
 }
 
-function CobroDePrestamo({ propuesta, medios, onResuelta }) {
+// Saldar una deuda entera. El monto que se registra es el SALDO, no el monto
+// original: si ya habían abonado, lo que falta es menos.
+function SaldarDeuda({ propuesta, medios, onResuelta }) {
   const datos = propuesta.datos
   const [medioID, setMedioID] = useState(datos.medio_cobro_id ?? 0)
+  const propia = datos.tipo === 'me_prestaron'
 
   return (
     <Tarjeta
       propuesta={propuesta}
       onResuelta={onResuelta}
       cuerpo={() => ({ medio_cobro_id: Number(medioID) })}
-      etiqueta="Marcar pagado"
+      etiqueta={propia ? 'Marcar pagada' : 'Marcar cobrado'}
     >
       {(campos) => (
         <>
           <p className="propuesta-resumen">
-            <strong>{datos.a_quien}</strong> te devolvió {formatearMonto(datos.monto)}
+            {propia ? (
+              <>
+                Le terminas de pagar {formatearMonto(datos.monto)} a{' '}
+                <strong>{datos.a_quien}</strong>
+              </>
+            ) : (
+              <>
+                <strong>{datos.a_quien}</strong> te devolvió {formatearMonto(datos.monto)}
+              </>
+            )}
             {datos.descripcion ? ` (${datos.descripcion})` : ''}.
           </p>
 
           <div className="propuesta-campos">
             <div className="propuesta-campo crece">
-              <label htmlFor={`cobro-${propuesta.id}`}>¿Por dónde te pagaron?</label>
+              <label htmlFor={`cobro-${propuesta.id}`}>
+                {propia ? '¿Por dónde le pagaste?' : '¿Por dónde te pagaron?'}
+              </label>
               <select
                 id={`cobro-${propuesta.id}`}
                 value={medioID}
@@ -248,6 +297,104 @@ function CobroDePrestamo({ propuesta, medios, onResuelta }) {
                 ))}
               </select>
               {campos.medio_cobro_id && <span className="error-campo">{campos.medio_cobro_id}</span>}
+            </div>
+          </div>
+        </>
+      )}
+    </Tarjeta>
+  )
+}
+
+// Un abono parcial: no salda la deuda, le baja el saldo.
+//
+// El monto es editable como en todas las tarjetas, y aquí más que en ninguna:
+// "me abonó cincuenta" puede ser 50.000 o 50 mil quinientos, y confirmarlo mal
+// deja la deuda diciendo que falta menos de lo que falta.
+function AbonoParcial({ propuesta, medios, onResuelta }) {
+  const datos = propuesta.datos
+  const propia = datos.tipo === 'me_prestaron'
+
+  const [monto, setMonto] = useState(montoAEntrada(datos.monto))
+  const [fecha, setFecha] = useState(datos.fecha || hoyISO())
+  const [medioID, setMedioID] = useState(datos.medio_id ?? 0)
+  const [nota, setNota] = useState(datos.nota ?? '')
+
+  return (
+    <Tarjeta
+      propuesta={propuesta}
+      onResuelta={onResuelta}
+      cuerpo={() => ({
+        monto: entradaAMonto(monto),
+        fecha,
+        medio_id: Number(medioID),
+        nota,
+      })}
+      etiqueta="Registrar abono"
+    >
+      {(campos) => (
+        <>
+          <p className="propuesta-resumen">
+            {propia ? (
+              <>
+                Le abonas a <strong>{datos.a_quien}</strong>
+              </>
+            ) : (
+              <>
+                <strong>{datos.a_quien}</strong> te abona
+              </>
+            )}{' '}
+            de los {formatearMonto(datos.saldo_actual)} que faltaban.
+          </p>
+
+          <div className="propuesta-campos">
+            <div className="propuesta-campo">
+              <label htmlFor={`abono-monto-${propuesta.id}`}>Monto del abono</label>
+              <InputMonto
+                id={`abono-monto-${propuesta.id}`}
+                valor={monto}
+                onCambio={setMonto}
+              />
+              {campos.monto && <span className="error-campo">{campos.monto}</span>}
+            </div>
+
+            <div className="propuesta-campo">
+              <label htmlFor={`abono-fecha-${propuesta.id}`}>Fecha</label>
+              <input
+                id={`abono-fecha-${propuesta.id}`}
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+              />
+              {campos.fecha && <span className="error-campo">{campos.fecha}</span>}
+            </div>
+
+            <div className="propuesta-campo">
+              <label htmlFor={`abono-medio-${propuesta.id}`}>
+                {propia ? '¿Por dónde le pagaste?' : '¿Por dónde te pagó?'}
+              </label>
+              <select
+                id={`abono-medio-${propuesta.id}`}
+                value={medioID}
+                onChange={(e) => setMedioID(e.target.value)}
+              >
+                <option value={0}>Sin registrar</option>
+                {medios.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
+              {campos.medio_id && <span className="error-campo">{campos.medio_id}</span>}
+            </div>
+
+            <div className="propuesta-campo crece">
+              <label htmlFor={`abono-nota-${propuesta.id}`}>Nota</label>
+              <input
+                id={`abono-nota-${propuesta.id}`}
+                value={nota}
+                onChange={(e) => setNota(e.target.value)}
+              />
+              {campos.nota && <span className="error-campo">{campos.nota}</span>}
             </div>
           </div>
         </>

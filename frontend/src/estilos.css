@@ -2509,3 +2509,294 @@ button.boton-factura {
   font-size: 13px;
 }
 
+
+/* ===========================================================================
+   Deudas en los dos sentidos, traslados, abonos y recurrentes
+   =========================================================================== */
+
+/* ---------- los tipos nuevos ----------
+   "Me prestaron" comparte el ámbar de "Presté" porque son la misma cosa vista
+   desde los dos lados: plata que todavía tiene que moverse. El traslado va en
+   gris a propósito — no suma ni resta, y pintarlo de color lo haría parecer
+   un ingreso o un gasto. */
+
+.tipo-me_prestaron {
+  color: var(--ambar);
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.tipo-traslado {
+  color: var(--tenue);
+  border-color: var(--borde);
+  background: var(--superficie-2);
+}
+
+.estado-parcial {
+  color: var(--acento);
+  background: rgba(79, 140, 255, 0.12);
+}
+
+/* El monto de un traslado: ni verde ni rojo, porque no cambia el total. */
+.monto-valor.neutro {
+  color: var(--tenue);
+}
+
+.traslado-ruta {
+  font-variant-numeric: tabular-nums;
+}
+
+.deuda-quien {
+  font-weight: 500;
+}
+
+/* "faltan $150.000 de $500.000": es lo que de verdad se debe, y por eso va
+   destacado sobre el monto original. */
+.saldo-pendiente {
+  color: var(--ambar);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- acciones nuevas de la lista ---------- */
+
+.principal-abonar {
+  background: rgba(79, 140, 255, 0.14);
+  border: 1px solid rgba(79, 140, 255, 0.5);
+  color: var(--acento);
+}
+
+.principal-abonar:hover {
+  background: rgba(79, 140, 255, 0.22);
+}
+
+/* "Recordar" es un enlace (abre WhatsApp), pero tiene que verse y tocarse
+   igual que los botones de al lado. */
+.acciones-principales a.principal-recordar {
+  flex: 1 1 auto;
+  min-width: 120px;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  background: rgba(37, 211, 102, 0.12);
+  border: 1px solid rgba(37, 211, 102, 0.45);
+  color: #25d366;
+}
+
+.acciones-principales a.principal-recordar:hover {
+  background: rgba(37, 211, 102, 0.2);
+}
+
+/* ---------- el resumen: te deben / debes ---------- */
+
+.fila-tarjetas.dos-grandes {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.monto-contraparte {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detalle-neto {
+  font-size: 12px;
+}
+
+/* ---------- abonos y acuerdo de pago ---------- */
+
+.resumen-deuda {
+  margin-bottom: 14px;
+}
+
+.cifras-deuda {
+  display: flex;
+  gap: 20px;
+  padding: 10px 0;
+  border-top: 1px solid var(--borde);
+  border-bottom: 1px solid var(--borde);
+}
+
+.cifras-deuda div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cifras-deuda strong {
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lista-abonos {
+  margin: 14px 0;
+}
+
+.lista-abonos h3,
+.bloque-acuerdo h3,
+.form-abono h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.abono {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--borde);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-abono {
+  margin-top: 14px;
+}
+
+.separador {
+  border: 0;
+  border-top: 1px solid var(--borde);
+  margin: 18px 0;
+}
+
+.bloque-acuerdo {
+  margin-top: 4px;
+}
+
+.lista-cuotas {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0;
+}
+
+/* Cuatro columnas fijas: número, monto, fecha y estado. Alineadas, la lista
+   se lee de un vistazo; con flex libre, cada fila queda en otro sitio. */
+.cuota {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--borde);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cuota-cubierta {
+  opacity: 0.6;
+}
+
+.cuota-numero {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--superficie-2);
+  border: 1px solid var(--borde);
+  font-size: 12px;
+}
+
+.cuota-cubierta .cuota-numero {
+  background: rgba(74, 222, 128, 0.15);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: var(--verde);
+}
+
+/* ---------- gastos recurrentes ---------- */
+
+.pendientes-recurrentes {
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+.pendientes-recurrentes h2 .contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ambar);
+  color: var(--fondo);
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.pendiente {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid var(--borde);
+}
+
+.pendiente-datos {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pendiente-acciones,
+.pendiente-corregir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pendiente-acciones strong {
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+.pendiente-corregir input {
+  width: 140px;
+  margin: 0;
+}
+
+/* Un recurrente pausado sigue en la lista, pero apagado: borrarlo perdería
+   el historial de lo que ya se confirmó. */
+.fila-pausada {
+  opacity: 0.55;
+}
+
+/* ---------- el interruptor de avisos al celular ---------- */
+
+.boton-tema.activo {
+  background: rgba(74, 222, 128, 0.14);
+  border-color: rgba(74, 222, 128, 0.45);
+}
+
+@media (max-width: 640px) {
+  .cifras-deuda {
+    gap: 14px;
+  }
+
+  .pendiente {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pendiente-acciones {
+    justify-content: space-between;
+  }
+
+  .pendiente-corregir input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}

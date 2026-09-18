@@ -12,6 +12,7 @@ package dinero
 import (
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -102,4 +103,86 @@ func Formatear(monto string) string {
 		signo = ""
 	}
 	return signo + "$ " + b.String()
+}
+
+// ErrReparto: se pidieron mas cuotas que centavos. Con $500 no se pueden hacer
+// 600 cuotas sin que alguna quede en cero, y una cuota de cero no es una cuota.
+var ErrReparto = errors.New("El monto no alcanza para tantas cuotas")
+
+// Repartir divide un monto en n partes que suman EXACTAMENTE el total.
+//
+// Sobre la regla del paquete ("Go nunca hace aritmetica con plata"): aqui Go si
+// calcula, pero con ENTEROS de centavos, no con float. Esa es la diferencia que
+// importa. 100.000 / 3 en centavos es 3.333.333 y sobran 1: las tres cuotas
+// salen 33.333,34 / 33.333,33 / 33.333,33 y suman 100.000 al peso. Con float
+// saldrian tres veces 33333.333333... y el acuerdo no cuadraria con la deuda.
+//
+// Los centavos que sobran se reparten entre las PRIMERAS cuotas, no entre las
+// ultimas: si alguien deja de pagar a la mitad, conviene que lo ya pagado sea
+// el pedazo mas grande.
+//
+// No se hace en Postgres como el resto de las sumas porque esto no es sumar
+// filas de una tabla: es partir un numero que ya tenemos, y en una consulta
+// quedaria un generate_series bastante menos legible que estas diez lineas.
+func Repartir(total string, n int) ([]string, error) {
+	if n <= 0 {
+		return nil, ErrReparto
+	}
+
+	normalizado, err := Normalizar(total)
+	if err != nil {
+		return nil, err
+	}
+
+	centavos, err := aCentavos(normalizado)
+	if err != nil {
+		return nil, err
+	}
+	if centavos < int64(n) {
+		return nil, ErrReparto
+	}
+
+	base := centavos / int64(n)
+	sobran := centavos % int64(n)
+
+	partes := make([]string, 0, n)
+	for i := range n {
+		monto := base
+		if int64(i) < sobran {
+			monto++
+		}
+		partes = append(partes, deCentavos(monto))
+	}
+	return partes, nil
+}
+
+// aCentavos pasa "1500.50" a 150050. Sin float: mueve digitos.
+//
+// El monto ya viene por Normalizar, que garantiza el formato y el techo de 12
+// enteros + 2 decimales — 14 digitos, que caben de sobra en un int64.
+func aCentavos(normalizado string) (int64, error) {
+	entero, decimales, _ := strings.Cut(normalizado, ".")
+
+	// "1500.5" son 50 centavos, no 5: se rellena a la derecha.
+	switch len(decimales) {
+	case 0:
+		decimales = "00"
+	case 1:
+		decimales += "0"
+	}
+
+	var total int64
+	for _, c := range entero + decimales {
+		total = total*10 + int64(c-'0')
+	}
+	return total, nil
+}
+
+// deCentavos hace el camino de vuelta: 150050 -> "1500.50".
+func deCentavos(centavos int64) string {
+	digitos := strconv.FormatInt(centavos, 10)
+	for len(digitos) < 3 {
+		digitos = "0" + digitos
+	}
+	return digitos[:len(digitos)-2] + "." + digitos[len(digitos)-2:]
 }

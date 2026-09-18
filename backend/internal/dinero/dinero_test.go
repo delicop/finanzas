@@ -100,3 +100,93 @@ func TestFormatear(t *testing.T) {
 		}
 	}
 }
+
+// Repartir es lo que arma las cuotas de un acuerdo de pago. La regla que no se
+// puede romper: las partes tienen que SUMAR EXACTAMENTE el total. Si se pierde
+// un peso por cuota, un acuerdo a 24 cuotas deja al final una deuda fantasma
+// de 24 pesos que nadie sabe de dónde salió.
+func TestRepartir(t *testing.T) {
+	casos := []struct {
+		nombre   string
+		total    string
+		cuotas   int
+		esperado []string
+	}{
+		{"division exacta", "300000", 3, []string{"100000.00", "100000.00", "100000.00"}},
+		{
+			// 100.000 entre 3 son 33.333,33 y sobra un centavo: se lo lleva la
+			// primera. 33333.34 + 33333.33 + 33333.33 = 100000.00
+			"con centavos que sobran", "100000", 3,
+			[]string{"33333.34", "33333.33", "33333.33"},
+		},
+		{
+			// Sobran 2 centavos: uno para cada una de las dos primeras.
+			"dos centavos de sobra", "100", 3,
+			[]string{"33.34", "33.33", "33.33"},
+		},
+		{"una sola cuota", "45000.50", 1, []string{"45000.50"}},
+		{"con decimales", "1000.05", 2, []string{"500.03", "500.02"}},
+	}
+
+	for _, c := range casos {
+		t.Run(c.nombre, func(t *testing.T) {
+			partes, err := Repartir(c.total, c.cuotas)
+			if err != nil {
+				t.Fatalf("Repartir(%q, %d): %v", c.total, c.cuotas, err)
+			}
+			if len(partes) != len(c.esperado) {
+				t.Fatalf("partes = %v, se esperaban %d", partes, len(c.esperado))
+			}
+			for i := range partes {
+				if partes[i] != c.esperado[i] {
+					t.Errorf("cuota %d = %s, se esperaba %s", i+1, partes[i], c.esperado[i])
+				}
+			}
+		})
+	}
+}
+
+// La propiedad que de verdad importa, comprobada sobre muchos casos: sumar las
+// partes en centavos tiene que dar el total, siempre.
+func TestRepartirSiempreCuadra(t *testing.T) {
+	totales := []string{"1", "7", "100", "999.99", "45000.50", "1234567.89", "10.01"}
+	cantidades := []int{1, 2, 3, 4, 5, 7, 12, 24}
+
+	for _, total := range totales {
+		for _, n := range cantidades {
+			partes, err := Repartir(total, n)
+			if err != nil {
+				continue // el total no alcanza para tantas cuotas: es correcto
+			}
+
+			var suma int64
+			for _, p := range partes {
+				c, err := aCentavos(p)
+				if err != nil {
+					t.Fatalf("la parte %q no se pudo leer: %v", p, err)
+				}
+				suma += c
+			}
+
+			normalizado, _ := Normalizar(total)
+			esperado, _ := aCentavos(normalizado)
+			if suma != esperado {
+				t.Errorf("Repartir(%q, %d) suma %d centavos, se esperaban %d", total, n, suma, esperado)
+			}
+		}
+	}
+}
+
+func TestRepartirRechazaLoImposible(t *testing.T) {
+	// 5 pesos son 500 centavos: no alcanzan para 600 cuotas sin que alguna
+	// quede en cero, y una cuota de cero no es una cuota.
+	if _, err := Repartir("5", 600); !errors.Is(err, ErrReparto) {
+		t.Errorf("Repartir(5, 600) = %v, se esperaba ErrReparto", err)
+	}
+	if _, err := Repartir("1000", 0); !errors.Is(err, ErrReparto) {
+		t.Errorf("Repartir con 0 cuotas debería fallar")
+	}
+	if _, err := Repartir("abc", 3); err == nil {
+		t.Errorf("Repartir con un monto inválido debería fallar")
+	}
+}

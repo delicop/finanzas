@@ -17,7 +17,8 @@ y sus dependencias. No comparten código; hablan solo por HTTP/JSON.
 backend/
 ├── cmd/
 │   ├── api/          el servidor HTTP
-│   └── createuser/   comando para crear el primer administrador
+│   ├── createuser/   comando para crear el primer administrador
+│   └── vapid/        genera las llaves de los avisos al celular
 └── internal/
     ├── auth/         login, JWT, contraseñas, roles, límite de intentos
     ├── admin/        panel del dueño: usuarios, claves, activar/desactivar
@@ -26,8 +27,10 @@ backend/
     ├── suscripciones/ el negocio: planes, cobros y el tablero del dueño
     ├── categorias/   CRUD de categorías
     ├── medios/       CRUD de medios de pago
-    ├── movimientos/  movimientos, facturas y el resumen
-    ├── dinero/       validación de montos
+    ├── movimientos/  movimientos, abonos, cuotas, facturas y el resumen
+    ├── recurrentes/  lo que se repite: plantillas y lo que falta confirmar
+    ├── push/         avisos al celular con la app cerrada (ver avisos.md)
+    ├── dinero/       validación de montos y reparto en cuotas
     ├── registro/     bitácora de errores
     ├── httpx/        helpers de request/response
     ├── config/       configuración por variables de entorno

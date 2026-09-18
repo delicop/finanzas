@@ -37,6 +37,8 @@ tablas antes de empezar, así que **no uses la base de producción**.
 | `registro` | Que un pánico no tumbe el servidor y que no se filtren detalles al cliente |
 | `agente` | El contrato con el proveedor del modelo y que el chat de cada quien sea suyo |
 | `avisos` | Que las cifras de los resúmenes salgan de la base y no se repita un aviso |
+| `push` | El cifrado de Web Push, contra el ejemplo del RFC 8291 |
+| `recurrentes` | El calendario: meses cortos, quincenas y años bisiestos |
 
 Las del `agente` no necesitan internet: levantan un servidor de mentiras que
 responde como respondería DeepSeek. El resto del chat se prueba con un
@@ -55,6 +57,20 @@ Las que más valen:
 - **`TestLosSaldosPorMedioSumanElBalance`** — que las partes cuadren con el
   total.
 - **`TestLosCentavosNoSePierden`** — que `0.10 + 0.20` dé `0.30` exacto.
+- **`TestRepartirSiempreCuadra`** — que las cuotas de un acuerdo sumen
+  **exactamente** la deuda, sobre decenas de combinaciones de monto y
+  cantidad. Si se pierde un peso por cuota, un acuerdo a 24 cuotas deja al
+  final una deuda fantasma que nadie sabe de dónde salió.
+- **`TestCifrarCoincideConElEjemploDelRFC8291`** — que el cifrado de los
+  avisos al celular dé byte por byte lo que dice el estándar. Aquí un error no
+  revienta nada: los avisos simplemente no llegarían, y "que no falle" es lo
+  que también haría una implementación mal hecha.
+- **`TestVencimientos`** — que un recurrente "los días 31" caiga el 28 de
+  febrero y no se salte el mes.
+- **`TestAbonoParcial`** — que abonar baje el saldo y el dashboard cuente lo
+  que falta, no el monto original.
+- **`TestTrasladoNoCambiaElBalance`** — que pasar plata de un medio a otro
+  mueva los dos saldos y deje el total igual.
 - **`TestBusquedaNoEsVulnerableAInyeccion`** — que un `'; DROP TABLE` en el
   buscador no haga nada.
 - **`TestUnUsuarioIdInventadoNoTieneEfecto`** — que el agente lea los datos de

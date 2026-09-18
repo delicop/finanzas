@@ -64,23 +64,42 @@ func (s *Store) Informe(ctx context.Context, usuarioID int64, f Filtros) (*Infor
 		Generado:   time.Now().In(zonaColombia),
 	}
 
-	// Las mismas reglas del resumen (ver resumen.go): un prestamo pendiente
-	// resta del balance y uno devuelto queda en cero.
+	// Las mismas reglas del resumen (ver resumen.go): lo que se debe es el
+	// SALDO (monto menos abonos), en los dos sentidos, y los traslados no
+	// entran en ninguna de las cuatro cifras.
+	//
+	// Ojo con lo que significan estos totales: son los del RANGO exportado,
+	// no los de toda la cuenta. Un abono hecho fuera del rango igual baja el
+	// saldo del prestamo que si esta dentro — y tiene que ser asi, porque lo
+	// que se debe hoy es lo que se debe hoy, no lo que se debia en septiembre.
 	err := s.db.QueryRowContext(ctx, `
 		WITH t AS (
 			SELECT
 				coalesce(sum(m.monto) FILTER (WHERE m.tipo = 'recibi'), 0) AS recibido,
 				coalesce(sum(m.monto) FILTER (WHERE m.tipo = 'pague'), 0) AS pagado,
-				coalesce(sum(m.monto) FILTER (WHERE m.tipo = 'preste' AND m.estado = 'pendiente'), 0) AS por_cobrar,
-				coalesce(sum(m.monto) FILTER (WHERE m.tipo = 'preste' AND m.estado = 'pagado'), 0) AS recuperado
-			FROM movimientos m `+where+`
+				coalesce(sum(saldo.falta) FILTER (WHERE m.tipo = 'preste'), 0) AS por_cobrar,
+				coalesce(sum(saldo.falta) FILTER (WHERE m.tipo = 'me_prestaron'), 0) AS por_pagar,
+				coalesce(sum(m.monto - saldo.falta) FILTER (WHERE m.tipo = 'preste'), 0) AS recuperado,
+				coalesce(sum(m.monto - saldo.falta) FILTER (WHERE m.tipo = 'me_prestaron'), 0) AS abonado
+			FROM movimientos m
+			LEFT JOIN LATERAL (
+				SELECT m.monto - coalesce(sum(a.monto), 0) AS falta
+				FROM abonos a WHERE a.movimiento_id = m.id
+			) saldo ON true
+			`+where+`
 		)
-		SELECT recibido::text, pagado::text, por_cobrar::text, recuperado::text,
-		       (recibido - pagado - por_cobrar)::text,
+		-- El ::numeric(14,2) antes del ::text no es adorno: sin el, un total en
+		-- cero sale como "0" y los demas como "0.00", y el archivo queda con
+		-- dos formatos distintos en la misma columna.
+		SELECT recibido::numeric(14,2)::text, pagado::numeric(14,2)::text,
+		       por_cobrar::numeric(14,2)::text, por_pagar::numeric(14,2)::text,
+		       recuperado::numeric(14,2)::text, abonado::numeric(14,2)::text,
+		       (recibido - pagado - por_cobrar + por_pagar)::numeric(14,2)::text,
 		       (SELECT coalesce(nullif(u.nombre, ''), u.email) FROM usuarios u WHERE u.id = $1)
 		FROM t`, args...).Scan(
 		&inf.Totales.Recibido, &inf.Totales.Pagado, &inf.Totales.PorCobrar,
-		&inf.Totales.Recuperado, &inf.Totales.Balance, &inf.Titular)
+		&inf.Totales.PorPagar, &inf.Totales.Recuperado, &inf.Totales.Abonado,
+		&inf.Totales.Balance, &inf.Titular)
 	if err != nil {
 		return nil, fmt.Errorf("sumando movimientos a exportar: %w", err)
 	}
@@ -88,11 +107,9 @@ func (s *Store) Informe(ctx context.Context, usuarioID int64, f Filtros) (*Infor
 	filas, err := s.db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT %s
 		FROM movimientos m
-		JOIN categorias c ON c.id = m.categoria_id
-		LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
-		LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id
 		%s
-		ORDER BY m.fecha, m.id`, columnas, where), args...)
+		%s
+		ORDER BY m.fecha, m.id`, columnas, uniones, where), args...)
 	if err != nil {
 		return nil, fmt.Errorf("listando movimientos a exportar: %w", err)
 	}
@@ -145,8 +162,8 @@ func (h *Handler) Exportar(w http.ResponseWriter, r *http.Request) {
 	v := httpx.NuevoValidador()
 	_, formatoValido := formatos[formato]
 	v.Check(formatoValido, "formato", "Formato inválido: usa xlsx o pdf")
-	v.Check(f.Tipo == "" || EsTipoValido(f.Tipo), "tipo", "Tipo inválido: usa recibi, pague o preste")
-	v.Check(f.Estado == "" || EsEstadoValido(f.Estado), "estado", "Estado inválido: usa pagado o pendiente")
+	v.Check(f.Tipo == "" || EsTipoValido(f.Tipo), "tipo", TiposValidosMsg)
+	v.Check(f.Estado == "" || EsEstadoValido(f.Estado), "estado", EstadosValidosMsg)
 	v.Check(fechaValida(f.Desde), "desde", "Indica desde qué fecha (AAAA-MM-DD)")
 	v.Check(fechaValida(f.Hasta), "hasta", "Indica hasta qué fecha (AAAA-MM-DD)")
 	if v.Valido() {

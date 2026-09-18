@@ -6,6 +6,7 @@ import { useEsMovil } from '../lib/useEsMovil'
 import { useAlGuardarMovimiento } from '../lib/eventos'
 import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
+import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import FechaCobro from '../componentes/FechaCobro'
 
 export default function Dashboard() {
@@ -44,7 +45,7 @@ export default function Dashboard() {
   if (error) return <div className="alerta">{error}</div>
   if (!resumen) return null
 
-  const { totales, categorias, medios, deudores } = resumen
+  const { totales, categorias, medios, contrapartes } = resumen
 
   const listo = listaCategorias.length > 0 && listaMedios.length > 0
 
@@ -69,6 +70,10 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Lo que toca confirmar va arriba de todo: es lo único de esta
+          pantalla que pide una acción hoy. */}
+      {!soloLectura && <RecurrentesPendientes onConfirmado={cargarResumen} />}
+
       <div className="fila-tarjetas">
         <Metrica titulo="Recibido" monto={totales.recibido} clase="positivo" />
         <Metrica titulo="Pagado" monto={totales.pagado} clase="negativo" />
@@ -82,7 +87,7 @@ export default function Dashboard() {
           titulo="Balance"
           monto={totales.balance}
           clase={Number(totales.balance) >= 0 ? 'positivo' : 'negativo'}
-          nota="Recibido − Pagado − Por cobrar"
+          nota="Recibido − Pagado − Por cobrar + Por pagar"
         />
       </div>
 
@@ -138,31 +143,45 @@ export default function Dashboard() {
         )}
       </section>
 
-      <section className="tarjeta destacada">
-        <h2>Te deben</h2>
-        <p className="monto-grande">{formatearMonto(resumen.prestado_pendiente)}</p>
-        <p className="tenue">
-          {resumen.prestamos_pendientes === 0
-            ? 'No tienes préstamos pendientes'
-            : `${resumen.prestamos_pendientes} préstamo${resumen.prestamos_pendientes === 1 ? '' : 's'} sin cobrar`}
-        </p>
+      {/* Las dos caras de lo mismo, una al lado de la otra: lo que está
+          afuera y lo que hay que devolver. Juntarlas en una sola cifra neta
+          escondería justamente lo que hay que hacer con cada una. */}
+      <div className="fila-tarjetas dos-grandes">
+        <section className="tarjeta destacada">
+          <h2>Te deben</h2>
+          <p className="monto-grande advertencia">{formatearMonto(resumen.prestado_pendiente)}</p>
+          <p className="tenue">
+            {resumen.prestamos_pendientes === 0
+              ? 'No tienes préstamos sin cobrar'
+              : `${resumen.prestamos_pendientes} préstamo${resumen.prestamos_pendientes === 1 ? '' : 's'} sin cobrar`}
+          </p>
+        </section>
 
-        {deudores.length > 0 && (
+        <section className="tarjeta destacada">
+          <h2>Debes</h2>
+          <p className="monto-grande negativo">{formatearMonto(resumen.debido_pendiente)}</p>
+          <p className="tenue">
+            {resumen.deudas_pendientes === 0
+              ? 'No debes nada registrado'
+              : `${resumen.deudas_pendientes} deuda${resumen.deudas_pendientes === 1 ? '' : 's'} sin pagar`}
+          </p>
+        </section>
+      </div>
+
+      {contrapartes.length > 0 && (
+        <section className="tarjeta">
+          <h2>Cuentas con cada quien</h2>
+          <p className="subtitulo">
+            El neto: en verde lo que te deben, en rojo lo que debes tú
+          </p>
+
           <ul className="lista-deudores">
-            {deudores.map((d) => (
-              <li key={d.a_quien}>
-                <span className="deudor">
-                  <Link to={`/movimientos?tipo=preste&estado=pendiente&q=${encodeURIComponent(d.a_quien)}`}>
-                    {d.a_quien}
-                  </Link>
-                  <FechaCobro fecha={d.proximo_cobro} />
-                </span>
-                <span className="monto">{formatearMonto(d.total)}</span>
-              </li>
+            {contrapartes.map((c) => (
+              <Contraparte key={c.nombre} c={c} />
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       <section className="tarjeta">
         <h2>Por categoría</h2>
@@ -186,6 +205,7 @@ export default function Dashboard() {
                   <th className="num">Recibí</th>
                   <th className="num">Pagué</th>
                   <th className="num">Por cobrar</th>
+                  <th className="num">Por pagar</th>
                   <th className="num">Balance</th>
                   <th className="num">Movs.</th>
                 </tr>
@@ -199,6 +219,7 @@ export default function Dashboard() {
                     <td className="num positivo">{formatearMonto(c.recibido)}</td>
                     <td className="num negativo">{formatearMonto(c.pagado)}</td>
                     <td className="num advertencia">{formatearMonto(c.por_cobrar)}</td>
+                    <td className="num negativo">{formatearMonto(c.por_pagar)}</td>
                     <td className={`num ${Number(c.balance) >= 0 ? 'positivo' : 'negativo'}`}>
                       {formatearMonto(c.balance)}
                     </td>
@@ -225,6 +246,44 @@ export default function Dashboard() {
       )}
 
     </>
+  )
+}
+
+// Una persona o negocio con cuentas pendientes, en los dos sentidos.
+//
+// El enlace filtra por a_quien y no por texto libre: así la lista de atrás
+// agrupa exactamente igual que esta cifra (sin distinguir mayúsculas ni
+// espacios de sobra), y no aparecen movimientos de otro que se llame parecido.
+function Contraparte({ c }) {
+  const aFavor = Number(c.neto) >= 0
+
+  return (
+    <li>
+      <span className="deudor">
+        <Link to={`/movimientos?a_quien=${encodeURIComponent(c.nombre)}`}>{c.nombre}</Link>
+        {c.es_categoria && (
+          <span className="tenue" title="También tienes una categoría con este nombre">
+            (también es una categoría)
+          </span>
+        )}
+        <FechaCobro fecha={c.proxima_fecha} propia={!aFavor} />
+      </span>
+
+      <span className="monto-contraparte">
+        {/* Cuando hay deuda en los dos sentidos se muestran las dos y el neto:
+            decir solo "te debe 50" cuando además le debes 200 sería cierto y
+            engañoso a la vez. */}
+        {Number(c.te_deben) > 0 && Number(c.le_debes) > 0 && (
+          <span className="tenue detalle-neto">
+            te debe {formatearMonto(c.te_deben)} · le debes {formatearMonto(c.le_debes)}
+          </span>
+        )}
+        <span className={`monto ${aFavor ? 'positivo' : 'negativo'}`}>
+          {aFavor ? formatearMonto(c.neto) : formatearMonto(String(c.neto).replace('-', ''))}
+          <span className="tenue"> {aFavor ? 'a favor' : 'en contra'}</span>
+        </span>
+      </span>
+    </li>
   )
 }
 
@@ -286,6 +345,10 @@ function TarjetaCategoria({ c }) {
         <div>
           <dt>Por cobrar</dt>
           <dd className="advertencia">{formatearMonto(c.por_cobrar)}</dd>
+        </div>
+        <div>
+          <dt>Por pagar</dt>
+          <dd className="negativo">{formatearMonto(c.por_pagar)}</dd>
         </div>
       </dl>
     </article>

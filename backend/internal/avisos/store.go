@@ -165,6 +165,7 @@ type Semana struct {
 	Recibido    string
 	Pagado      string
 	Prestado    string
+	MePrestaron string
 	Movimientos int
 
 	// En que se le fue mas la plata. Vacio si no gasto nada.
@@ -178,18 +179,22 @@ type Semana struct {
 // en toda la app: Go no suma un peso, y menos para un texto que despues va a
 // leer un modelo de lenguaje.
 func (s *Store) ResumenSemana(ctx context.Context, usuarioID int64, desde, hasta string) (*Semana, error) {
+	// Los traslados quedan fuera de las cuatro sumas (no son ingreso ni gasto)
+	// pero SI se cuentan como movimientos: pasar plata de un lado a otro es
+	// algo que el usuario hizo esa semana.
 	const q = `
 		SELECT
 			coalesce(sum(monto) FILTER (WHERE tipo = 'recibi'), 0)::text,
 			coalesce(sum(monto) FILTER (WHERE tipo = 'pague'),  0)::text,
 			coalesce(sum(monto) FILTER (WHERE tipo = 'preste'), 0)::text,
+			coalesce(sum(monto) FILTER (WHERE tipo = 'me_prestaron'), 0)::text,
 			count(*)
 		FROM movimientos
 		WHERE usuario_id = $1 AND fecha >= $2::date AND fecha <= $3::date`
 
 	var semana Semana
 	err := s.db.QueryRowContext(ctx, q, usuarioID, desde, hasta).
-		Scan(&semana.Recibido, &semana.Pagado, &semana.Prestado, &semana.Movimientos)
+		Scan(&semana.Recibido, &semana.Pagado, &semana.Prestado, &semana.MePrestaron, &semana.Movimientos)
 	if err != nil {
 		return nil, fmt.Errorf("resumen de la semana: %w", err)
 	}
@@ -227,37 +232,55 @@ type Prestamos struct {
 	AQuien       string
 }
 
-// PrestamosViejos son los prestamos pendientes con mas de `dias` dias.
-func (s *Store) PrestamosViejos(ctx context.Context, usuarioID int64, dias int) (*Prestamos, error) {
+// DeudasViejas son las deudas con saldo que llevan mas de `dias` dias.
+//
+// `tipo` decide el sentido: 'preste' es lo que no te han devuelto,
+// 'me_prestaron' es lo que tu no has pagado. La consulta es identica porque el
+// problema es identico — solo cambia quien tiene que sacar la plata.
+//
+// La suma va sobre el SALDO y no sobre el monto: si de un prestamo de 500 mil
+// ya te devolvieron 400, lo que llevas sin cobrar son 100, no 500. Con el monto
+// el aviso exageraria mas cuanto mas te van pagando, que es justo al reves.
+func (s *Store) DeudasViejas(ctx context.Context, usuarioID int64, tipo string, dias int) (*Prestamos, error) {
 	const q = `
+		WITH s AS (
+			SELECT m.fecha, m.a_quien,
+			       (m.monto - coalesce((
+			           SELECT sum(a.monto) FROM abonos a WHERE a.movimiento_id = m.id
+			       ), 0)) AS saldo
+			FROM movimientos m
+			WHERE m.usuario_id = $1
+			  AND m.tipo = $2
+			  AND m.fecha <= current_date - make_interval(days => $3)
+		)
 		SELECT
 			count(*),
-			coalesce(sum(monto), 0)::text,
+			coalesce(sum(saldo), 0)::numeric(14,2)::text,
 			coalesce(max(current_date - fecha), 0),
 			coalesce((array_agg(a_quien ORDER BY fecha))[1], '')
-		FROM movimientos
-		WHERE usuario_id = $1
-		  AND tipo = 'preste'
-		  AND estado = 'pendiente'
-		  AND fecha <= current_date - make_interval(days => $2)`
+		FROM s
+		WHERE saldo > 0`
 
 	var p Prestamos
-	err := s.db.QueryRowContext(ctx, q, usuarioID, dias).
+	err := s.db.QueryRowContext(ctx, q, usuarioID, tipo, dias).
 		Scan(&p.Cantidad, &p.Total, &p.DiasMasViejo, &p.AQuien)
 	if err != nil {
-		return nil, fmt.Errorf("prestamos viejos: %w", err)
+		return nil, fmt.Errorf("deudas viejas (%s): %w", tipo, err)
 	}
 	return &p, nil
 }
 
-// Cobro es un prestamo pendiente que tocaba cobrar en estos dias.
+// Cobro es una deuda con saldo cuya fecha acordada cayo en estos dias.
 type Cobro struct {
 	MovimientoID int64
-	AQuien       string
-	Monto        string
-	Fecha        string // cuando se presto, AAAA-MM-DD
-	CobrarEl     string // cuando quedo de pagar, AAAA-MM-DD
-	Descripcion  string
+	// Tipo dice de que lado esta la plata: 'preste' (te pagan a ti) o
+	// 'me_prestaron' (pagas tu). Es lo unico que cambia el texto del aviso.
+	Tipo        string
+	AQuien      string
+	Monto       string // el SALDO, no el monto original
+	Fecha       string // cuando se hizo el prestamo, AAAA-MM-DD
+	CobrarEl    string // cuando se quedo de pagar, AAAA-MM-DD
+	Descripcion string
 }
 
 // CobrosDelDia son los prestamos pendientes con fecha de cobro entre
@@ -266,13 +289,20 @@ type Cobro struct {
 // y a las 8 de la noche ya diria que es manana.
 func (s *Store) CobrosDelDia(ctx context.Context, usuarioID int64, desde, hoy string) ([]Cobro, error) {
 	const q = `
-		SELECT id, a_quien, monto::text, to_char(fecha, 'YYYY-MM-DD'),
-		       to_char(cobrar_el, 'YYYY-MM-DD'), descripcion
-		FROM movimientos
-		WHERE usuario_id = $1
-		  AND tipo = 'preste'
-		  AND estado = 'pendiente'
-		  AND cobrar_el BETWEEN $2::date AND $3::date
+		WITH s AS (
+			SELECT m.id, m.tipo, m.a_quien, m.fecha, m.cobrar_el, m.descripcion,
+			       (m.monto - coalesce((
+			           SELECT sum(a.monto) FROM abonos a WHERE a.movimiento_id = m.id
+			       ), 0)) AS saldo
+			FROM movimientos m
+			WHERE m.usuario_id = $1
+			  AND m.tipo IN ('preste', 'me_prestaron')
+			  AND m.cobrar_el BETWEEN $2::date AND $3::date
+		)
+		SELECT id, tipo, a_quien, saldo::numeric(14,2)::text,
+		       to_char(fecha, 'YYYY-MM-DD'), to_char(cobrar_el, 'YYYY-MM-DD'), descripcion
+		FROM s
+		WHERE saldo > 0
 		ORDER BY cobrar_el, id`
 
 	filas, err := s.db.QueryContext(ctx, q, usuarioID, desde, hoy)
@@ -284,7 +314,7 @@ func (s *Store) CobrosDelDia(ctx context.Context, usuarioID int64, desde, hoy st
 	var lista []Cobro
 	for filas.Next() {
 		var c Cobro
-		if err := filas.Scan(&c.MovimientoID, &c.AQuien, &c.Monto, &c.Fecha, &c.CobrarEl, &c.Descripcion); err != nil {
+		if err := filas.Scan(&c.MovimientoID, &c.Tipo, &c.AQuien, &c.Monto, &c.Fecha, &c.CobrarEl, &c.Descripcion); err != nil {
 			return nil, fmt.Errorf("leyendo cobro: %w", err)
 		}
 		lista = append(lista, c)

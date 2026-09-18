@@ -23,6 +23,7 @@ import (
 	"finanzas/internal/httpx"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/recurrentes"
 	"finanzas/internal/suscripciones"
 )
 
@@ -85,7 +86,7 @@ func nuevoEntorno(t *testing.T) *entorno {
 	return &entorno{
 		pool:        pool,
 		store:       store,
-		generador:   avisos.NuevoGenerador(store, suscripciones.NewStore(pool), nil),
+		generador:   avisos.NuevoGenerador(store, suscripciones.NewStore(pool), recurrentes.NewStore(pool), nil, nil),
 		movimientos: movimientos.NewStore(pool),
 		ana:         ana,
 		categoria:   categoria.ID,

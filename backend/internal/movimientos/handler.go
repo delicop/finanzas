@@ -36,7 +36,20 @@ func (h *Handler) Rutas() chi.Router {
 	r.Delete("/{id}", h.Eliminar)
 
 	// PATCH (no PUT) porque modifica UN campo, no reemplaza el recurso entero.
+	//
+	// Por dentro ya no escribe el campo: "pagado" registra el abono que falta
+	// y "pendiente" borra los abonos. El endpoint se queda igual para que el
+	// boton de la lista y el asistente no tengan que saber nada de eso.
 	r.Patch("/{id}/estado", h.CambiarEstado)
+
+	// Los pagos parciales y el acuerdo de cuotas (ver handler_abonos.go).
+	r.Get("/{id}/abonos", h.ListarAbonos)
+	r.Post("/{id}/abonos", h.Abonar)
+	r.Delete("/{id}/abonos/{abonoID}", h.BorrarAbono)
+
+	r.Get("/{id}/cuotas", h.ListarCuotas)
+	r.Put("/{id}/cuotas", h.GuardarAcuerdo)
+	r.Delete("/{id}/cuotas", h.BorrarAcuerdo)
 
 	r.Post("/{id}/factura", h.SubirFactura)
 	r.Get("/{id}/factura", h.DescargarFactura)
@@ -86,6 +99,7 @@ func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
 		Hasta:       strings.TrimSpace(q.Get("hasta")),
 		MedioPagoID: enteroDeQuery(q.Get("medio_pago_id")),
 		Texto:       strings.TrimSpace(q.Get("q")),
+		AQuien:      strings.TrimSpace(q.Get("a_quien")),
 		Limite:      int(enteroDeQuery(q.Get("limite"))),
 		Offset:      int(enteroDeQuery(q.Get("offset"))),
 	}
@@ -94,10 +108,10 @@ func (h *Handler) Listar(w http.ResponseWriter, r *http.Request) {
 	// de Postgres (500) en vez de un mensaje claro.
 	v := httpx.NuevoValidador()
 	if f.Tipo != "" && !EsTipoValido(f.Tipo) {
-		v.Check(false, "tipo", "Tipo inválido: usa recibi, pague o preste")
+		v.Check(false, "tipo", TiposValidosMsg)
 	}
 	if f.Estado != "" && !EsEstadoValido(f.Estado) {
-		v.Check(false, "estado", "Estado inválido: usa pagado o pendiente")
+		v.Check(false, "estado", EstadosValidosMsg)
 	}
 	if f.Desde != "" && !fechaValida(f.Desde) {
 		v.Check(false, "desde", "Fecha inválida, usa el formato AAAA-MM-DD")
@@ -158,15 +172,17 @@ func (h *Handler) Obtener(w http.ResponseWriter, r *http.Request) {
 // cambie una regla, con su propio bug.
 type Entrada struct {
 	CategoriaID int64 `json:"categoria_id"`
-	// MedioPagoID es opcional: 0 o ausente significa "sin registrar".
-	MedioPagoID int64  `json:"medio_pago_id"`
-	Tipo        string `json:"tipo"`
-	Monto       string `json:"monto"`
-	Fecha       string `json:"fecha"`
-	Descripcion string `json:"descripcion"`
-	AQuien      string `json:"a_quien"`
-	Estado      string `json:"estado"`
-	CobrarEl    string `json:"cobrar_el"`
+	// MedioPagoID es por donde se mueve la plata. En un traslado, el ORIGEN.
+	MedioPagoID int64 `json:"medio_pago_id"`
+	// MedioCobroID solo se usa en un traslado: el medio DESTINO.
+	MedioCobroID int64  `json:"medio_cobro_id"`
+	Tipo         string `json:"tipo"`
+	Monto        string `json:"monto"`
+	Fecha        string `json:"fecha"`
+	Descripcion  string `json:"descripcion"`
+	AQuien       string `json:"a_quien"`
+	Estado       string `json:"estado"`
+	CobrarEl     string `json:"cobrar_el"`
 }
 
 func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
@@ -293,7 +309,7 @@ func Validar(req Entrada) (Datos, map[string]string) {
 	// El medio de pago es obligatorio al registrar: sin el, el resumen no
 	// puede decir donde esta la plata y todo termina en "Sin registrar".
 	v.Check(req.MedioPagoID > 0, "medio_pago_id", "Indica cómo fue el pago")
-	v.Check(EsTipoValido(req.Tipo), "tipo", "Selecciona un tipo: Recibí, Pagué o Presté")
+	v.Check(EsTipoValido(req.Tipo), "tipo", "Selecciona un tipo")
 
 	monto, err := dinero.Normalizar(req.Monto)
 	if err != nil {
@@ -316,36 +332,53 @@ func Validar(req Entrada) (Datos, map[string]string) {
 		Descripcion: req.Descripcion,
 	}
 
-	// El medio de pago es opcional: 0 significa "no registrado" y se guarda
-	// como NULL. Solo si viene un id lo pasamos para que la consulta lo valide.
 	if req.MedioPagoID > 0 {
 		id := req.MedioPagoID
 		datos.MedioPagoID = &id
 	}
 
-	// La regla del negocio: a_quien y estado SOLO existen para 'preste'.
-	// Para los otros tipos se ignoran (quedan NULL) en vez de dar error, para
-	// que el formulario pueda cambiar de tipo sin tener que limpiar campos.
-	// El CHECK de la base de datos garantiza que asi quede guardado.
-	if req.Tipo == TipoPreste {
+	switch {
+	// ------------------------------------------------------------------
+	// Traslado: de un medio a otro. Ni a_quien ni estado ni fecha acordada.
+	// ------------------------------------------------------------------
+	case req.Tipo == TipoTraslado:
+		// El texto habla de "destino" y no de "medio de cobro" porque eso es
+		// lo que el usuario ve en el formulario; el nombre de la columna es
+		// cosa nuestra.
+		if req.MedioCobroID <= 0 {
+			v.Check(false, "medio_cobro_id", "Indica a qué medio pasó la plata")
+		} else if req.MedioCobroID == req.MedioPagoID {
+			// Un traslado de un medio a si mismo no mueve nada: es siempre un
+			// error de digitacion, y dejarlo pasar llena la lista de ruido.
+			v.Check(false, "medio_cobro_id", "El origen y el destino no pueden ser el mismo medio")
+		} else {
+			id := req.MedioCobroID
+			datos.MedioCobroID = &id
+		}
+
+	// ------------------------------------------------------------------
+	// Las dos deudas: piden a quien y en que va.
+	// ------------------------------------------------------------------
+	case EsDeuda(req.Tipo):
 		v.Requerido("a_quien", req.AQuien)
 		if req.AQuien != "" {
 			v.MaxLargo("a_quien", req.AQuien, 100)
 		}
 
 		if req.Estado == "" {
-			v.Check(false, "estado", "Indica si está pagado o pendiente")
+			v.Check(false, "estado", "Indica si ya está saldada o sigue pendiente")
 		} else if !EsEstadoValido(req.Estado) {
-			v.Check(false, "estado", "Estado inválido: usa pagado o pendiente")
+			v.Check(false, "estado", EstadosValidosMsg)
 		}
 
-		// Cuando quedaron de pagar: opcional. Las fechas AAAA-MM-DD se pueden
-		// comparar como texto, y asi no hace falta convertirlas.
+		// La fecha acordada: cuando te pagan (preste) o cuando te toca pagar
+		// (me_prestaron). Opcional. Las fechas AAAA-MM-DD se pueden comparar
+		// como texto, y asi no hace falta convertirlas.
 		if req.CobrarEl != "" {
 			if !fechaValida(req.CobrarEl) {
 				v.Check(false, "cobrar_el", "Fecha inválida, usa el formato AAAA-MM-DD")
 			} else if fechaValida(req.Fecha) && req.CobrarEl < req.Fecha {
-				v.Check(false, "cobrar_el", "No puede ser antes del día en que prestaste")
+				v.Check(false, "cobrar_el", "No puede ser antes de la fecha del movimiento")
 			}
 		}
 
@@ -359,6 +392,12 @@ func Validar(req Entrada) (Datos, map[string]string) {
 			}
 		}
 	}
+
+	// Para 'recibi' y 'pague' no hay nada que agregar: a_quien, estado,
+	// cobrar_el y el destino quedan en nil. No se da error si el cliente los
+	// manda llenos — se ignoran, para que el formulario pueda cambiar de tipo
+	// sin tener que limpiar campos. El CHECK de la base garantiza que asi
+	// queden guardados.
 
 	if !v.Valido() {
 		return Datos{}, v.Campos
@@ -379,7 +418,13 @@ func (h *Handler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Estado string `json:"estado"`
-		// Por donde te pagaron. Opcional: si no se sabe, queda sin registrar.
+		// Por donde se movio la plata al saldar. Opcional: si no se sabe,
+		// el abono queda sin medio registrado.
+		//
+		// Se sigue aceptando el nombre viejo (medio_cobro_id) porque es el que
+		// manda el asistente al confirmar una tarjeta que ya estaba preparada
+		// antes de esta version.
+		MedioID      int64 `json:"medio_id"`
 		MedioCobroID int64 `json:"medio_cobro_id"`
 	}
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
@@ -388,32 +433,27 @@ func (h *Handler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Estado = strings.TrimSpace(req.Estado)
-	if !EsEstadoValido(req.Estado) {
+	// 'parcial' no se puede pedir por aqui: sale de registrar un abono, no de
+	// declararlo. Por eso la lista de este endpoint es mas corta que la de
+	// EsEstadoValido.
+	if req.Estado != EstadoPagado && req.Estado != EstadoPendiente {
 		httpx.ErrorCampos(w, map[string]string{
 			"estado": "Estado inválido: usa pagado o pendiente",
 		})
 		return
 	}
 
-	var medioCobro *int64
-	if req.MedioCobroID > 0 {
-		medioCobro = &req.MedioCobroID
+	medioID := req.MedioID
+	if medioID <= 0 {
+		medioID = req.MedioCobroID
+	}
+	var medio *int64
+	if medioID > 0 {
+		medio = &medioID
 	}
 
-	m, err := h.store.CambiarEstado(r.Context(), usuarioID, id, req.Estado, medioCobro)
-	switch {
-	case errors.Is(err, ErrNoEncontrado):
-		httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
-	case errors.Is(err, ErrNoEsPrestamo):
-		// 409: la peticion es valida pero no aplica a este movimiento.
-		httpx.Error(w, http.StatusConflict, "Solo los préstamos tienen estado de pago")
-	case errors.Is(err, ErrMedioInvalido):
-		httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": "El medio de pago no existe"})
-	case err != nil:
-		httpx.ErrorInterno(w, r, err, "movimientos: cambiando estado")
-	default:
-		httpx.JSON(w, http.StatusOK, m)
-	}
+	m, err := h.store.CambiarEstado(r.Context(), usuarioID, id, req.Estado, medio)
+	h.responderDeuda(w, r, m, err, "movimientos: cambiando estado")
 }
 
 // ---------------------------------------------------------------- facturas

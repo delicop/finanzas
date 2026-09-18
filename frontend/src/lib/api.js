@@ -188,6 +188,21 @@ export const movimientosApi = {
       body: { estado, medio_cobro_id: medioCobroID },
     }),
 
+  // Los pagos parciales de una deuda. El saldo lo calcula el backend; aquí
+  // nunca se resta nada.
+  listarAbonos: (id) => apiFetch(`/api/movimientos/${id}/abonos`),
+  abonar: (id, datos) => apiFetch(`/api/movimientos/${id}/abonos`, { metodo: 'POST', body: datos }),
+  borrarAbono: (id, abonoID) =>
+    apiFetch(`/api/movimientos/${id}/abonos/${abonoID}`, { metodo: 'DELETE' }),
+
+  // El acuerdo de pago: en cuántas cuotas y para cuándo cada una.
+  // PUT y no POST porque reemplaza el acuerdo entero: renegociar no es
+  // agregar cuotas a las que ya había.
+  listarCuotas: (id) => apiFetch(`/api/movimientos/${id}/cuotas`),
+  guardarAcuerdo: (id, datos) =>
+    apiFetch(`/api/movimientos/${id}/cuotas`, { metodo: 'PUT', body: datos }),
+  borrarAcuerdo: (id) => apiFetch(`/api/movimientos/${id}/cuotas`, { metodo: 'DELETE' }),
+
   subirFactura: (id, archivo) => {
     const form = new FormData()
     form.append('factura', archivo)
@@ -198,6 +213,37 @@ export const movimientosApi = {
 
 export const dashboardApi = {
   resumen: () => apiFetch('/api/dashboard'),
+}
+
+// Los gastos e ingresos que se repiten (el arriendo, el internet).
+//
+// La app NO los registra sola: cada vez que toca deja un PENDIENTE y el
+// usuario lo confirma, pudiendo corregir el monto antes. Un gasto inventado es
+// peor que un gasto olvidado.
+export const recurrentesApi = {
+  listar: () => apiFetch('/api/recurrentes'),
+  crear: (datos) => apiFetch('/api/recurrentes', { metodo: 'POST', body: datos }),
+  actualizar: (id, datos) => apiFetch(`/api/recurrentes/${id}`, { metodo: 'PUT', body: datos }),
+  eliminar: (id) => apiFetch(`/api/recurrentes/${id}`, { metodo: 'DELETE' }),
+
+  pendientes: (senal) => apiFetch('/api/recurrentes/pendientes', { senal }),
+  // Sin cuerpo se confirma tal cual la plantilla; con cuerpo, lo que venga
+  // pisa lo que decía (el recibo de la luz cambia todos los meses).
+  confirmar: (id, datos) =>
+    apiFetch(`/api/recurrentes/pendientes/${id}/confirmar`, { metodo: 'POST', body: datos ?? {} }),
+  descartar: (id) => apiFetch(`/api/recurrentes/pendientes/${id}`, { metodo: 'DELETE' }),
+}
+
+// Las notificaciones que llegan al celular con la app cerrada.
+//
+// Estas rutas solo existen si el servidor tiene llaves VAPID configuradas; si
+// no, responden 404 y la app sencillamente no ofrece activarlas.
+export const pushApi = {
+  estado: () => apiFetch('/api/push'),
+  // El cuerpo es lo que devuelve pushManager.subscribe() del navegador, tal cual.
+  suscribir: (suscripcion) => apiFetch('/api/push', { metodo: 'POST', body: suscripcion }),
+  desuscribir: (endpoint) =>
+    apiFetch(`/api/push${queryString({ endpoint })}`, { metodo: 'DELETE' }),
 }
 
 // Panel del administrador. Todas estas rutas devuelven 403 para un usuario

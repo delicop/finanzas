@@ -47,6 +47,8 @@ func (h *Handler) ConfirmarPropuesta(w http.ResponseWriter, r *http.Request) {
 		h.confirmarMovimiento(w, r, usuarioID, propuesta.ID)
 	case TipoPropuestaMarcarPagado:
 		h.confirmarMarcarPagado(w, r, usuarioID, propuesta)
+	case TipoPropuestaAbono:
+		h.confirmarAbono(w, r, usuarioID, propuesta)
 	default:
 		// No deberia pasar: el tipo lo limita un CHECK de la base.
 		httpx.ErrorInterno(w, r, errors.New("tipo de propuesta desconocido: "+propuesta.Tipo),
@@ -153,6 +155,61 @@ func (h *Handler) confirmarMarcarPagado(w http.ResponseWriter, r *http.Request, 
 			httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": "El medio de pago no existe"})
 		default:
 			httpx.ErrorInterno(w, r, err, "agente: marcando el préstamo como pagado")
+		}
+		return
+	}
+
+	h.anotarMovimiento(r, usuarioID, propuesta.ID, m.ID)
+
+	httpx.JSON(w, http.StatusOK, m)
+}
+
+// confirmarAbono registra el pago parcial que el agente dejo preparado.
+//
+// El cuerpo trae los datos FINALES de la tarjeta, que el usuario pudo corregir
+// (el monto, sobre todo: es lo que mas se corrige). Lo unico que NO se lee del
+// cuerpo es a que deuda se le abona: eso quedo fijado cuando el usuario vio la
+// tarjeta, y cambiarlo a mitad de camino seria abonarle a otra persona.
+func (h *Handler) confirmarAbono(w http.ResponseWriter, r *http.Request, usuarioID int64, propuesta *Propuesta) {
+	var datos datosAbono
+	if err := json.Unmarshal(propuesta.Datos, &datos); err != nil {
+		httpx.ErrorInterno(w, r, err, "agente: leyendo la propuesta de abono")
+		return
+	}
+
+	entrada := movimientos.EntradaAbono{
+		Monto:   datos.Monto,
+		Fecha:   datos.Fecha,
+		MedioID: datos.MedioID,
+		Nota:    datos.Nota,
+	}
+	if err := httpx.DecodeJSON(w, r, &entrada); err != nil {
+		httpx.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Primero se reserva y despues se escribe, igual que con los movimientos:
+	// dos clics seguidos no pueden registrar el abono dos veces.
+	if err := h.store.ReservarPropuesta(r.Context(), usuarioID, propuesta.ID, EstadoPropuestaConfirmada); err != nil {
+		h.responderReserva(w, r, err)
+		return
+	}
+
+	m, campos, err := h.catalogo.Abonar(r.Context(), usuarioID, datos.MovimientoID, entrada)
+	if campos != nil || err != nil {
+		h.devolverAPendiente(r, usuarioID, propuesta.ID)
+
+		if campos != nil {
+			httpx.ErrorCampos(w, campos)
+			return
+		}
+		switch {
+		case errors.Is(err, movimientos.ErrNoEncontrado):
+			httpx.Error(w, http.StatusNotFound, "Esa deuda ya no existe")
+		case errors.Is(err, movimientos.ErrNoEsDeuda):
+			httpx.Error(w, http.StatusConflict, "Ese movimiento no es una deuda")
+		default:
+			httpx.ErrorInterno(w, r, err, "agente: registrando el abono propuesto")
 		}
 		return
 	}

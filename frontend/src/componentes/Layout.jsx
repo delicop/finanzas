@@ -6,6 +6,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useTema } from '../lib/TemaContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import BurbujaAsistente from './BurbujaAsistente'
+import AvisosCelular from './AvisosCelular'
 import InstalarApp, { AvisoSinConexion } from './InstalarApp'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
@@ -13,6 +14,7 @@ import Notificaciones from './Notificaciones'
 const SECCIONES = [
   { a: '/', etiqueta: 'Resumen', icono: '◉', exacta: true },
   { a: '/movimientos', etiqueta: 'Movimientos', icono: '⇅' },
+  { a: '/recurrentes', etiqueta: 'Se repiten', icono: '↻' },
   { a: '/categorias', etiqueta: 'Categorías', icono: '◫' },
   { a: '/medios-pago', etiqueta: 'Medios', icono: '▤' },
 ]
@@ -122,6 +124,11 @@ export default function Layout({ children }) {
           >
             {tema === 'claro' ? '🌙' : '☀️'}
           </button>
+
+          {/* Los avisos al celular van pegados a la campana: uno es "lo que
+              pasó" y el otro "avísame aunque no esté mirando". Mientras se
+              observa otra cuenta no aparece: esos avisos son de esa persona. */}
+          {!verComo && <AvisosCelular />}
 
           {!verComo && (
             <button

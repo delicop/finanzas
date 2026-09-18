@@ -173,7 +173,7 @@ func TestNoSeRedactaDosVecesElMismoAviso(t *testing.T) {
 	}
 
 	redactor := &redactorContado{}
-	generador := avisos.NuevoGenerador(e.store, suscripciones.NewStore(e.pool), redactor)
+	generador := avisos.NuevoGenerador(e.store, suscripciones.NewStore(e.pool), nil, redactor, nil)
 
 	e.prestarConCobro(t, "200000", "2026-09-10", "2026-09-16")
 

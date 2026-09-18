@@ -138,6 +138,9 @@ type GuardadaConMensajes struct {
 const (
 	TipoPropuestaMovimiento   = "movimiento"
 	TipoPropuestaMarcarPagado = "marcar_pagado"
+	// TipoPropuestaAbono: "Carlos me abonó 50 mil". Es distinto de
+	// marcar_pagado, que da la deuda entera por saldada.
+	TipoPropuestaAbono = "abono"
 )
 
 const (

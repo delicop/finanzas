@@ -49,12 +49,15 @@ func TestInformeSoloTraeElRango(t *testing.T) {
 		t.Errorf("orden inesperado: %s ... %s", inf.Movimientos[0].Descripcion, inf.Movimientos[2].Descripcion)
 	}
 
-	// Las mismas cuentas del resumen: el préstamo pendiente resta.
+	// Las mismas cuentas del resumen: el saldo del préstamo resta, y lo que se
+	// debe (nada, aquí) sumaría.
 	esperado := movimientos.Totales{
 		Recibido:   "1000000.00",
 		Pagado:     "45000.50",
 		PorCobrar:  "200000.00",
-		Recuperado: "0",
+		PorPagar:   "0.00",
+		Recuperado: "0.00",
+		Abonado:    "0.00",
 		Balance:    "754999.50",
 	}
 	if inf.Totales != esperado {
@@ -152,7 +155,7 @@ func TestExportarNoTraeDatosAjenos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("informe: %v", err)
 	}
-	if len(inf.Movimientos) != 0 || inf.Totales.Recibido != "0" {
+	if len(inf.Movimientos) != 0 || inf.Totales.Recibido != "0.00" {
 		t.Errorf("el otro usuario ve %d movimientos ajenos (recibido %s)", len(inf.Movimientos), inf.Totales.Recibido)
 	}
 
@@ -201,7 +204,7 @@ func TestExportarRespetaLosFiltros(t *testing.T) {
 	if len(inf.Movimientos) != 1 || !inf.ConFiltros {
 		t.Errorf("con filtro de tipo: %d movimientos, ConFiltros=%v", len(inf.Movimientos), inf.ConFiltros)
 	}
-	if inf.Totales.Recibido != "0" || inf.Totales.Pagado != "45000.50" {
+	if inf.Totales.Recibido != "0.00" || inf.Totales.Pagado != "45000.50" {
 		t.Errorf("los totales no respetan el filtro: %+v", inf.Totales)
 	}
 }

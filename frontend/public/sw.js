@@ -13,7 +13,7 @@
 //
 // Al cambiar la lógica de este archivo, sube VERSION: así el navegador borra
 // el caché anterior en la siguiente visita.
-const VERSION = 'finanzas-v1'
+const VERSION = 'finanzas-v2'
 const PRECARGA = ['/', '/manifest.webmanifest', '/iconos/icono-192.png', '/iconos/icono-512.png']
 
 self.addEventListener('install', (evento) => {
@@ -81,3 +81,71 @@ async function primeroElCache(peticion) {
   if (respuesta.ok) cache.put(peticion, respuesta.clone())
   return respuesta
 }
+
+/* ---------------------------------------------------------------------------
+ * Las notificaciones que llegan con la app CERRADA
+ *
+ * Esta es la única parte del service worker que corre cuando nadie tiene la
+ * app abierta: el navegador lo despierta solo para entregar el mensaje.
+ *
+ * El contenido llega cifrado y el navegador ya lo descifró cuando nos lo pasa
+ * aquí. Lo que llega es el JSON que arma internal/push (título, cuerpo, url y
+ * etiqueta).
+ * ------------------------------------------------------------------------ */
+
+self.addEventListener('push', (evento) => {
+  // Si el mensaje viene sin datos o con basura, igual se muestra algo: un
+  // aviso genérico es mucho mejor que una notificación vacía (que en algunos
+  // navegadores sale como "Este sitio se actualizó en segundo plano").
+  let datos = {}
+  try {
+    datos = evento.data ? evento.data.json() : {}
+  } catch {
+    datos = {}
+  }
+
+  const titulo = datos.titulo || 'Finanzas'
+  const opciones = {
+    body: datos.cuerpo || '',
+    icon: '/iconos/icono-192.png',
+    badge: '/iconos/icono-192.png',
+    // La etiqueta agrupa: un resumen semanal nuevo reemplaza al anterior en
+    // vez de apilarse. Sin esto, tres días sin abrir la app dejan la bandeja
+    // llena de avisos casi iguales.
+    tag: datos.etiqueta || 'finanzas',
+    // A dónde lleva el toque. Viaja en `data` porque es lo único que
+    // sobrevive hasta el evento de clic.
+    data: { url: datos.url || '/' },
+  }
+
+  // waitUntil mantiene vivo el service worker hasta que la notificación esté
+  // mostrada. Sin esto el navegador puede apagarlo antes y el aviso no sale.
+  evento.waitUntil(self.registration.showNotification(titulo, opciones))
+})
+
+self.addEventListener('notificationclick', (evento) => {
+  evento.notification.close()
+  const destino = evento.notification.data?.url || '/'
+
+  evento.waitUntil(
+    (async () => {
+      const abiertas = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+
+      // Si la app ya está abierta se reutiliza esa ventana y se navega dentro:
+      // abrir una segunda pestaña de la misma app es molesto y deja al usuario
+      // con dos sesiones de la misma cosa.
+      for (const cliente of abiertas) {
+        if (new URL(cliente.url).origin === self.location.origin) {
+          await cliente.focus()
+          if ('navigate' in cliente) await cliente.navigate(destino)
+          return
+        }
+      }
+
+      await self.clients.openWindow(destino)
+    })(),
+  )
+})
