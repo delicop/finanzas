@@ -169,7 +169,7 @@ export default function Clientes() {
           </div>
         ) : (
           <div className="tabla-scroll">
-            <table>
+            <table className="tabla-clientes">
               <thead>
                 <tr>
                   <th>Usuario</th>
@@ -338,19 +338,22 @@ function AccionesUsuario({ usuario, yo, onResetear, onRol, onActivo, onEliminar 
   const soyYo = usuario.id === yo.id
 
   return (
+    // Botones de TEXTO y no rellenos: son cuatro por fila en una tabla que ya
+    // tiene nueve columnas. Con botones sólidos no caben, se apilan y cada
+    // fila crece hasta ocupar media pantalla.
     <div className="acciones-fila">
-      <button className="secundario" onClick={onResetear}>
+      <button className="menor" onClick={onResetear}>
         Resetear clave
       </button>
       {!soyYo && (
         <>
-          <button className="secundario" onClick={onRol}>
+          <button className="menor" onClick={onRol}>
             {usuario.rol === 'admin' ? 'Quitar admin' : 'Hacer admin'}
           </button>
-          <button className="secundario" onClick={onActivo}>
+          <button className="menor" onClick={onActivo}>
             {usuario.activo ? 'Desactivar' : 'Reactivar'}
           </button>
-          <button className="peligro" onClick={onEliminar}>
+          <button className="menor menor-peligro" onClick={onEliminar}>
             Eliminar
           </button>
         </>

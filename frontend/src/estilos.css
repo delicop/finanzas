@@ -1176,12 +1176,28 @@ code {
   gap: var(--space-2);
 }
 
+/* En el teléfono las fichas de la lista SON las fichas: llevan fondo y sombra
+   igual que las de escritorio. */
 .tarjeta-mov,
 .tarjeta-cat {
-  background: transparent;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--color-surface);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: var(--space-3);
+}
+
+/* Y la sección que las contiene deja de serlo. Dos superficies blancas, una
+   dentro de otra, no se distinguen: la de afuera se vuelve un contenedor a
+   secas y deja que las de adentro se vean. */
+.tarjeta:has(> .lista-movil) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
 }
 
 .tarjeta-mov-arriba,
@@ -1714,10 +1730,13 @@ button.menor-peligro:hover:not(:disabled) {
   margin-bottom: var(--space-4);
 }
 
+/* "Admin" y "Tú" van una al lado de la otra. Envolviéndose quedaban apiladas
+   y estiraban el alto de toda la fila por dos etiquetas de once píxeles. */
 .etiquetas-usuario {
   display: inline-flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 /* Una cuenta desactivada se apaga en la lista, pero sigue legible: hay que
@@ -1769,6 +1788,21 @@ button.menor-peligro:hover:not(:disabled) {
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--tenue);
+}
+
+/* Con nueve columnas, dejar que el correo o las fechas partan en dos renglones
+   dispara el alto de cada fila. Se quedan en una línea y la tabla se desplaza
+   de lado si hace falta. */
+.tabla-clientes td,
+.tabla-clientes th {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* El único que sí puede partirse es el nombre, que a veces es largo. */
+.tabla-clientes td:first-child {
+  white-space: normal;
+  min-width: 90px;
 }
 
 /* El plan de cada cliente se cambia desde la propia fila: es un dato solo y se
@@ -1824,11 +1858,21 @@ button.menor-peligro:hover:not(:disabled) {
    columna — está pensado para las tarjetas del teléfono, y dentro de una celda
    deja la fila altísima.) En el móvil esta misma clase vuelve a apilar, que es
    donde el pulgar necesita los blancos. */
+/* En escritorio van en UNA línea. Si se les deja envolver, cada fila de la
+   tabla crece a cuatro renglones y la lista se vuelve ilegible; prefiero que
+   la tabla se desplace de lado (ya tiene su .tabla-scroll). */
 .acciones-fila {
   display: inline-flex;
-  gap: 6px;
+  gap: 2px;
   justify-content: flex-end;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+/* Separador finito entre acciones, como en la lista de movimientos. */
+.acciones-fila button + button {
+  border-left: 1px solid var(--color-divider);
+  border-radius: 0;
 }
 
 /* El margen suelto de "td.acciones button" sobra aquí: el gap ya separa. */
@@ -1836,14 +1880,29 @@ td.acciones .acciones-fila button {
   margin: 0;
 }
 
-/* En el teléfono sí se apilan, que es donde el pulgar necesita blancos. */
+/* En el teléfono sí se apilan, que es donde el pulgar necesita blancos: a lo
+   ancho, alineadas a la izquierda y con altura de dedo. */
 .tarjeta-cat .acciones-fila {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--borde);
+  align-items: stretch;
+  gap: 2px;
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
+  white-space: normal;
+}
+
+.tarjeta-cat .acciones-fila button {
+  justify-content: flex-start;
+  min-height: 42px;
+  padding: 0 var(--space-2);
+}
+
+/* Apiladas, el separador va arriba y no a un lado. */
+.tarjeta-cat .acciones-fila button + button {
+  border-left: 0;
+  border-top: 1px solid var(--color-divider);
 }
 
 /* ---------- navegador de mes (panel del negocio) ---------- */
