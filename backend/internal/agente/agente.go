@@ -47,10 +47,17 @@ const (
 
 	// MaxRondas son las veces que el modelo puede pedir datos antes de tener
 	// que contestar. Cada ronda es una llamada mas al proveedor —o sea, plata
-	// y segundos—, y con estas herramientas dos vueltas sobran: una para
-	// consultar y otra para redactar. El techo existe para que una pregunta
-	// rara no se convierta en un bucle caro.
-	MaxRondas = 4
+	// y segundos—, y el techo existe para que una pregunta rara no se
+	// convierta en un bucle caro.
+	//
+	// Son seis y no cuatro por el orden que le pide el prompt antes de anotar
+	// un gasto: listar_categorias, listar_medios_pago, a veces
+	// listar_movimientos para ver donde vienen quedando los parecidos,
+	// proponer_movimiento, y una ultima vuelta para redactar. Un modelo que
+	// pida las herramientas de a una —que es lo normal— necesita esas cinco;
+	// con cuatro se quedaba sin vueltas JUSTO despues de crear la propuesta, y
+	// el usuario terminaba con una tarjeta pendiente y un 503 en pantalla.
+	MaxRondas = 6
 )
 
 // Mensaje es una linea del hilo, tal como la pinta el frontend.

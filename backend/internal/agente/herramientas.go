@@ -120,14 +120,18 @@ func (c *Catalogo) Esquemas() []Herramienta {
 			}),
 		},
 		{
-			Nombre:      HerramientaCategorias,
-			Descripcion: "Lista las categorías del usuario (de qué es la plata: Negocio, Personal...) con cuántos movimientos tiene cada una.",
-			Parametros:  objeto(nil),
+			Nombre: HerramientaCategorias,
+			Descripcion: "Lista las categorías del usuario (de qué es la plata: Negocio, Personal...) con cuántos movimientos tiene cada una. " +
+				"Llámala SIEMPRE antes de proponer un movimiento cuando el usuario no dijo la categoría: de esta lista sale la que vas a usar. " +
+				"Las categorías son de él, no tuyas; las que te suenan obvias muchas veces no existen en su cuenta.",
+			Parametros: objeto(nil),
 		},
 		{
-			Nombre:      HerramientaMedios,
-			Descripcion: "Lista los medios de pago del usuario (por dónde entra o sale la plata: Efectivo, Transferencia, Nequi...).",
-			Parametros:  objeto(nil),
+			Nombre: HerramientaMedios,
+			Descripcion: "Lista los medios de pago del usuario (por dónde entra o sale la plata: Efectivo, Transferencia, Nequi...). " +
+				"Llámala SIEMPRE antes de proponer un movimiento cuando el usuario no dijo por dónde se movió la plata: " +
+				"de esta lista sale el medio que vas a usar, nunca de tu memoria.",
+			Parametros: objeto(nil),
 		},
 		{
 			Nombre: HerramientaProponerMovimiento,
@@ -135,7 +139,9 @@ func (c *Catalogo) Esquemas() []Herramienta {
 				"con los datos, que puede corregir antes de guardar. Úsala cuando te cuente un gasto, un ingreso, un préstamo " +
 				"en cualquiera de los dos sentidos, o un traslado entre sus medios de pago " +
 				"('pagué 45 mil de almuerzo con Nequi', 'el negocio me prestó 500 mil', 'pasé 200 mil del efectivo al banco'). " +
-				"Si te falta la categoría o el medio de pago, pregúntale: no los inventes.",
+				"Si el usuario no dijo la categoría o el medio de pago, no los adivines: llama primero a listar_categorias y " +
+				"listar_medios_pago, elige de esas listas la que mejor encaje con lo que te contó, y al responder dile cuál " +
+				"elegiste tú para que la corrija en la tarjeta si no es. Pregúntale solo si ninguna encaja o si dos encajan igual.",
 			Parametros: objeto(map[string]any{
 				"tipo": map[string]any{
 					"type":        "string",
@@ -155,12 +161,14 @@ func (c *Catalogo) Esquemas() []Herramienta {
 					"description": "De qué fue, en pocas palabras y con las del usuario",
 				},
 				"categoria": map[string]any{
-					"type":        "string",
-					"description": "Nombre exacto de una categoría existente (obligatorio)",
+					"type": "string",
+					"description": "Obligatorio. Nombre exacto, copiado de listar_categorias. Si el usuario no la dijo, " +
+						"elige de esa lista la que mejor encaje; no escribas un nombre que no esté ahí",
 				},
 				"medio_pago": map[string]any{
-					"type":        "string",
-					"description": "Nombre exacto de un medio de pago existente: por dónde entró o salió la plata (obligatorio)",
+					"type": "string",
+					"description": "Obligatorio. Por dónde entró o salió la plata: nombre exacto, copiado de listar_medios_pago. " +
+						"Si el usuario no lo dijo, elige de esa lista el que mejor encaje; no escribas uno que no esté ahí",
 				},
 				"medio_destino": map[string]any{
 					"type": "string",
@@ -940,13 +948,15 @@ func (c *Catalogo) resolverCategoria(ctx context.Context, usuarioID int64, nombr
 	if nombre == "" {
 		return 0, "", errorParaElModelo(
 			"falta la categoría: es obligatoria. Las del usuario son: %s. "+
-				"Si no está claro de cuál es, pregúntale antes de proponer nada.",
+				"Elige de esas la que mejor encaje con lo que te contó y vuelve a proponer, "+
+				"diciéndole cuál elegiste; pregúntale solo si ninguna sirve.",
 			strings.Join(nombres, ", ")), nil
 	}
 	if id == 0 {
 		return 0, "", errorParaElModelo(
 			"no existe la categoría %q. Las del usuario son: %s. "+
-				"Usa una de esas o pregúntale cuál quiere; no inventes categorías nuevas.",
+				"Elige de esas la que mejor encaje y dile cuál elegiste. No inventes categorías nuevas "+
+				"ni lo intentes otra vez con un nombre que no esté en la lista.",
 			nombre, strings.Join(nombres, ", ")), nil
 	}
 
@@ -971,7 +981,8 @@ func (c *Catalogo) resolverMedio(ctx context.Context, usuarioID int64, nombre, c
 	})
 	if id == 0 {
 		return 0, "", errorParaElModelo(
-			"no existe el medio de pago %q para %s. Los del usuario son: %s",
+			"no existe el medio de pago %q para %s. Los del usuario son: %s. "+
+				"Elige de esos el que mejor encaje y dile cuál elegiste; no inventes medios nuevos.",
 			nombre, campo, strings.Join(nombres, ", ")), nil
 	}
 

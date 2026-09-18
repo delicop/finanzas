@@ -184,9 +184,18 @@ func (a *AlmacenFacturas) rutaSegura(rutaRelativa string) (string, error) {
 	// Ojo con esto: filepath.IsAbs("/etc/passwd") es TRUE en Linux pero FALSE
 	// en Windows (alli una ruta absoluta necesita letra de unidad). Si solo
 	// usaramos IsAbs, el mismo codigo protegeria distinto segun donde corra.
+	//
+	// La barra invertida se rechaza siempre, incluso en Linux, donde es un
+	// caracter valido dentro de un nombre de archivo y filepath.Clean la deja
+	// pasar entera: "..\\..\\windows\\system.ini" no es una ruta que se escape,
+	// pero tampoco es una ruta que esta app genere. Las que guarda salen de
+	// filepath.ToSlash, asi que una relativa legitima NUNCA trae una. Sin esta
+	// linea la misma cadena se bloquearia en Windows y se aceptaria en Linux,
+	// que es justo lo que este bloque dice evitar.
 	separador := string(os.PathSeparator)
 	invalida := limpia == "" ||
 		limpia == "." ||
+		strings.ContainsRune(rutaRelativa, '\\') ||
 		filepath.IsAbs(limpia) ||
 		filepath.VolumeName(limpia) != "" ||
 		strings.HasPrefix(limpia, separador) ||

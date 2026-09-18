@@ -1138,6 +1138,71 @@ func TestNoProponeConCategoriaInventada(t *testing.T) {
 	}
 }
 
+// El prompt le pide al modelo que, cuando el usuario no diga la categoria ni
+// el medio, los BUSQUE en sus listas antes de proponer nada, en vez de
+// escribir el nombre que le suene. Esa conducta no se puede probar aqui —el
+// proveedor es de mentiras y hace lo que diga el guion—, pero si se puede
+// probar que el camino le alcanza: son cinco vueltas al modelo, y con el techo
+// viejo de cuatro la propuesta quedaba creada y el usuario recibia un 503.
+func TestConsultarLasListasAntesDeProponerCabeEnElTope(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaCategorias, `{}`),
+		pideHerramienta(agente.HerramientaMedios, `{}`),
+		pideHerramienta(agente.HerramientaMovimientos, `{"limite":5}`),
+		pideHerramienta(agente.HerramientaProponerMovimiento,
+			`{"tipo":"pague","monto":"45000","fecha":"2026-09-16","descripcion":"almuerzo","categoria":"Negocio","medio_pago":"Efectivo"}`),
+		{Contenido: "Lo puse en Negocio y en Efectivo; cámbialo ahí si no es."},
+	}
+
+	res := e.enviar(t, e.ana, "pagué 45 mil de almuerzo")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Mensaje    agente.Mensaje     `json:"mensaje"`
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+
+	if len(envio.Propuestas) != 1 {
+		t.Fatalf("propuestas = %d, se esperaba 1", len(envio.Propuestas))
+	}
+	var datos struct {
+		Categoria string `json:"categoria"`
+		MedioPago string `json:"medio_pago"`
+	}
+	if err := json.Unmarshal(envio.Propuestas[0].Datos, &datos); err != nil {
+		t.Fatalf("datos de la propuesta ilegibles: %v", err)
+	}
+	if datos.Categoria != "Negocio" || datos.MedioPago != "Efectivo" {
+		t.Errorf("la propuesta no quedó con lo que eligió de las listas: %+v", datos)
+	}
+
+	// El rastro que ve el usuario debajo de la respuesta tiene que mostrar que
+	// fue a mirar sus listas: es la diferencia entre elegir y adivinar.
+	esperadas := []string{
+		agente.HerramientaCategorias,
+		agente.HerramientaMedios,
+		agente.HerramientaMovimientos,
+		agente.HerramientaProponerMovimiento,
+	}
+	if !slices.Equal(envio.Mensaje.Herramientas, esperadas) {
+		t.Errorf("herramientas = %v, se esperaban %v", envio.Mensaje.Herramientas, esperadas)
+	}
+
+	if e.proveedor.llamadas != 5 {
+		t.Errorf("llamadas al modelo = %d, se esperaban 5", e.proveedor.llamadas)
+	}
+	if e.proveedor.llamadas > agente.MaxRondas {
+		t.Errorf("el camino que pide el prompt no cabe en MaxRondas = %d", agente.MaxRondas)
+	}
+}
+
 // --------------------------------------------------------------------------
 // El asistente es parte del plan: sin IA en el plan, no hay chat.
 // --------------------------------------------------------------------------
