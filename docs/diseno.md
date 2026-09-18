@@ -36,26 +36,35 @@ piden una acción.
    `var(--radius-*)`, `var(--shadow-*)`. Nunca un hex ni un px que el token ya
    traiga. La escala de espacio es aireada a propósito (densidad 1,15×).
 
-## El dinero ya no se lee por color
+## Los colores del dinero
 
-Este es el cambio que más sorprende, así que va explicado.
+Classical es una paleta **mono**: un solo acento, el oro. El dinero es la
+única excepción, y se la ganó — en una lista de cifras, distinguir de un
+vistazo lo que entró de lo que salió es media app.
 
-Antes el verde era lo que entraba y el rojo lo que salía. Ahora **los dos son
-tinta**, y lo que distingue una cosa de otra es:
+Pero el verde y el rojo **no son los de una interfaz cualquiera**: son un verde
+de tinta (`#3d6b34`) y un rojo de lacre (`#9e3b26`), elegidos para el fondo
+cálido de este sistema. Un verde fluorescente al lado del oro se ve fuera de
+lugar. Sobre tinta los dos suben de tono, igual que la rampa del oro.
 
-- el **signo**: `+` lo que entra, `−` lo que sale, `↔` un traslado;
-- la **etiqueta** de tipo que va al lado (Recibí, Pagué, Presté, Me
-  prestaron, Traslado).
+Lo que se conserva del rediseño es tan importante como el color: el **signo**
+(`+`, `−`, `↔`) y la **etiqueta de tipo** van siempre, haya color o no. El
+color acelera la lectura; no la sostiene. Quien no distinga verde de rojo sigue
+leyendo exactamente lo mismo.
 
-Dos razones. Una, el sistema es de un solo acento y meterle un verde y un rojo
-lo rompe. Dos, y más importante: el significado deja de depender del color, que
-es lo que necesita quien no distingue verde de rojo — hasta ese momento, la
-mitad de la app le decía las cosas a medias.
+**El oro no es ni positivo ni negativo: es "atiéndeme".** Se queda para lo que
+pide una acción — una deuda con saldo, una cuota vencida, un cobro de hoy. Si
+se usa para decorar, deja de señalar.
 
-Las clases `.positivo`, `.negativo` y `.advertencia` siguen existiendo y
-apuntan al vocabulario nuevo desde **un solo bloque** de `estilos.css`, marcado
-`LOS COLORES DEL DINERO`. Ese es el punto donde se cambia de opinión: son
-cuatro líneas.
+Todo sale de **un solo bloque** de `estilos.css`, marcado
+`LOS COLORES DEL DINERO`, y de sus dos líneas gemelas en el tema oscuro. Las
+clases son `.positivo`, `.negativo`, `.advertencia` (el oro) y `.neutro` (un
+traslado, que no suma ni resta).
+
+> Nota de historia: la primera versión del rediseño quitó el verde y el rojo
+> del todo, siguiendo la paleta mono al pie de la letra. En pantalla no
+> funcionó: con todo en tinta, una lista de movimientos se lee mucho más
+> lento. Los colores volvieron, en tono editorial.
 
 ## Los temas
 

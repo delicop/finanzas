@@ -180,7 +180,10 @@ export default function Recurrentes() {
                       )}
                     </td>
                     <td className="num nowrap">
-                      <span className="fig" style={{ fontSize: 17 }}>
+                      <span
+                        className={`fig ${r.tipo === 'recibi' ? 'positivo' : 'negativo'}`}
+                        style={{ fontSize: 17 }}
+                      >
                         {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
                       </span>
                     </td>
@@ -262,7 +265,7 @@ function TarjetaRecurrente({ r, ...acciones }) {
         <span className="tenue">
           {r.categoria_nombre} · {r.medio_pago_nombre}
         </span>
-        <strong className="fig">
+        <strong className={`fig ${r.tipo === 'recibi' ? 'positivo' : 'negativo'}`}>
           {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
         </strong>
       </div>

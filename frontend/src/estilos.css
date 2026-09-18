@@ -99,22 +99,24 @@
   --sombra-modal: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
 
   /* --- LOS COLORES DEL DINERO ---
-     Classical es una paleta MONO: un solo acento. El verde y el rojo se
-     retiraron a propósito, y no es capricho estético.
+     Classical es una paleta mono, pero el dinero es la excepción y se ganó
+     serlo: en una lista de cifras, distinguir de un vistazo lo que entró de lo
+     que salió es la mitad del trabajo de la app.
 
-     Lo que entra lleva +, lo que sale −, un traslado lleva ↔, y al lado va la
-     etiqueta que dice de qué tipo es. El significado nunca depende solo del
-     color: quien no distingue verde de rojo lee exactamente lo mismo.
+     El verde y el rojo NO son los de una interfaz cualquiera: son un verde de
+     tinta y un rojo de lacre, elegidos para el fondo cálido de este sistema.
+     Un #4ade80 al lado del oro se ve fluorescente.
 
-     El oro se guarda para lo que PIDE ALGO: una deuda con saldo, una cuota
-     vencida, un cobro para hoy. Si todo estuviera coloreado, el color dejaría
-     de señalar nada.
+     Lo que se conserva del rediseño: el signo (+, −, ↔) y la etiqueta de tipo
+     van SIEMPRE, aunque haya color. El color acelera la lectura; no la
+     sostiene. Quien no distinga verde de rojo sigue leyendo lo mismo.
 
-     Los tres nombres viejos se conservan para que ninguna regla quede
-     apuntando al vacío; lo que cambia es a qué apuntan. */
-  --verde: var(--color-text);
-  --verde-texto: var(--color-bg);
-  --rojo: var(--color-text);
+     El oro (--ambar) se queda para lo que PIDE algo: una deuda con saldo, una
+     cuota vencida, un cobro de hoy. No es "positivo" ni "negativo", es
+     "atiéndeme". */
+  --verde: #3d6b34;
+  --verde-texto: #f3f2f2;
+  --rojo: #9e3b26;
   --ambar: var(--color-accent-700);
 
   font-family: var(--font-body);
@@ -159,6 +161,12 @@
 
   --hover: rgba(248, 244, 244, 0.07);
   --sombra-modal: rgba(0, 0, 0, 0.66);
+
+  /* Sobre tinta, el verde y el rojo de papel se hunden: suben de tono igual
+     que lo hace la rampa del oro. */
+  --verde: #8fbf76;
+  --verde-texto: #1a1918;
+  --rojo: #e58f78;
 
   color-scheme: dark;
 }
@@ -234,12 +242,13 @@ a:hover {
   color: var(--tenue);
 }
 
-/* Los tres colores del dinero. Hoy los tres son tinta salvo "advertencia":
-   ver la nota de arriba. Se dejan como clases (y no se borran de los
-   componentes) porque son el punto donde se cambia de opinión. */
-.positivo,
+/* Los colores del dinero. Ver la nota de arriba: el signo y la etiqueta van
+   igual, el color solo acelera la lectura. */
+.positivo {
+  color: var(--verde);
+}
 .negativo {
-  color: var(--color-text);
+  color: var(--rojo);
 }
 .advertencia {
   color: var(--color-accent-700);
@@ -3257,4 +3266,23 @@ button.wa-icono:hover:not(:disabled) {
     animation: none;
     opacity: 0.6;
   }
+}
+
+/* Pulido de lo que llegó en los commits de ayer: "lo que viene" y el uso de
+   cada cliente se escribieron contra los estilos anteriores y solo les
+   faltaba la serif de las cifras. */
+.proximas-recurrentes h2 .contador {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+}
+
+.proximas-totales strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.uso-movil {
+  font-variant-numeric: tabular-nums;
 }

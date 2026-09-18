@@ -85,13 +85,15 @@ export default function Dashboard() {
           titulo="Balance"
           principal
           monto={totales.balance}
+          clase={Number(totales.balance) >= 0 ? 'positivo' : 'negativo'}
           nota="Recibido − Pagado − Por cobrar + Por pagar"
         />
-        <Metrica titulo="Recibido" monto={totales.recibido} signo="+" barra={1} />
+        <Metrica titulo="Recibido" monto={totales.recibido} signo="+" clase="positivo" barra={1} />
         <Metrica
           titulo="Pagado"
           monto={totales.pagado}
           signo="−"
+          clase="negativo"
           barra={proporcion(totales.pagado, totales.recibido)}
         />
         <Metrica
@@ -287,11 +289,11 @@ function Contraparte({ c }) {
 // `barra` es una proporción de 0 a 1 para el filete de abajo. Es lo único de
 // esta pantalla que se calcula en el navegador, y se puede: no es una cifra
 // que alguien lea, es el ancho de una línea.
-function Metrica({ titulo, monto, nota, signo, barra, principal = false }) {
+function Metrica({ titulo, monto, nota, signo, barra, clase = '', principal = false }) {
   return (
     <div className={`tarjeta metrica ${principal ? 'principal' : ''}`}>
       <span>{titulo}</span>
-      <strong>
+      <strong className={clase}>
         {signo ? `${signo} ` : ''}
         {formatearMonto(monto)}
       </strong>
@@ -348,7 +350,9 @@ function TarjetaMedio({ m, mayor }) {
           <Link to={`/movimientos?medio_pago_id=${m.medio_id}`}>{m.nombre}</Link>
         )}
       </span>
-      <span className="fig saldo-medio">{formatearMonto(m.saldo)}</span>
+      <span className={`fig saldo-medio ${saldo >= 0 ? '' : 'negativo'}`}>
+        {formatearMonto(m.saldo)}
+      </span>
       <div className="barra-oro">
         <i style={{ width: `${ancho}%` }} />
       </div>
