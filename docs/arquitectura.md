@@ -37,6 +37,10 @@ backend/
     └── db/           conexión y migraciones
 ```
 
+El frontend va vestido con **Classical**, un sistema editorial de papel y oro.
+Sus reglas están en [diseno.md](diseno.md), y vale la pena leerlas antes de
+agregar una pantalla: son fáciles de romper sin darse cuenta.
+
 `internal/` es una carpeta especial de Go: **ningún proyecto externo puede
 importar lo que esté ahí dentro**. Para un monolito eso significa que el
 compilador ayuda a mantener el orden.

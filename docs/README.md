@@ -7,6 +7,7 @@ Guía para quien mantiene la aplicación de finanzas.
 | [arquitectura.md](arquitectura.md) | Cómo está organizado el proyecto y por qué |
 | [decisiones.md](decisiones.md) | Las decisiones técnicas importantes, explicadas |
 | [api.md](api.md) | Todos los endpoints y el formato de los datos |
+| [diseno.md](diseno.md) | El sistema visual: sus reglas y cómo no romperlas |
 | [errores.md](errores.md) | **Cómo revisar y corregir las fallas del servidor** |
 | [agente.md](agente.md) | El asistente: qué puede hacer, cómo se configura y sus límites |
 | [avisos.md](avisos.md) | Los resúmenes y recordatorios automáticos |
