@@ -372,11 +372,36 @@ vez.
 ## Comandos útiles
 
 ```bash
+docker compose up -d --build backend  # DESPUÉS DE TOCAR CÓDIGO GO (ver abajo)
 docker compose logs -f backend      # ver logs de la API
 docker compose restart backend      # reiniciar solo la API
 docker compose down                 # apagar (los datos sobreviven en el volumen)
 docker compose down -v              # apagar Y BORRAR la base de datos
 docker compose exec db psql -U finanzas -d finanzas   # consola de Postgres
+```
+
+### El backend NO se recarga solo
+
+El frontend está montado desde el disco y tiene *hot reload*: guardas un `.jsx`
+y el navegador se actualiza. **El backend no.** Su binario se compila DENTRO de
+la imagen, así que un cambio en Go —o un `git pull` que traiga uno— no llega a
+la app hasta que la reconstruyas:
+
+```bash
+docker compose up -d --build backend
+```
+
+`restart` no alcanza: reinicia el mismo binario viejo.
+
+Esto cuesta media hora de mirar código que ya está bien, porque el síntoma es
+engañoso: la pantalla nueva no muestra nada y todo parece un error del
+frontend. La forma de reconocerlo es mirar lo que responde la API en los logs
+—un endpoint que devuelve menos campos de los que su handler escribe— o
+comparar el tamaño de la respuesta:
+
+```
+"GET /api/recurrentes/pendientes" - 200  18B    ← binario viejo
+"GET /api/recurrentes/pendientes" - 200 340B    ← el de verdad
 ```
 
 Si agregas una dependencia al frontend (`package.json`), hay que renovar el
