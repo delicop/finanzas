@@ -43,7 +43,10 @@ export default function MediosPago() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Medios de pago</h1>
+        <div>
+          <span className="kicker">¿Por dónde entró o salió?</span>
+          <h1>Medios de pago</h1>
+        </div>
         {!soloLectura && (
           <button onClick={() => setEditando({ id: null, nombre: '' })}>Nuevo medio</button>
         )}

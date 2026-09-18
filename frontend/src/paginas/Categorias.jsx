@@ -43,7 +43,10 @@ export default function Categorias() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Categorías</h1>
+        <div>
+          <span className="kicker">¿De qué es esta plata?</span>
+          <h1>Categorías</h1>
+        </div>
         {!soloLectura && (
           <button onClick={() => setEditando({ id: null, nombre: '' })}>Nueva categoría</button>
         )}

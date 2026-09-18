@@ -10,7 +10,10 @@
 
     <!-- Lo que la vuelve instalable (PWA). -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#0f1115" />
+    <!-- El color de la barra del sistema cuando la app está instalada. Dos, uno
+         por tema: el papel de Classical y su negro cálido. -->
+    <meta name="theme-color" content="#f3f2f2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a1918" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/iconos/icono.svg" type="image/svg+xml" />
     <link rel="icon" href="/iconos/icono-192.png" type="image/png" sizes="192x192" />
 

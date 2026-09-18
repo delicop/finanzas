@@ -1,87 +1,312 @@
-:root {
-  /* Tema oscuro (por defecto). Todo el CSS usa estas variables, así que
-     cambiar de tema es solo redefinirlas: no hay que tocar ni una regla. */
-  --fondo: #0f1115;
-  --superficie: #181b22;
-  --superficie-2: #10131a;
-  --borde: #2a2f3a;
-  --texto: #e7e9ee;
-  --tenue: #9aa3b2;
-  --acento: #4f8cff;
-  --verde: #4ade80;
-  --verde-texto: #0b1f14;
-  --rojo: #ff6b6b;
-  --ambar: #fbbf24;
-  --hover: rgba(255, 255, 255, 0.05);
-  --sombra-modal: rgba(0, 0, 0, 0.6);
+/* ===========================================================================
+   Classical — el sistema visual de la app
+   ---------------------------------------------------------------------------
+   Editorial y de papel: Cormorant Garamond sobre Lora, fondo casi blanco,
+   filetes de un pixel en vez de rellenos, y el oro como TRAZO (bordes,
+   subrayados, cifras que piden atención), nunca como bloque de color.
 
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  color-scheme: dark;
+   Las tipografías se sirven DESDE LA APP (public/fuentes/), no desde Google.
+   Dos razones: la app es una PWA que tiene que abrir sin señal —con las letras
+   en un CDN, sin internet se ve con la serif del sistema y pierde media cara—
+   y así ninguna visita le cuenta a un tercero quién abre tus finanzas.
+   Son dos archivos variables de ~37 KB: cubren los dos pesos cada uno.
+   =========================================================================== */
+
+@font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('/fuentes/cormorant-garamond-latin.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  /* swap: el texto se ve de una con la serif del sistema y cambia cuando la
+     letra llega. Es preferible a media pantalla en blanco. */
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-:root[data-tema='claro'] {
-  --fondo: #f4f5f7;
-  --superficie: #ffffff;
-  --superficie-2: #f7f8fa;
-  --borde: #dfe3ea;
-  --texto: #1b1f27;
-  --tenue: #667085;
-  --acento: #2563eb;
-  /* Verde y rojo más oscuros: los del tema oscuro no tienen contraste
-     suficiente sobre fondo blanco y las cifras quedan ilegibles. */
-  --verde: #15803d;
-  --verde-texto: #ffffff;
-  --rojo: #dc2626;
-  --ambar: #b45309;
-  --hover: rgba(0, 0, 0, 0.04);
-  --sombra-modal: rgba(15, 23, 42, 0.35);
+@font-face {
+  font-family: 'Lora';
+  src: url('/fuentes/lora-latin.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
+:root {
+  /* --- Classical: los tokens del sistema --- */
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201f1d;
+  --color-accent: #b68235;
+  --color-divider: color-mix(in srgb, #201f1d 16%, transparent);
+
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff3e4;
+  --color-accent-200: #ffe3bf;
+  --color-accent-300: #facb8d;
+  --color-accent-400: #e1ad66;
+  --color-accent-500: #c28d41;
+  --color-accent-600: #a06f24;
+  --color-accent-700: #7d5411;
+  --color-accent-800: #5a3b0a;
+  --color-accent-900: #3a270d;
+
+  --font-heading: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-heading-weight: 600;
+  --font-body: 'Lora', Georgia, 'Times New Roman', serif;
+
+  /* Escala de espacio con densidad 1.15×: es aireada a propósito. */
+  --space-1: 4.6px;
+  --space-2: 9.2px;
+  --space-3: 13.8px;
+  --space-4: 18.4px;
+  --space-6: 27.6px;
+  --space-8: 36.8px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 7px;
+
+  /* La elevación aquí es un susurro: nada de sombras pesadas. */
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+
+  /* --- Los nombres que ya usaba la app, apuntando a los tokens ---
+     Se conservan para no reescribir 2.000 líneas de reglas de golpe: cada
+     regla vieja sigue leyendo --fondo o --borde y recibe el valor nuevo. */
+  --fondo: var(--color-bg);
+  --superficie: var(--color-surface);
+  --superficie-2: color-mix(in srgb, var(--color-text) 4%, var(--color-bg));
+  --borde: var(--color-divider);
+  --texto: var(--color-text);
+  --tenue: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --acento: var(--color-accent);
+  --hover: color-mix(in srgb, var(--color-text) 7%, transparent);
+  --sombra-modal: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+
+  /* --- LOS COLORES DEL DINERO ---
+     Classical es una paleta MONO: un solo acento. El verde y el rojo se
+     retiraron a propósito, y no es capricho estético.
+
+     Lo que entra lleva +, lo que sale −, un traslado lleva ↔, y al lado va la
+     etiqueta que dice de qué tipo es. El significado nunca depende solo del
+     color: quien no distingue verde de rojo lee exactamente lo mismo.
+
+     El oro se guarda para lo que PIDE ALGO: una deuda con saldo, una cuota
+     vencida, un cobro para hoy. Si todo estuviera coloreado, el color dejaría
+     de señalar nada.
+
+     Los tres nombres viejos se conservan para que ninguna regla quede
+     apuntando al vacío; lo que cambia es a qué apuntan. */
+  --verde: var(--color-text);
+  --verde-texto: var(--color-bg);
+  --rojo: var(--color-text);
+  --ambar: var(--color-accent-700);
+
+  font-family: var(--font-body);
   color-scheme: light;
 }
 
-* {
+/* El mismo sistema sobre tinta: fondo negro cálido, papel para el texto y el
+   oro un paso más claro, que es lo que pide el sistema sobre fondo oscuro.
+   Mismos tokens y mismas clases — aquí solo se redefinen las variables. */
+:root[data-tema='oscuro'] {
+  --color-bg: #1a1918;
+  --color-surface: #252322;
+  --color-text: #f8f4f4;
+  --color-accent: #e1ad66;
+  --color-divider: rgba(248, 244, 244, 0.18);
+
+  --color-neutral-100: #2d2b2b;
+  --color-neutral-200: #343131;
+  --color-neutral-300: #444141;
+  --color-neutral-400: #605d5d;
+  --color-neutral-500: #7d7979;
+  --color-neutral-600: #9b9797;
+  --color-neutral-700: #bab6b6;
+  --color-neutral-800: #e0dcdc;
+  --color-neutral-900: #f8f4f4;
+
+  /* La rampa del oro se invierte: sobre tinta, el paso "oscuro" tiene que ser
+     el CLARO, o el texto en acento quedaría ilegible. */
+  --color-accent-100: #3a270d;
+  --color-accent-200: #5a3b0a;
+  --color-accent-300: #7d5411;
+  --color-accent-400: #a06f24;
+  --color-accent-500: #c28d41;
+  --color-accent-600: #e1ad66;
+  --color-accent-700: #facb8d;
+  --color-accent-800: #ffe3bf;
+  --color-accent-900: #fff3e4;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  --hover: rgba(248, 244, 244, 0.07);
+  --sombra-modal: rgba(0, 0, 0, 0.66);
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background: var(--fondo);
-  color: var(--texto);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+/* El bold se retiró: en Classical el énfasis lo hacen el peso semibold de los
+   títulos y las itálicas, no una negrita. */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0 0 var(--space-2);
+}
+
+h1 {
+  font-size: 42px;
+}
+h2 {
+  font-size: 25px;
+  margin-bottom: var(--space-1);
+}
+h3 {
+  font-size: 20px;
+}
+h4 {
+  font-size: 17px;
 }
 
 a {
-  color: var(--acento);
+  color: var(--color-accent-700);
   text-decoration: none;
+  text-underline-offset: 3px;
 }
 a:hover {
   text-decoration: underline;
 }
 
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* --- utilidades --- */
+
 .tenue {
   color: var(--tenue);
 }
-.positivo {
-  color: var(--verde);
-}
+
+/* Los tres colores del dinero. Hoy los tres son tinta salvo "advertencia":
+   ver la nota de arriba. Se dejan como clases (y no se borran de los
+   componentes) porque son el punto donde se cambia de opinión. */
+.positivo,
 .negativo {
-  color: var(--rojo);
+  color: var(--color-text);
 }
 .advertencia {
-  color: var(--ambar);
+  color: var(--color-accent-700);
 }
-/* El saldo es LA cifra de "¿dónde está la plata?": se destaca sobre
-   las columnas de detalle que la componen. */
+.neutro {
+  color: var(--color-neutral-700);
+}
+
+/* El saldo es LA cifra de "¿dónde está la plata?". Se destaca con la serif de
+   los títulos, no con negrita. */
 .saldo-fuerte {
-  font-weight: 700;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+}
+
+/* Las cifras van SIEMPRE tabulares: en una columna, los dígitos tienen que
+   caer unos debajo de otros o la lista deja de leerse de un vistazo. */
+.monto-valor,
+.num,
+.fig {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 .monto-valor {
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
 }
+
+/* .fig es una cifra que se lee como cifra: la serif de los títulos, tamaño a
+   criterio de quien la use. */
+.fig {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+}
+
 .nowrap {
   white-space: nowrap;
+}
+
+/* El rótulo pequeño en versalitas que encabeza cada bloque. */
+.kicker {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
+.hr {
+  height: 1px;
+  border: 0;
+  margin: var(--space-4) 0;
+  background: var(--color-divider);
+}
+
+/* La barrita de proporción que acompaña a una cifra. Es un filete, no una
+   barra rellena: dice "cuánto de esto" sin gritar. */
+.barra-oro {
+  height: 2px;
+  background: var(--color-divider);
+}
+.barra-oro > i {
+  display: block;
+  height: 2px;
+  background: var(--color-accent);
 }
 
 /* ---------- pantallas ---------- */
@@ -90,7 +315,7 @@ a:hover {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .app {
@@ -101,13 +326,13 @@ a:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--borde);
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
   flex-wrap: wrap;
   position: sticky;
   top: 0;
-  background: var(--fondo);
+  background: var(--color-surface);
   z-index: 10;
 }
 
@@ -115,153 +340,187 @@ a:hover {
 .barra-der {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: var(--space-3);
 }
 
 .marca {
-  font-size: 17px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 18px;
 }
 
 .nav {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .nav a {
-  color: var(--tenue);
+  color: var(--color-text);
   font-size: 14px;
-  padding: 6px 0;
-  border-bottom: 2px solid transparent;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
 }
 
 .nav a:hover {
-  color: var(--texto);
+  color: var(--color-accent);
   text-decoration: none;
 }
 
+/* La sección actual se marca con el oro y un filete, no con un relleno. */
 .nav a.activo {
-  color: var(--texto);
-  border-bottom-color: var(--acento);
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
 }
 
 .usuario {
   color: var(--tenue);
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .contenido {
-  padding: 24px 20px 60px;
+  padding: var(--space-6) var(--space-6) var(--space-8);
   max-width: 1100px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--space-4);
 }
 
 .encabezado-pagina {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-end;
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
-h1 {
-  margin: 0;
-  font-size: 22px;
+.encabezado-pagina h1 {
+  margin: var(--space-1) 0 0;
 }
-h2 {
-  margin: 0 0 10px;
-  font-size: 16px;
+
+.acciones-encabezado {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
+
 .subtitulo {
-  margin: 0 0 14px;
+  margin: 0 0 var(--space-2);
   color: var(--tenue);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 /* ---------- tarjetas ---------- */
 
+/* Una ficha: borde de un pixel y nada de relleno. La estructura la llevan los
+   filetes, no los bloques de color. */
 .tarjeta {
-  background: var(--superficie);
-  border: 1px solid var(--borde);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-/* En claro las tarjetas se despegan del fondo con una sombra suave, porque
-   el borde solo no alcanza a separarlas visualmente. */
-:root[data-tema='claro'] .tarjeta,
-:root[data-tema='claro'] .tarjeta-mov,
-:root[data-tema='claro'] .tarjeta-cat,
-:root[data-tema='claro'] .modal {
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 
 .pantalla-centrada .tarjeta {
   width: 100%;
-  max-width: 380px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  max-width: 400px;
+  padding: var(--space-6);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-sm);
 }
 
 .fila-tarjetas {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+/* El balance manda: ficha más ancha, cifra grande y el borde en oro. */
+.fila-tarjetas .metrica:first-child {
+  grid-column: span 2;
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .metrica {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px;
+  gap: var(--space-1);
 }
 
-.metrica span {
-  font-size: 13px;
+.metrica > span:first-child {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-700);
 }
 
 .metrica strong {
-  font-size: 19px;
+  font-family: var(--font-heading);
+  /* Cuanto más grande, más liviana: las cifras de display van en el corte
+     normal, no en semibold. */
+  font-weight: 400;
+  font-size: 25px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.fila-tarjetas .metrica:first-child strong {
+  font-size: 40px;
+}
+
+.fila-tarjetas .metrica:first-child > span:first-child {
+  color: var(--color-accent-700);
 }
 
 .metrica-nota {
   font-size: 11px;
   color: var(--tenue);
-  opacity: 0.8;
   line-height: 1.3;
 }
 
 .destacada {
-  border-color: rgba(79, 140, 255, 0.4);
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
 }
 
 .monto-grande {
-  margin: 4px 0;
-  font-size: 30px;
-  font-weight: 700;
-  color: var(--ambar);
+  margin: 0;
+  font-family: var(--font-heading);
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .lista-deudores {
   list-style: none;
   padding: 0;
-  margin: 14px 0 0;
-  border-top: 1px solid var(--borde);
+  margin: var(--space-2) 0 0;
+  border-top: 1px solid var(--color-divider);
 }
 
 .lista-deudores li {
   display: flex;
   justify-content: space-between;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--borde);
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-divider);
   font-size: 14px;
+}
+
+.lista-deudores li:last-child {
+  border-bottom: 0;
 }
 
 .lista-deudores .monto {
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
 }
 
 /* ---------- tablas ---------- */
@@ -274,23 +533,29 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
 th,
 td {
   text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--borde);
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-divider);
   vertical-align: top;
 }
 
 th {
-  color: var(--tenue);
-  font-weight: 500;
-  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
   white-space: nowrap;
+}
+
+tbody tr:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
 }
 
 tbody tr:last-child td {
@@ -299,7 +564,6 @@ tbody tr:last-child td {
 
 .num {
   text-align: right;
-  font-variant-numeric: tabular-nums;
 }
 
 td.acciones,
@@ -309,23 +573,17 @@ th.acciones {
 }
 
 td.acciones button {
-  margin: 0 0 0 6px;
-}
-
-/* Por dónde te devolvieron un préstamo */
-.cobrado-por {
-  color: var(--verde);
-  font-size: 11px;
+  margin: 0 0 0 var(--space-1);
 }
 
 .resumen-cobro {
-  margin: 4px 0 2px;
+  margin: 0;
   font-size: 14px;
   line-height: 1.5;
 }
 
 .sub-medio {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--tenue);
   margin-top: 2px;
 }
@@ -337,227 +595,356 @@ td.acciones button {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 4px 10px;
 }
 
 /* ---------- etiquetas ---------- */
 
+/* Las etiquetas SÍ llevan un fondo tenue, y son la excepción que confirma la
+   regla: son lo que dice de qué tipo es cada movimiento cuando el color ya no
+   lo dice. Tienen que poder leerse de reojo. */
 .etiqueta {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   border: 1px solid transparent;
 }
 
+/* Lo que entra, en trazo de oro. */
 .tipo-recibi {
-  color: var(--verde);
-  border-color: rgba(74, 222, 128, 0.35);
-  background: rgba(74, 222, 128, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent-700);
 }
+
+/* Lo que sale, en neutro: es la mayoría de los renglones y no necesita
+   llamar la atención. */
 .tipo-pague {
-  color: var(--rojo);
-  border-color: rgba(255, 107, 107, 0.35);
-  background: rgba(255, 107, 107, 0.1);
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
 }
-.tipo-preste {
-  color: var(--ambar);
-  border-color: rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.1);
+
+/* Las dos deudas comparten etiqueta tintada: son lo que queda pendiente. */
+.tipo-preste,
+.tipo-me_prestaron {
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+}
+
+/* Un traslado no es ni lo uno ni lo otro. */
+.tipo-traslado {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-700);
 }
 
 .estado {
-  padding: 1px 7px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
 }
 .estado-pendiente {
-  color: var(--ambar);
-  background: rgba(251, 191, 36, 0.12);
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+}
+.estado-parcial {
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
 }
 .estado-pagado {
-  color: var(--verde);
-  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid var(--color-divider);
+  background: transparent;
+  color: var(--tenue);
+}
+
+/* El contador de una sección ("Por confirmar 2"). */
+.contador {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 11px;
+  font-family: var(--font-body);
 }
 
 /* ---------- formularios ---------- */
 
 label {
   display: block;
-  font-size: 13px;
-  color: var(--tenue);
-  margin-top: 12px;
-  margin-bottom: 4px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  margin-top: var(--space-3);
+  margin-bottom: 5px;
+}
+
+.req {
+  color: var(--color-accent);
 }
 
 input,
 select,
 textarea {
   width: 100%;
-  background: var(--superficie-2);
-  border: 1px solid var(--borde);
-  border-radius: 8px;
-  padding: 9px 11px;
-  color: var(--texto);
+  min-height: 36px;
+  /* Sin relleno: el campo es un rectángulo dibujado con un filete, igual que
+     las fichas. */
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  color: var(--color-text);
+  caret-color: var(--color-accent);
   font-size: 14px;
-  font-family: inherit;
+  font-family: var(--font-body);
 }
 
 input[type='file'] {
-  padding: 8px;
+  padding: 7px 10px;
   font-size: 13px;
 }
 
-input:focus,
-select:focus {
-  outline: 2px solid var(--acento);
-  outline-offset: 1px;
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: color-mix(in srgb, var(--color-text) 45%, transparent);
 }
 
-/* El selector de fecha nativo es blanco sobre blanco en tema oscuro */
-input[type='date'] {
-  color-scheme: dark;
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 0;
+}
+
+textarea {
+  min-height: 90px;
+  resize: vertical;
 }
 
 .dos-columnas {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  color: var(--texto);
-  font-size: 13px;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  color: var(--color-text);
+  font-size: 14px;
 }
 
 .checkbox input {
   width: auto;
+  min-height: 0;
+  accent-color: var(--color-accent);
 }
 
+.ayuda-campo {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.error-campo {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--color-accent-700);
+}
+
+/* El bloque de la deuda dentro del formulario: se separa con un filete
+   punteado, no con un fondo de color. */
 .bloque-prestamo {
-  margin-top: 14px;
-  padding: 4px 14px 14px;
-  border: 1px dashed var(--borde);
-  border-radius: 10px;
-  background: rgba(251, 191, 36, 0.04);
+  margin-top: var(--space-3);
+  padding: var(--space-1) var(--space-3) var(--space-3);
+  border: 1px dashed var(--color-divider);
+  border-radius: var(--radius-md);
 }
 
+/* --- el control segmentado ---
+   Los "chips" de tipo y estado son en realidad un segmentado: opciones
+   pegadas, separadas por un filete, y la elegida marcada con el oro. */
 .grupo-tipos {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
   flex-wrap: wrap;
+  overflow: hidden;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
 }
 
 .chip {
   margin: 0;
-  background: var(--superficie-2);
-  border: 1px solid var(--borde);
-  color: var(--tenue);
-  font-weight: 500;
-  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  font-weight: 400;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--color-divider);
+  border-radius: 0;
+  color: var(--color-text);
+  cursor: pointer;
 }
 
+.chip:first-child {
+  border-left: 0;
+}
+
+.chip:not(.chip-activo):hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* El recuadro interior (y no un relleno) es lo que marca la opción elegida:
+   así se ve igual de claro sin meter un bloque de color en la página. */
 .chip-activo {
-  border-color: var(--acento);
-  color: var(--texto);
-  background: rgba(79, 140, 255, 0.12);
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* Los atajos de fecha son otra fila de segmentado, aparte. */
+.atajos-cobro {
+  margin-top: var(--space-2);
 }
 
 /* ---------- botones ---------- */
 
+/* En Classical NINGÚN botón se rellena de color: el primario es un trazo de
+   oro sobre transparente. Es la regla que más cambia la cara de la app. */
 button {
-  background: var(--acento);
-  color: #fff;
-  border: 0;
-  border-radius: 8px;
-  padding: 9px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
   font-size: 14px;
-  font-weight: 600;
-  font-family: inherit;
+  line-height: 1.2;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
   cursor: pointer;
 }
 
+button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
 button:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 button.secundario {
-  background: transparent;
-  border: 1px solid var(--borde);
-  color: var(--texto);
-  font-weight: 500;
+  color: var(--color-text);
+  border-color: var(--color-divider);
+}
+
+button.secundario:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+button.secundario:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 14%, transparent);
 }
 
 button.exito {
-  background: transparent;
-  border: 1px solid rgba(74, 222, 128, 0.45);
-  color: var(--verde);
-  font-weight: 500;
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
-button.peligro {
-  background: transparent;
-  border: 1px solid rgba(255, 107, 107, 0.4);
-  color: var(--rojo);
-  font-weight: 500;
+/* "Peligro" ya no es rojo: es un botón fantasma en gris. Lo que frena un
+   borrado es el diálogo de confirmación, no el color del botón — y un rojo
+   suelto en una página de papel grita más de lo que ayuda. */
+button.peligro,
+button.menor-peligro {
+  color: var(--color-neutral-700);
+  border-color: transparent;
+}
+
+button.peligro:hover:not(:disabled),
+button.menor-peligro:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 button.enlace {
   background: none;
   border: 0;
-  color: var(--acento);
+  color: var(--color-accent);
   padding: 0;
-  font-weight: 500;
 }
 
 button.icono {
   background: none;
   border: 0;
   color: var(--tenue);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   padding: 0 4px;
 }
 
 .boton-enlace {
-  background: var(--acento);
-  color: #fff;
-  border-radius: 8px;
-  padding: 9px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
   font-size: 14px;
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
 }
 .boton-enlace:hover {
   text-decoration: none;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 /* La pantalla de login usa un botón ancho */
 .pantalla-centrada button[type='submit'] {
-  margin-top: 18px;
+  margin-top: var(--space-4);
   width: 100%;
-  padding: 11px 14px;
+  min-height: 42px;
 }
 
 /* ---------- filtros ---------- */
 
 .filtros {
-  padding: 14px 20px 18px;
+  padding: var(--space-3);
 }
 
 .fila-filtros {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
+  align-items: flex-end;
 }
 
 .fila-filtros > div {
-  min-width: 140px;
+  min-width: 150px;
 }
 
 .fila-filtros label {
@@ -577,18 +964,9 @@ button.icono {
 .boton-filtros {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   justify-content: center;
-}
-
-.boton-filtros .contador {
-  background: var(--acento);
-  color: #fff;
-  border-radius: 999px;
-  min-width: 20px;
-  padding: 1px 6px;
-  font-size: 12px;
 }
 
 .boton-filtros .flecha {
@@ -600,8 +978,8 @@ button.icono {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-top: 14px;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
   font-size: 13px;
   flex-wrap: wrap;
 }
@@ -609,7 +987,7 @@ button.icono {
 .paginacion-botones {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 /* ---------- modal ---------- */
@@ -621,16 +999,22 @@ button.icono {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 24px 16px;
+  padding: var(--space-6) var(--space-4);
   overflow-y: auto;
   z-index: 100;
 }
 
+/* El modal SÍ va sobre la superficie: es lo único que se levanta del papel,
+   y por eso es donde la elevación tiene permiso de notarse. */
 .modal {
-  background: var(--superficie);
-  border: 1px solid var(--borde);
-  border-radius: 12px;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
   width: 100%;
   max-width: 480px;
   margin: auto;
@@ -640,19 +1024,18 @@ button.icono {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
 }
 
 .modal-encabezado h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 20px;
 }
 
 .acciones-modal {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  margin-top: 22px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .visor-imagen {
@@ -661,54 +1044,46 @@ button.icono {
   max-width: 100%;
   height: auto;
   display: block;
-  margin: 8px auto 0;
-  border-radius: 8px;
+  margin: var(--space-2) auto 0;
+  /* El marco de lámina: la foto queda montada sobre un paspartú, como una
+     plancha pegada en un libro. */
+  border: 6px solid var(--color-surface);
+  outline: 1px solid var(--color-divider);
 }
 
 .visor-pdf {
   width: 100%;
   height: 65vh;
-  border: 1px solid var(--borde);
-  border-radius: 8px;
-  margin-top: 8px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-2);
   background: #fff;
 }
 
 /* ---------- alertas ---------- */
 
+/* Un aviso es una ficha con un filete de oro más grueso a la izquierda, como
+   una nota al margen. Sin relleno rojo: el texto ya dice que algo pasó. */
 .alerta {
-  background: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.4);
-  color: var(--rojo);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
   font-size: 14px;
 }
 
 .alerta.aviso {
-  background: rgba(251, 191, 36, 0.1);
-  border-color: rgba(251, 191, 36, 0.4);
-  color: var(--ambar);
-}
-
-/* Marca de campo obligatorio */
-.req {
-  color: var(--rojo);
-  font-weight: 700;
-}
-
-.error-campo {
-  display: block;
-  color: var(--rojo);
-  font-size: 12px;
-  margin-top: 4px;
+  border-left-color: var(--color-neutral-500);
 }
 
 code {
-  background: var(--superficie-2);
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
   padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
 }
 
 /* ---------- tarjetas de lista (teléfono) ---------- */
@@ -716,15 +1091,15 @@ code {
 .lista-movil {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .tarjeta-mov,
 .tarjeta-cat {
-  background: var(--superficie);
-  border: 1px solid var(--borde);
-  border-radius: 12px;
-  padding: 14px;
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
 }
 
 .tarjeta-mov-arriba,
@@ -740,9 +1115,11 @@ code {
 }
 
 .tarjeta-mov-desc {
-  margin: 10px 0 8px;
-  font-size: 15px;
-  line-height: 1.35;
+  margin: var(--space-2) 0 var(--space-1);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+  line-height: 1.25;
   /* Una descripción larga no debe empujar el ancho de la tarjeta. */
   overflow-wrap: anywhere;
 }
@@ -755,27 +1132,17 @@ code {
   font-size: 13px;
 }
 
-.tarjeta-mov-meta /* El saldo es LA cifra de "¿dónde está la plata?": se destaca sobre
-   las columnas de detalle que la componen. */
-.saldo-fuerte {
-  font-weight: 700;
-}
-
-.monto-valor {
-  font-size: 17px;
-}
-
 .tarjeta-mov .sub {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .tarjeta-mov-acciones {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--borde);
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-divider);
 }
 
 /* ---------- jerarquía de acciones ----------
@@ -792,29 +1159,34 @@ code {
 .acciones-principales button {
   flex: 1 1 auto;
   min-width: 120px;
-  min-height: 46px;
-  font-size: 15px;
-  font-weight: 600;
+  /* 42px y no 46: los botones son de trazo, no bloques de color, y con tanta
+     altura el rectángulo vacío se ve desproporcionado. Sigue siendo cómodo
+     para el pulgar. */
+  min-height: 42px;
 }
 
-.principal-pagar {
-  background: var(--verde);
-  color: var(--verde-texto);
-  border: 0;
+/* Los tres son botones de trazo. Lo que los distingue no es el relleno —que
+   aquí no existe— sino cuál lleva el oro y cuál el gris del borde: "ya me
+   pagó" y "abonos" son lo que se hace todos los días; "factura" es mirar. */
+.principal-pagar,
+.principal-abonar {
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
 }
 
-.principal-pagar:hover:not(:disabled) {
-  filter: brightness(1.08);
+.principal-pagar:hover:not(:disabled),
+.principal-abonar:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .principal-factura {
-  background: rgba(79, 140, 255, 0.14);
-  border: 1px solid rgba(79, 140, 255, 0.5);
-  color: var(--acento);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
 }
 
 .principal-factura:hover {
-  background: rgba(79, 140, 255, 0.22);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
 
 .acciones-secundarias {
@@ -829,28 +1201,31 @@ code {
 button.menor {
   background: none;
   border: 0;
-  color: var(--tenue);
+  color: var(--color-accent);
   font-size: 13px;
-  font-weight: 500;
   min-height: 0;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 5px var(--space-1);
+  border-radius: var(--radius-md);
 }
 
 button.menor:hover:not(:disabled) {
-  color: var(--texto);
-  background: var(--hover);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+/* Eliminar y descartar van en gris, no en rojo: quien frena un borrado es el
+   diálogo de confirmación. */
+button.menor-peligro {
+  color: var(--color-neutral-700);
 }
 
 button.menor-peligro:hover:not(:disabled) {
-  color: var(--rojo);
-  background: rgba(255, 107, 107, 0.08);
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 /* Separador discreto entre los botones menores */
 .acciones-secundarias button.menor + button.menor {
-  border-left: 1px solid var(--borde);
-  border-radius: 0 6px 6px 0;
+  border-left: 1px solid var(--color-divider);
+  border-radius: 0;
 }
 
 /* En la tabla de escritorio todo va en UNA línea: si se apilan, las filas
@@ -948,8 +1323,22 @@ button.menor-peligro:hover:not(:disabled) {
     white-space: nowrap;
   }
 
+  /* 32px y no 20: el título es display, y en este sistema el texto grande va
+     en el corte normal de la serif, no apretado. Cabe de sobra en 390px. */
   h1 {
+    font-size: 32px;
+  }
+
+  h2 {
     font-size: 20px;
+  }
+
+  .fila-tarjetas {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .fila-tarjetas .metrica:first-child strong {
+    font-size: 34px;
   }
 
   .encabezado-pagina {
@@ -1116,18 +1505,28 @@ button.menor-peligro:hover:not(:disabled) {
 
 /* ---------- botón de tema ---------- */
 
+/* Los botones de ícono de la barra: cuadrados, de trazo, sin relleno. */
 .boton-tema {
+  width: 36px;
+  height: 36px;
+  padding: 0;
   background: transparent;
-  border: 1px solid var(--borde);
-  color: var(--texto);
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
   font-size: 15px;
   line-height: 1;
-  padding: 8px 10px;
   min-height: 0;
 }
 
-.boton-tema:hover {
-  background: var(--hover);
+.boton-tema:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* El punto de la campana: lo único redondo de la interfaz, porque es una
+   marca de cantidad, no un componente. */
+.campana-punto {
+  font-family: var(--font-body);
+  border-radius: 999px;
 }
 
 /* ---------- barra inferior (solo teléfono) ---------- */
@@ -1143,21 +1542,26 @@ button.menor-peligro:hover:not(:disabled) {
      una quinta pestaña y la barra tiene que repartirse sola. */
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  background: var(--superficie);
-  border-top: 1px solid var(--borde);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
   /* Respeta la franja del gesto de inicio en los iPhone sin botón. */
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* Versalitas pequeñas en vez de ícono + rótulo: en este sistema la tipografía
+   hace el trabajo que hacían los glifos, y la pestaña activa se marca con un
+   filete de oro arriba. */
 .barra-inferior a {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  padding: 9px 2px 8px;
-  font-size: 11px;
-  color: var(--tenue);
+  gap: 2px;
+  padding: var(--space-3) 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
   border-top: 2px solid transparent;
   margin-top: -1px;
 
@@ -1185,11 +1589,12 @@ button.menor-peligro:hover:not(:disabled) {
 }
 
 .barra-inferior a.activo {
-  color: var(--acento);
-  border-top-color: var(--acento);
+  color: var(--color-accent-700);
+  border-top-color: var(--color-accent);
 }
 
 .icono-tab {
+  display: none;
   font-size: 17px;
   line-height: 1;
 }
@@ -2114,25 +2519,31 @@ button.burbuja-asistente:focus-visible {
 }
 
 .lista-avisos li {
-  border: 1px solid var(--borde);
-  border-left: 3px solid var(--acento);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: var(--superficie-2);
+  border: 1px solid var(--color-divider);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
 }
 
-/* Los ya leídos siguen ahí pero dejan de pedir atención. */
+/* Los ya leídos siguen ahí pero dejan de pedir atención: se les va el oro. */
 .lista-avisos .aviso-leido {
-  border-left-color: var(--borde);
+  border-left-color: var(--color-divider);
 }
 
 .aviso-arriba {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   font-size: 14px;
+}
+
+.aviso-arriba strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
 }
 
 .aviso-arriba .tenue {
@@ -2151,9 +2562,9 @@ button.burbuja-asistente:focus-visible {
    Planes: precio anual y asistente con IA
    -------------------------------------------------------------------------*/
 .etiqueta-ia {
-  color: var(--wa-verde);
-  border-color: rgba(0, 168, 132, 0.45);
-  background: rgba(0, 168, 132, 0.12);
+  color: var(--color-accent-800);
+  border-color: transparent;
+  background: var(--color-accent-100);
 }
 
 .etiqueta-sin-ia {
@@ -2162,16 +2573,15 @@ button.burbuja-asistente:focus-visible {
 }
 
 .etiqueta-anual {
-  color: var(--acento);
-  border-color: rgba(79, 140, 255, 0.45);
-  background: rgba(79, 140, 255, 0.12);
+  color: var(--color-accent-700);
+  border-color: var(--color-accent);
+  background: transparent;
   margin-left: 4px;
 }
 
 .nota-ahorro {
   font-size: 11px;
-  color: var(--verde);
-  font-weight: 600;
+  color: var(--color-accent-700);
 }
 
 /* El precio anual se pide dentro de un recuadro que cuelga de su casilla:
@@ -2514,82 +2924,54 @@ button.boton-factura {
    Deudas en los dos sentidos, traslados, abonos y recurrentes
    =========================================================================== */
 
-/* ---------- los tipos nuevos ----------
-   "Me prestaron" comparte el ámbar de "Presté" porque son la misma cosa vista
-   desde los dos lados: plata que todavía tiene que moverse. El traslado va en
-   gris a propósito — no suma ni resta, y pintarlo de color lo haría parecer
-   un ingreso o un gasto. */
+/* Los tipos de movimiento están arriba, con el resto de las etiquetas: es un
+   solo vocabulario y vive en un solo sitio. Aquí quedan las piezas que solo
+   aparecen en las deudas y los traslados. */
 
-.tipo-me_prestaron {
-  color: var(--ambar);
-  border-color: rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.06);
-}
-
-.tipo-traslado {
-  color: var(--tenue);
-  border-color: var(--borde);
-  background: var(--superficie-2);
-}
-
-.estado-parcial {
-  color: var(--acento);
-  background: rgba(79, 140, 255, 0.12);
-}
-
-/* El monto de un traslado: ni verde ni rojo, porque no cambia el total. */
-.monto-valor.neutro {
-  color: var(--tenue);
-}
-
+/* La ruta de un traslado, subrayada en oro: "Efectivo → Nequi" es un
+   recorrido, y el filete lo dibuja sin gritar. */
 .traslado-ruta {
   font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--color-accent);
 }
 
 .deuda-quien {
-  font-weight: 500;
+  color: var(--color-text);
 }
 
-/* "faltan $150.000 de $500.000": es lo que de verdad se debe, y por eso va
-   destacado sobre el monto original. */
+/* "faltan $150.000 de $500.000": es lo que de verdad se debe, y por eso es de
+   las pocas cosas que se llevan el oro. */
 .saldo-pendiente {
-  color: var(--ambar);
-  font-weight: 600;
+  color: var(--color-accent-700);
   font-variant-numeric: tabular-nums;
 }
 
 /* ---------- acciones nuevas de la lista ---------- */
 
-.principal-abonar {
-  background: rgba(79, 140, 255, 0.14);
-  border: 1px solid rgba(79, 140, 255, 0.5);
-  color: var(--acento);
-}
-
-.principal-abonar:hover {
-  background: rgba(79, 140, 255, 0.22);
-}
-
 /* "Recordar" es un enlace (abre WhatsApp), pero tiene que verse y tocarse
-   igual que los botones de al lado. */
+   igual que los botones de al lado. Nótese que NO va del verde de WhatsApp:
+   dentro de la app manda el sistema, no la marca de la otra. */
 .acciones-principales a.principal-recordar {
   flex: 1 1 auto;
   min-width: 120px;
-  min-height: 46px;
+  min-height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  font-size: 15px;
-  font-weight: 600;
+  gap: 6px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 14px;
   text-decoration: none;
-  background: rgba(37, 211, 102, 0.12);
-  border: 1px solid rgba(37, 211, 102, 0.45);
-  color: #25d366;
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  color: var(--color-text);
 }
 
 .acciones-principales a.principal-recordar:hover {
-  background: rgba(37, 211, 102, 0.2);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  text-decoration: none;
 }
 
 /* ---------- el resumen: te deben / debes ---------- */
@@ -2631,7 +3013,9 @@ button.boton-factura {
 }
 
 .cifras-deuda strong {
-  font-size: 19px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 22px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2707,10 +3091,12 @@ button.boton-factura {
   font-size: 12px;
 }
 
+/* La cuota cubierta se apaga (opacidad) y su número se queda en oro: lo que
+   se busca de un vistazo es por cuál va, no cuáles ya pasaron. */
 .cuota-cubierta .cuota-numero {
-  background: rgba(74, 222, 128, 0.15);
-  border-color: rgba(74, 222, 128, 0.45);
-  color: var(--verde);
+  background: transparent;
+  border-color: var(--color-accent);
+  color: var(--color-accent-700);
 }
 
 /* En el teléfono no hay columnas: las cifras de uso de cada cliente van en su
@@ -2721,21 +3107,12 @@ button.boton-factura {
 
 /* ---------- gastos recurrentes ---------- */
 
+/* Lo único de la pantalla que pide algo hoy, y por eso lleva el borde de oro. */
 .pendientes-recurrentes {
-  border-color: rgba(251, 191, 36, 0.45);
+  border-color: var(--color-accent);
 }
 
 .pendientes-recurrentes h2 .contador {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--ambar);
-  color: var(--fondo);
-  font-size: 12px;
   vertical-align: middle;
 }
 
@@ -2756,6 +3133,12 @@ button.boton-factura {
   min-width: 0;
 }
 
+.pendiente-datos strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 17px;
+}
+
 .pendiente-acciones,
 .pendiente-corregir {
   display: flex;
@@ -2765,8 +3148,11 @@ button.boton-factura {
 }
 
 .pendiente-acciones strong {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 19px;
   font-variant-numeric: tabular-nums;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 .pendiente-corregir input {
@@ -2809,9 +3195,11 @@ button.boton-factura {
 
 /* ---------- el interruptor de avisos al celular ---------- */
 
+/* El interruptor de avisos encendido: trazo de oro, como todo lo que está
+   activo en este sistema. */
 .boton-tema.activo {
-  background: rgba(74, 222, 128, 0.14);
-  border-color: rgba(74, 222, 128, 0.45);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 @media (max-width: 640px) {
@@ -2832,4 +3220,61 @@ button.boton-factura {
     flex: 1 1 auto;
     width: auto;
   }
+}
+
+/* ===========================================================================
+   Ajustes de las pantallas vestidas con Classical (tanda 1)
+   =========================================================================== */
+
+/* El encabezado de una sección: título a la izquierda, la aclaración a la
+   derecha, sobre la misma línea de base. */
+.encabezado-seccion {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.encabezado-seccion h2 {
+  margin: 0;
+}
+
+.encabezado-seccion > span {
+  font-size: 12px;
+}
+
+/* ---------- ¿dónde está la plata? ---------- */
+
+.rejilla-medios {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-2);
+}
+
+.ficha-medio .kicker a {
+  color: inherit;
+}
+
+.saldo-medio {
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.detalle-medio {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Sin registrar" no es un medio: es el hueco que hace cuadrar los saldos.
+   El borde punteado lo dice sin necesidad de una nota. */
+.ficha-medio.sin-registrar {
+  border-style: dashed;
+}
+.ficha-medio.sin-registrar .kicker,
+.ficha-medio.sin-registrar .saldo-medio {
+  color: var(--color-neutral-700);
+}
+.ficha-medio.sin-registrar .barra-oro > i {
+  background: var(--color-neutral-500);
 }

@@ -52,7 +52,10 @@ export default function Dashboard() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Resumen</h1>
+        <div>
+          <span className="kicker">{mesEnPalabras()}</span>
+          <h1>Resumen</h1>
+        </div>
         {/* Registro rápido con el formulario. El asistente no va aquí: es la
             burbuja flotante, que está en todas las pantallas. */}
         {!soloLectura && (
@@ -74,71 +77,48 @@ export default function Dashboard() {
           pantalla que pide una acción hoy. */}
       {!soloLectura && <RecurrentesPendientes onConfirmado={cargarResumen} conProximas />}
 
+      {/* El balance va PRIMERO y en grande: es la cifra que se viene a ver.
+          Las otras tres lo explican, y por eso van en fichas más pequeñas a
+          su lado. */}
       <div className="fila-tarjetas">
-        <Metrica titulo="Recibido" monto={totales.recibido} clase="positivo" />
-        <Metrica titulo="Pagado" monto={totales.pagado} clase="negativo" />
-        <Metrica
-          titulo="Recuperado"
-          monto={totales.recuperado}
-          clase="positivo"
-          nota={`${resumen.prestamos_cobrados} préstamo${resumen.prestamos_cobrados === 1 ? '' : 's'} devuelto${resumen.prestamos_cobrados === 1 ? '' : 's'}`}
-        />
         <Metrica
           titulo="Balance"
           monto={totales.balance}
-          clase={Number(totales.balance) >= 0 ? 'positivo' : 'negativo'}
           nota="Recibido − Pagado − Por cobrar + Por pagar"
+        />
+        <Metrica titulo="Recibido" monto={totales.recibido} signo="+" barra={1} />
+        <Metrica
+          titulo="Pagado"
+          monto={totales.pagado}
+          signo="−"
+          barra={proporcion(totales.pagado, totales.recibido)}
+        />
+        <Metrica
+          titulo="Recuperado"
+          monto={totales.recuperado}
+          nota={`${resumen.prestamos_cobrados} préstamo${resumen.prestamos_cobrados === 1 ? '' : 's'} devuelto${resumen.prestamos_cobrados === 1 ? '' : 's'}`}
         />
       </div>
 
-      <section className="tarjeta">
-        <h2>¿Dónde está la plata?</h2>
-        <p className="subtitulo">Cuánto tienes en cada medio de pago</p>
+      <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+        <div className="encabezado-seccion">
+          <h2>¿Dónde está la plata?</h2>
+          <span className="tenue">Cuánto tienes en cada medio de pago</span>
+        </div>
 
         {medios.length === 0 ? (
           <p className="tenue">
             Todavía no tienes medios de pago. <Link to="/medios-pago">Crea el primero</Link>.
           </p>
-        ) : esMovil ? (
-          <div className="lista-movil">
-            {medios.map((m) => (
-              <TarjetaMedio key={m.medio_id ?? 'sin'} m={m} />
-            ))}
-          </div>
         ) : (
-          <div className="tabla-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Medio</th>
-                  <th className="num">Recibí</th>
-                  <th className="num">Pagué</th>
-                  <th className="num">Tengo</th>
-                  <th className="num">Movs.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {medios.map((m) => (
-                  <tr key={m.medio_id ?? 'sin'}>
-                    <td>
-                      {m.medio_id ? (
-                        <Link to={`/movimientos?medio_pago_id=${m.medio_id}`}>{m.nombre}</Link>
-                      ) : (
-                        // Los movimientos sin medio registrado. Se muestran para
-                        // que los saldos sumen el balance general y todo cuadre.
-                        <span className="tenue">{m.nombre}</span>
-                      )}
-                    </td>
-                    <td className="num positivo">{formatearMonto(m.recibido)}</td>
-                    <td className="num negativo">{formatearMonto(m.pagado)}</td>
-                    <td className={`num saldo-fuerte ${Number(m.saldo) >= 0 ? 'positivo' : 'negativo'}`}>
-                      {formatearMonto(m.saldo)}
-                    </td>
-                    <td className="num tenue">{m.movimientos}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          /* Fichas y no una tabla, también en escritorio: aquí lo que importa
+             es el saldo de cada medio como una cifra suelta, no comparar
+             columnas. La tabla obligaba a leer en cruz para responder "¿cuánto
+             tengo en Nequi?". */
+          <div className="rejilla-medios">
+            {medios.map((m) => (
+              <TarjetaMedio key={m.medio_id ?? 'sin'} m={m} mayor={saldoMayor(medios)} />
+            ))}
           </div>
         )}
       </section>
@@ -172,14 +152,18 @@ export default function Dashboard() {
         <section className="tarjeta">
           <h2>Cuentas con cada quien</h2>
           <p className="subtitulo">
-            El neto: en verde lo que te deben, en rojo lo que debes tú
+            El neto: a favor cuando te deben, en contra cuando debes tú
           </p>
 
-          <ul className="lista-deudores">
-            {contrapartes.map((c) => (
-              <Contraparte key={c.nombre} c={c} />
-            ))}
-          </ul>
+          <div className="tabla-scroll">
+            <table>
+              <tbody>
+                {contrapartes.map((c) => (
+                  <Contraparte key={c.nombre} c={c} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
@@ -256,70 +240,122 @@ export default function Dashboard() {
 // espacios de sobra), y no aparecen movimientos de otro que se llame parecido.
 function Contraparte({ c }) {
   const aFavor = Number(c.neto) >= 0
+  const enLosDosSentidos = Number(c.te_deben) > 0 && Number(c.le_debes) > 0
 
   return (
-    <li>
-      <span className="deudor">
+    <tr>
+      <td>
         <Link to={`/movimientos?a_quien=${encodeURIComponent(c.nombre)}`}>{c.nombre}</Link>
         {c.es_categoria && (
-          <span className="tenue" title="También tienes una categoría con este nombre">
-            (también es una categoría)
-          </span>
+          <div className="tenue" style={{ fontSize: 11 }} title="También tienes una categoría con este nombre">
+            también es una categoría
+          </div>
         )}
         <FechaCobro fecha={c.proxima_fecha} propia={!aFavor} />
-      </span>
+      </td>
 
-      <span className="monto-contraparte">
-        {/* Cuando hay deuda en los dos sentidos se muestran las dos y el neto:
-            decir solo "te debe 50" cuando además le debes 200 sería cierto y
-            engañoso a la vez. */}
-        {Number(c.te_deben) > 0 && Number(c.le_debes) > 0 && (
-          <span className="tenue detalle-neto">
-            te debe {formatearMonto(c.te_deben)} · le debes {formatearMonto(c.le_debes)}
-          </span>
-        )}
-        <span className={`monto ${aFavor ? 'positivo' : 'negativo'}`}>
-          {aFavor ? formatearMonto(c.neto) : formatearMonto(String(c.neto).replace('-', ''))}
-          <span className="tenue"> {aFavor ? 'a favor' : 'en contra'}</span>
+      {/* Cuando hay deuda en los dos sentidos se muestran las dos: decir solo
+          "te debe 50" cuando además le debes 200 sería cierto y engañoso a la
+          vez. */}
+      <td className="num tenue" style={{ fontSize: 12 }}>
+        {enLosDosSentidos
+          ? `te debe ${formatearMonto(c.te_deben)} · le debes ${formatearMonto(c.le_debes)}`
+          : aFavor
+            ? `te debe ${formatearMonto(c.te_deben)}`
+            : `le debes ${formatearMonto(c.le_debes)}`}
+      </td>
+
+      <td className="num nowrap">
+        <span className={`fig ${aFavor ? 'advertencia' : ''}`} style={{ fontSize: 17 }}>
+          {formatearMonto(String(c.neto).replace('-', ''))}
+        </span>{' '}
+        <span className="tenue" style={{ fontSize: 11 }}>
+          {aFavor ? 'a favor' : 'en contra'}
         </span>
-      </span>
-    </li>
+      </td>
+    </tr>
   )
 }
 
-function Metrica({ titulo, monto, clase = '', nota }) {
+// Una cifra del encabezado.
+//
+// `signo` va aparte del monto porque es lo que carga el significado: en este
+// sistema el color ya no distingue lo que entra de lo que sale, así que el +
+// y el − tienen que estar siempre, no solo cuando se ven bien.
+//
+// `barra` es una proporción de 0 a 1 para el filete de abajo. Es lo único de
+// esta pantalla que se calcula en el navegador, y se puede: no es una cifra
+// que alguien lea, es el ancho de una línea.
+function Metrica({ titulo, monto, nota, signo, barra }) {
   return (
     <div className="tarjeta metrica">
-      <span className="tenue">{titulo}</span>
-      <strong className={clase}>{formatearMonto(monto)}</strong>
+      <span>{titulo}</span>
+      <strong>
+        {signo ? `${signo} ` : ''}
+        {formatearMonto(monto)}
+      </strong>
+      {barra !== undefined && (
+        <div className="barra-oro">
+          <i style={{ width: `${Math.round(Math.min(1, Math.max(0, barra)) * 100)}%` }} />
+        </div>
+      )}
       {nota && <span className="metrica-nota">{nota}</span>}
     </div>
   )
 }
 
-function TarjetaMedio({ m }) {
+// Qué tan grande es `parte` respecto de `todo`, de 0 a 1. Solo para el ancho
+// de un filete: nunca sale de aquí como número que alguien vea.
+function proporcion(parte, todo) {
+  const t = Number(todo)
+  if (!Number.isFinite(t) || t <= 0) return 0
+  return Number(parte) / t
+}
+
+// El saldo más grande de todos los medios, para que las barritas se comparen
+// entre sí y no cada una consigo misma.
+function saldoMayor(medios) {
+  return medios.reduce((mayor, m) => Math.max(mayor, Math.abs(Number(m.saldo) || 0)), 0)
+}
+
+// "Septiembre de 2026", para el rótulo del encabezado.
+function mesEnPalabras() {
+  const ahora = new Date()
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ]
+  return `${meses[ahora.getMonth()]} de ${ahora.getFullYear()}`
+}
+
+// Un medio de pago, como ficha.
+//
+// La fila "Sin registrar" va con borde punteado: no es un medio de verdad,
+// es el hueco que hace que los saldos sumen el balance general. Sin ella los
+// números no cuadrarían y no habría dónde ver por qué.
+function TarjetaMedio({ m, mayor }) {
+  const saldo = Number(m.saldo) || 0
+  const ancho = mayor > 0 ? Math.round((Math.abs(saldo) / mayor) * 100) : 0
+  const sinRegistrar = !m.medio_id
+
   return (
-    <article className="tarjeta-cat">
-      <div className="tarjeta-cat-arriba">
-        {m.medio_id ? (
-          <Link to={`/movimientos?medio_pago_id=${m.medio_id}`}>{m.nombre}</Link>
+    <article className={`tarjeta ficha-medio ${sinRegistrar ? 'sin-registrar' : ''}`}>
+      <span className="kicker">
+        {sinRegistrar ? (
+          m.nombre
         ) : (
-          <span className="tenue">{m.nombre}</span>
+          <Link to={`/movimientos?medio_pago_id=${m.medio_id}`}>{m.nombre}</Link>
         )}
-        <strong className={`saldo-fuerte ${Number(m.saldo) >= 0 ? 'positivo' : 'negativo'}`}>
-          {formatearMonto(m.saldo)}
-        </strong>
+      </span>
+      <span className="fig saldo-medio">{formatearMonto(m.saldo)}</span>
+      <div className="barra-oro">
+        <i style={{ width: `${ancho}%` }} />
       </div>
-      <dl className="tarjeta-cat-datos dos">
-        <div>
-          <dt>Recibí</dt>
-          <dd className="positivo">{formatearMonto(m.recibido)}</dd>
-        </div>
-        <div>
-          <dt>Pagué</dt>
-          <dd className="negativo">{formatearMonto(m.pagado)}</dd>
-        </div>
-      </dl>
+      <span className="tenue detalle-medio">
+        {sinRegistrar
+          ? 'para que los saldos cuadren'
+          : `+${formatearMonto(m.recibido)} · −${formatearMonto(m.pagado)} · ${m.movimientos} movs.`}
+      </span>
     </article>
   )
 }

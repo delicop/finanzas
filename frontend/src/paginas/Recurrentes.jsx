@@ -97,7 +97,10 @@ export default function Recurrentes() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Se repiten</h1>
+        <div>
+          <span className="kicker">Plantillas del mes</span>
+          <h1>Se repiten</h1>
+        </div>
         {!soloLectura && (
           <button onClick={() => setEditando({})} disabled={!listo}>
             Nuevo recurrente
@@ -177,8 +180,8 @@ export default function Recurrentes() {
                       )}
                     </td>
                     <td className="num nowrap">
-                      <span className={r.tipo === 'recibi' ? 'positivo' : 'negativo'}>
-                        {formatearMonto(r.monto)}
+                      <span className="fig" style={{ fontSize: 17 }}>
+                        {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
                       </span>
                     </td>
                     <td className="acciones">
@@ -259,8 +262,8 @@ function TarjetaRecurrente({ r, ...acciones }) {
         <span className="tenue">
           {r.categoria_nombre} · {r.medio_pago_nombre}
         </span>
-        <strong className={r.tipo === 'recibi' ? 'positivo' : 'negativo'}>
-          {formatearMonto(r.monto)}
+        <strong className="fig">
+          {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
         </strong>
       </div>
 

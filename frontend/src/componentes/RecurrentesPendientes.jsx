@@ -128,8 +128,8 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
         />
       ) : (
         <div className="pendiente-acciones">
-          <strong className={o.tipo === 'recibi' ? 'positivo' : 'negativo'}>
-            {formatearMonto(o.monto)}
+          <strong>
+            {o.tipo === 'recibi' ? '+' : '−'} {formatearMonto(o.monto)}
           </strong>
           <button
             className="principal-pagar"

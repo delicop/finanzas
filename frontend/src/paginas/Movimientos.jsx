@@ -190,7 +190,14 @@ export default function Movimientos() {
   return (
     <>
       <div className="encabezado-pagina">
-        <h1>Movimientos</h1>
+        <div>
+          {/* El rótulo dice cuántos hay: es el dato que se busca al entrar, y
+              arriba del título ocupa un renglón que de todos modos estaba. */}
+          <span className="kicker">
+            {total} registrado{total === 1 ? '' : 's'}
+          </span>
+          <h1>Movimientos</h1>
+        </div>
         <div className="acciones-encabezado">
           {/* Exportar sí se puede revisando otra cuenta: es solo leer. */}
           <button className="secundario" onClick={() => setExportando(true)}>
