@@ -1,24 +1,27 @@
 /* ===========================================================================
-   Classical — el sistema visual de la app
+   El sistema visual de la app
    ---------------------------------------------------------------------------
-   Editorial y de papel: Cormorant Garamond sobre Lora, fondo casi blanco,
-   filetes de un pixel en vez de rellenos, y el oro como TRAZO (bordes,
-   subrayados, cifras que piden atención), nunca como bloque de color.
+   Cálido y orgánico: fondo de arena tibia, fichas blancas que se apoyan encima
+   con una sombra suave, esquinas francamente redondas y un color de marca de
+   barro. Títulos en Fraunces (una serif redondeada y moderna) sobre Figtree
+   para todo lo demás — elegante, pero de app, no de libro.
 
-   Las tipografías se sirven DESDE LA APP (public/fuentes/), no desde Google.
-   Dos razones: la app es una PWA que tiene que abrir sin señal —con las letras
-   en un CDN, sin internet se ve con la serif del sistema y pierde media cara—
-   y así ninguna visita le cuenta a un tercero quién abre tus finanzas.
-   Son dos archivos variables de ~37 KB: cubren los dos pesos cada uno.
+   Nada de esto es plano a propósito: las fichas tienen fondo propio, los
+   botones principales van rellenos y los campos se hunden un tono respecto de
+   la ficha que los contiene. El volumen es lo que dice qué se toca.
+
+   Las tipografías se sirven DESDE LA APP (public/fuentes/), no desde Google:
+   la app es una PWA que tiene que abrir sin señal, y así ninguna visita le
+   cuenta a un tercero quién abre sus finanzas.
+
+   Ver docs/diseno.md antes de agregar una pantalla.
    =========================================================================== */
 
 @font-face {
-  font-family: 'Cormorant Garamond';
-  src: url('/fuentes/cormorant-garamond-latin.woff2') format('woff2');
-  font-weight: 400 600;
+  font-family: 'Fraunces';
+  src: url('/fuentes/fraunces-latin.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
-  /* swap: el texto se ve de una con la serif del sistema y cambia cuando la
-     letra llega. Es preferible a media pantalla en blanco. */
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
     U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
@@ -26,9 +29,9 @@
 }
 
 @font-face {
-  font-family: 'Lora';
-  src: url('/fuentes/lora-latin.woff2') format('woff2');
-  font-weight: 400 600;
+  font-family: 'Figtree';
+  src: url('/fuentes/figtree-latin.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
@@ -36,137 +39,142 @@
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* --- La paleta: arena tibia, barro y salvia ---------------------------------
+   El fondo NO es blanco: es una arena cálida. Las fichas sí son blancas, y esa
+   diferencia de un par de tonos es lo que las hace flotar sin necesidad de una
+   sombra pesada.
+
+   Un solo color de marca —un barro/terracota— y dos del dinero. El barro y el
+   vino del gasto son distinguibles a propósito: el barro tira a naranja y el
+   vino a morado, así que nunca se confunden aunque caigan en la misma fila. */
 :root {
-  /* --- Classical: los tokens del sistema --- */
-  --color-bg: #f3f2f2;
-  --color-surface: #eae9e9;
-  --color-text: #201f1d;
-  --color-accent: #b68235;
-  --color-divider: color-mix(in srgb, #201f1d 16%, transparent);
+  --color-bg: #f5f1ea;
+  --color-surface: #ffffff;
+  --color-surface-2: #faf6f0;
+  --color-text: #2b2521;
+  --color-divider: #e7dccd;
 
-  --color-neutral-100: #f8f4f4;
-  --color-neutral-200: #eae7e7;
-  --color-neutral-300: #d7d3d3;
-  --color-neutral-400: #bab6b6;
-  --color-neutral-500: #9b9797;
-  --color-neutral-600: #7d7979;
-  --color-neutral-700: #605d5d;
-  --color-neutral-800: #444141;
-  --color-neutral-900: #2d2b2b;
+  --color-neutral-100: #f3ede4;
+  --color-neutral-200: #e7dccd;
+  --color-neutral-300: #d4c7b4;
+  --color-neutral-400: #b8a893;
+  --color-neutral-500: #998a76;
+  --color-neutral-600: #7d6f5d;
+  --color-neutral-700: #635747;
+  --color-neutral-800: #4a4136;
+  --color-neutral-900: #2b2521;
 
-  --color-accent-100: #fff3e4;
-  --color-accent-200: #ffe3bf;
-  --color-accent-300: #facb8d;
-  --color-accent-400: #e1ad66;
-  --color-accent-500: #c28d41;
-  --color-accent-600: #a06f24;
-  --color-accent-700: #7d5411;
-  --color-accent-800: #5a3b0a;
-  --color-accent-900: #3a270d;
+  /* Barro: el color de marca. Botones, foco y todo lo que pide una acción. */
+  --color-accent: #b4603e;
+  --color-accent-100: #fbeade;
+  --color-accent-200: #f4d0ba;
+  --color-accent-300: #e8ac8b;
+  --color-accent-400: #d4845c;
+  --color-accent-500: #b4603e;
+  --color-accent-600: #97492b;
+  --color-accent-700: #7b3a22;
+  --color-accent-800: #5d2b19;
+  --color-accent-900: #3f1d11;
 
-  --font-heading: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-heading: 'Fraunces', Georgia, serif;
   --font-heading-weight: 600;
-  --font-body: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  /* Escala de espacio con densidad 1.15×: es aireada a propósito. */
-  --space-1: 4.6px;
-  --space-2: 9.2px;
-  --space-3: 13.8px;
-  --space-4: 18.4px;
-  --space-6: 27.6px;
-  --space-8: 36.8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 14px;
+  --space-4: 20px;
+  --space-6: 30px;
+  --space-8: 42px;
 
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 7px;
+  /* Esquinas francamente redondas: es lo que más rápido quita la sensación de
+     documento y la vuelve de app. */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
 
-  /* La elevación aquí es un susurro: nada de sombras pesadas. */
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2d2b2b 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2d2b2b 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2d2b2b 22%, transparent);
+  /* Sombras CÁLIDAS, no grises: una sombra neutra sobre un fondo de arena se
+     ve sucia. Van en dos capas —una pegada y una difusa— que es lo que hace
+     que algo parezca apoyado sobre el papel y no pegado con pegante. */
+  --shadow-sm: 0 1px 2px rgba(78, 58, 40, 0.06), 0 2px 6px rgba(78, 58, 40, 0.05);
+  --shadow-md: 0 2px 4px rgba(78, 58, 40, 0.07), 0 8px 20px rgba(78, 58, 40, 0.08);
+  --shadow-lg: 0 4px 8px rgba(78, 58, 40, 0.08), 0 20px 48px rgba(78, 58, 40, 0.16);
 
-  /* --- Los nombres que ya usaba la app, apuntando a los tokens ---
-     Se conservan para no reescribir 2.000 líneas de reglas de golpe: cada
-     regla vieja sigue leyendo --fondo o --borde y recibe el valor nuevo. */
+  /* --- Los nombres que ya usaba la app --- */
   --fondo: var(--color-bg);
   --superficie: var(--color-surface);
-  --superficie-2: color-mix(in srgb, var(--color-text) 4%, var(--color-bg));
+  --superficie-2: var(--color-surface-2);
   --borde: var(--color-divider);
   --texto: var(--color-text);
-  --tenue: color-mix(in srgb, var(--color-text) 55%, transparent);
+  --tenue: color-mix(in srgb, var(--color-text) 58%, transparent);
   --acento: var(--color-accent);
-  --hover: color-mix(in srgb, var(--color-text) 7%, transparent);
-  --sombra-modal: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+  --hover: color-mix(in srgb, var(--color-text) 6%, transparent);
+  --sombra-modal: rgba(43, 37, 33, 0.45);
 
   /* --- LOS COLORES DEL DINERO ---
-     Classical es una paleta mono, pero el dinero es la excepción y se ganó
-     serlo: en una lista de cifras, distinguir de un vistazo lo que entró de lo
-     que salió es la mitad del trabajo de la app.
+     Salvia para lo que entra, vino para lo que sale. Los dos son colores de
+     tierra, no de semáforo: conviven con el barro de la marca en vez de
+     pelearse con él.
 
-     El verde y el rojo NO son los de una interfaz cualquiera: son un verde de
-     tinta y un rojo de lacre, elegidos para el fondo cálido de este sistema.
-     Un #4ade80 al lado del oro se ve fluorescente.
+     El vino tira a morado y el barro a naranja: aunque caigan en la misma
+     fila, no se confunden.
 
-     Lo que se conserva del rediseño: el signo (+, −, ↔) y la etiqueta de tipo
-     van SIEMPRE, aunque haya color. El color acelera la lectura; no la
-     sostiene. Quien no distinga verde de rojo sigue leyendo lo mismo.
+     El signo (+ − ↔) y la etiqueta de tipo van SIEMPRE, con color o sin él. El
+     color acelera la lectura; no la sostiene.
 
-     El oro (--ambar) se queda para lo que PIDE algo: una deuda con saldo, una
-     cuota vencida, un cobro de hoy. No es "positivo" ni "negativo", es
-     "atiéndeme". */
-  --verde: #3d6b34;
-  --verde-texto: #f3f2f2;
-  --rojo: #9e3b26;
-  --ambar: var(--color-accent-700);
+     El barro (--ambar) no es "positivo" ni "negativo": es "atiéndeme" — una
+     deuda con saldo, una cuota vencida, un cobro de hoy. */
+  --verde: #48784f;
+  --verde-texto: #ffffff;
+  --rojo: #8a3246;
+  --ambar: var(--color-accent-600);
 
   font-family: var(--font-body);
   color-scheme: light;
 }
 
-/* El mismo sistema sobre tinta: fondo negro cálido, papel para el texto y el
-   oro un paso más claro, que es lo que pide el sistema sobre fondo oscuro.
-   Mismos tokens y mismas clases — aquí solo se redefinen las variables. */
+/* El mismo sistema de noche: carbón cálido en vez de negro, y las fichas un
+   par de tonos por encima para que sigan flotando. Los tres colores suben de
+   luminosidad — los de día, sobre carbón, se hunden. */
 :root[data-tema='oscuro'] {
-  --color-bg: #1a1918;
-  --color-surface: #252322;
-  --color-text: #f8f4f4;
-  --color-accent: #e1ad66;
-  --color-divider: rgba(248, 244, 244, 0.18);
+  --color-bg: #1c1a17;
+  --color-surface: #272320;
+  --color-surface-2: #221f1c;
+  --color-text: #f4efe8;
+  --color-divider: rgba(244, 239, 232, 0.13);
 
-  --color-neutral-100: #2d2b2b;
-  --color-neutral-200: #343131;
-  --color-neutral-300: #444141;
-  --color-neutral-400: #605d5d;
-  --color-neutral-500: #7d7979;
-  --color-neutral-600: #9b9797;
-  --color-neutral-700: #bab6b6;
-  --color-neutral-800: #e0dcdc;
-  --color-neutral-900: #f8f4f4;
+  --color-neutral-100: #2f2b26;
+  --color-neutral-200: #3a352f;
+  --color-neutral-300: #4b453d;
+  --color-neutral-400: #6b6357;
+  --color-neutral-500: #8b8274;
+  --color-neutral-600: #a89e8e;
+  --color-neutral-700: #c4bbab;
+  --color-neutral-800: #e0d8cb;
+  --color-neutral-900: #f4efe8;
 
-  /* La rampa del oro se invierte: sobre tinta, el paso "oscuro" tiene que ser
-     el CLARO, o el texto en acento quedaría ilegible. */
-  --color-accent-100: #3a270d;
-  --color-accent-200: #5a3b0a;
-  --color-accent-300: #7d5411;
-  --color-accent-400: #a06f24;
-  --color-accent-500: #c28d41;
-  --color-accent-600: #e1ad66;
-  --color-accent-700: #facb8d;
-  --color-accent-800: #ffe3bf;
-  --color-accent-900: #fff3e4;
+  --color-accent: #dd9264;
+  --color-accent-100: #3f1d11;
+  --color-accent-200: #5d2b19;
+  --color-accent-300: #7b3a22;
+  --color-accent-400: #97492b;
+  --color-accent-500: #b4603e;
+  --color-accent-600: #d4845c;
+  --color-accent-700: #e8ac8b;
+  --color-accent-800: #f4d0ba;
+  --color-accent-900: #fbeade;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.45), 0 8px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5), 0 20px 48px rgba(0, 0, 0, 0.55);
 
-  --hover: rgba(248, 244, 244, 0.07);
+  --hover: rgba(244, 239, 232, 0.07);
   --sombra-modal: rgba(0, 0, 0, 0.66);
 
-  /* Sobre tinta, el verde y el rojo de papel se hunden: suben de tono igual
-     que lo hace la rampa del oro. */
-  --verde: #8fbf76;
-  --verde-texto: #1a1918;
-  --rojo: #e58f78;
+  --verde: #84b78c;
+  --verde-texto: #1c1a17;
+  --rojo: #dd8398;
 
   color-scheme: dark;
 }
@@ -203,17 +211,18 @@ h6 {
 }
 
 h1 {
-  font-size: 42px;
+  font-size: 34px;
+  letter-spacing: -0.02em;
 }
 h2 {
-  font-size: 25px;
+  font-size: 21px;
   margin-bottom: var(--space-1);
 }
 h3 {
-  font-size: 20px;
+  font-size: 18px;
 }
 h4 {
-  font-size: 17px;
+  font-size: 16px;
 }
 
 a {
@@ -426,24 +435,26 @@ a:hover {
 
 /* ---------- tarjetas ---------- */
 
-/* Una ficha: borde de un pixel y nada de relleno. La estructura la llevan los
-   filetes, no los bloques de color. */
+/* Una ficha se apoya sobre el papel: fondo propio, esquina redonda y una
+   sombra de dos capas. El fondo de la página es arena y el de la ficha blanco,
+   y ese par de tonos de diferencia hace la mitad del trabajo — la sombra solo
+   la termina. */
 .tarjeta {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  background: transparent;
+  background: var(--color-surface);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
 }
 
 .pantalla-centrada .tarjeta {
   width: 100%;
   max-width: 400px;
   padding: var(--space-6);
-  background: var(--color-bg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
 }
 
 .fila-tarjetas {
@@ -624,7 +635,8 @@ td.acciones button {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
+  font-weight: 500;
   font-size: 11px;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -660,8 +672,8 @@ td.acciones button {
 .estado {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   background: var(--color-neutral-100);
   color: var(--color-neutral-800);
@@ -686,8 +698,8 @@ td.acciones button {
   align-items: center;
   justify-content: center;
   min-width: 20px;
-  padding: 2px 7px;
-  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
   background: var(--color-accent-100);
   color: var(--color-accent-800);
   font-size: 11px;
@@ -712,13 +724,13 @@ input,
 select,
 textarea {
   width: 100%;
-  min-height: 36px;
-  /* Sin relleno: el campo es un rectángulo dibujado con un filete, igual que
-     las fichas. */
-  background: transparent;
+  min-height: 40px;
+  /* Un hueco, no un contorno: el campo se hunde un tono respecto de la ficha
+     que lo contiene, y por eso se ve donde hay que escribir. */
+  background: var(--color-surface-2);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
-  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
   color: var(--color-text);
   caret-color: var(--color-accent);
   font-size: 14px;
@@ -739,9 +751,11 @@ textarea:hover {
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
+  background: var(--color-surface);
   border-color: var(--color-accent);
-  outline: 2px solid var(--color-accent);
-  outline-offset: 0;
+  outline: none;
+  /* Un halo en vez de un contorno duro: se ve igual de claro y no salta. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 textarea {
@@ -800,8 +814,9 @@ textarea {
   display: inline-flex;
   flex-wrap: wrap;
   overflow: hidden;
+  background: var(--color-surface-2);
   border: 1px solid var(--color-divider);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
 }
 
 .chip {
@@ -809,16 +824,17 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  padding: 8px 14px;
   font-size: 13px;
   font-family: var(--font-body);
-  font-weight: 400;
+  font-weight: 500;
   background: transparent;
   border: 0;
   border-left: 1px solid var(--color-divider);
   border-radius: 0;
-  color: var(--color-text);
+  color: var(--tenue);
   cursor: pointer;
+  box-shadow: none;
 }
 
 .chip:first-child {
@@ -826,14 +842,21 @@ textarea {
 }
 
 .chip:not(.chip-activo):hover {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  background: var(--hover);
+  filter: none;
+  transform: none;
+  color: var(--color-text);
 }
 
 /* El recuadro interior (y no un relleno) es lo que marca la opción elegida:
    así se ve igual de claro sin meter un bloque de color en la página. */
 .chip-activo {
-  color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px var(--color-accent);
+  background: var(--color-surface);
+  color: var(--color-accent-600);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  filter: none;
+  transform: none;
 }
 
 /* Los atajos de fecha son otra fila de segmentado, aparte. */
@@ -845,29 +868,50 @@ textarea {
 
 /* En Classical NINGÚN botón se rellena de color: el primario es un trazo de
    oro sobre transparente. Es la regla que más cambia la cara de la app. */
+/* El botón principal va RELLENO. Es el cambio que más se nota: un contorno
+   vacío se lee como una opción más; un bloque de color se lee como "esto es lo
+   que vas a hacer". */
 button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: transparent;
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  background: var(--color-accent);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 10px var(--space-4);
   font-size: 14px;
   line-height: 1.2;
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
+  font-family: var(--font-body);
+  font-weight: 600;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform 0.12s ease,
+    filter 0.12s ease,
+    background 0.12s ease;
 }
 
+/* Se levanta un pelo al pasar por encima: es el gesto que dice "esto se puede
+   tocar" sin necesidad de cambiar de color. */
 button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  filter: brightness(1.07);
+  transform: translateY(-1px);
 }
 
 button:active:not(:disabled) {
-  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+  button:hover:not(:disabled) {
+    transform: none;
+  }
 }
 
 button:disabled {
@@ -876,21 +920,24 @@ button:disabled {
 }
 
 button.secundario {
+  background: var(--color-surface);
   color: var(--color-text);
   border-color: var(--color-divider);
 }
 
 button.secundario:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  background: var(--color-surface-2);
+  filter: none;
 }
 
 button.secundario:active:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text) 14%, transparent);
+  filter: none;
 }
 
 button.exito {
-  color: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--verde);
+  color: var(--verde-texto);
+  border-color: transparent;
 }
 
 /* "Peligro" ya no es rojo: es un botón fantasma en gris. Lo que frena un
@@ -898,25 +945,38 @@ button.exito {
    suelto en una página de papel grita más de lo que ayuda. */
 button.peligro,
 button.menor-peligro {
+  background: transparent;
   color: var(--color-neutral-700);
   border-color: transparent;
+  box-shadow: none;
 }
 
 button.peligro:hover:not(:disabled),
 button.menor-peligro:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  background: color-mix(in srgb, var(--rojo) 10%, transparent);
+  color: var(--rojo);
+  filter: none;
+  transform: none;
 }
 
 button.enlace {
   background: none;
   border: 0;
-  color: var(--color-accent);
+  box-shadow: none;
+  color: var(--color-accent-600);
   padding: 0;
+}
+
+button.enlace:hover:not(:disabled) {
+  filter: none;
+  transform: none;
+  text-decoration: underline;
 }
 
 button.icono {
   background: none;
   border: 0;
+  box-shadow: none;
   color: var(--tenue);
   font-size: 20px;
   line-height: 1;
@@ -927,17 +987,18 @@ button.icono {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  background: var(--color-accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 10px var(--space-4);
   font-size: 14px;
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
+  font-family: var(--font-body);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 .boton-enlace:hover {
   text-decoration: none;
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  filter: brightness(1.07);
 }
 
 /* La pantalla de login usa un botón ancho */
@@ -1037,6 +1098,12 @@ button.icono {
   margin: auto;
 }
 
+.modal-fondo {
+  /* El fondo se difumina: separa el modal de lo que hay detrás mucho mejor que
+     oscurecerlo más. */
+  backdrop-filter: blur(3px);
+}
+
 .modal-encabezado {
   display: flex;
   justify-content: space-between;
@@ -1082,17 +1149,17 @@ button.icono {
 /* Un aviso es una ficha con un filete de oro más grueso a la izquierda, como
    una nota al margen. Sin relleno rojo: el texto ya dice que algo pasó. */
 .alerta {
-  background: transparent;
-  border: 1px solid var(--color-divider);
-  border-left: 3px solid var(--color-accent);
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: color-mix(in srgb, var(--rojo) 9%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--rojo) 28%, transparent);
+  border-radius: var(--radius-sm);
   color: var(--color-text);
   padding: var(--space-2) var(--space-3);
   font-size: 14px;
 }
 
 .alerta.aviso {
-  border-left-color: var(--color-neutral-500);
+  background: var(--color-accent-100);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 code {
@@ -1185,25 +1252,31 @@ code {
 /* Los tres son botones de trazo. Lo que los distingue no es el relleno —que
    aquí no existe— sino cuál lleva el oro y cuál el gris del borde: "ya me
    pagó" y "abonos" son lo que se hace todos los días; "factura" es mirar. */
-.principal-pagar,
-.principal-abonar {
-  color: var(--color-accent);
-  border: 1px solid var(--color-accent);
+/* "Ya me pagó" es LA acción de una deuda: va rellena, como el botón principal
+   de cualquier pantalla. Las otras dos la acompañan de contorno, para que se
+   note cuál es cuál sin tener que leerlas. */
+.principal-pagar {
+  background: var(--verde);
+  color: var(--verde-texto);
+  border-color: transparent;
 }
 
-.principal-pagar:hover:not(:disabled),
-.principal-abonar:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
+.principal-abonar,
 .principal-factura {
-  background: transparent;
-  border: 1px solid var(--color-divider);
+  background: var(--color-surface);
   color: var(--color-text);
+  border: 1px solid var(--color-divider);
 }
 
-.principal-factura:hover {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+.principal-abonar {
+  color: var(--color-accent-600);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.principal-abonar:hover:not(:disabled),
+.principal-factura:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  filter: none;
 }
 
 .acciones-secundarias {
@@ -1218,15 +1291,19 @@ code {
 button.menor {
   background: none;
   border: 0;
-  color: var(--color-accent);
+  box-shadow: none;
+  color: var(--color-accent-600);
   font-size: 13px;
+  font-weight: 500;
   min-height: 0;
-  padding: 5px var(--space-1);
-  border-radius: var(--radius-md);
+  padding: 5px var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 button.menor:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  filter: none;
+  transform: none;
 }
 
 /* Eliminar y descartar van en gris, no en rojo: quien frena un borrado es el
@@ -1524,19 +1601,23 @@ button.menor-peligro:hover:not(:disabled) {
 
 /* Los botones de ícono de la barra: cuadrados, de trazo, sin relleno. */
 .boton-tema {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   padding: 0;
-  background: transparent;
+  background: var(--color-surface);
   border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm);
   color: var(--color-text);
   font-size: 15px;
   line-height: 1;
   min-height: 0;
+  box-shadow: none;
 }
 
 .boton-tema:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  background: var(--color-surface-2);
+  filter: none;
+  transform: none;
 }
 
 /* El punto de la campana: lo único redondo de la interfaz, porque es una
@@ -2750,9 +2831,9 @@ button.boton-factura {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border-radius: var(--radius-md);
-  font-family: var(--font-heading);
-  font-weight: var(--font-heading-weight);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 14px;
   text-decoration: none;
   background: transparent;

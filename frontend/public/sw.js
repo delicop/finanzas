@@ -13,7 +13,7 @@
 //
 // Al cambiar la lógica de este archivo, sube VERSION: así el navegador borra
 // el caché anterior en la siguiente visita.
-const VERSION = 'finanzas-v3'
+const VERSION = 'finanzas-v4'
 // Las tipografías van en la precarga: son la cara de la app, y sin ellas
 // abierta sin señal se vería con la serif del sistema. Son 75 KB entre las
 // dos y se guardan una sola vez.
@@ -22,8 +22,8 @@ const PRECARGA = [
   '/manifest.webmanifest',
   '/iconos/icono-192.png',
   '/iconos/icono-512.png',
-  '/fuentes/cormorant-garamond-latin.woff2',
-  '/fuentes/lora-latin.woff2',
+  '/fuentes/fraunces-latin.woff2',
+  '/fuentes/figtree-latin.woff2',
 ]
 
 self.addEventListener('install', (evento) => {
