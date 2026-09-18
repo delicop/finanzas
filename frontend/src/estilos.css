@@ -1,10 +1,9 @@
 /* ===========================================================================
    El sistema visual de la app
    ---------------------------------------------------------------------------
-   Cálido y orgánico: fondo de arena tibia, fichas blancas que se apoyan encima
-   con una sombra suave, esquinas francamente redondas y un color de marca de
-   barro. Títulos en Fraunces (una serif redondeada y moderna) sobre Figtree
-   para todo lo demás — elegante, pero de app, no de libro.
+   Moderno y frío: grises azulados, fichas que se apoyan encima con una sombra
+   suave, esquinas redondas y un índigo como color de marca. Títulos en
+   Fraunces sobre Figtree para todo lo demás — elegante, pero de app.
 
    Nada de esto es plano a propósito: las fichas tienen fondo propio, los
    botones principales van rellenos y los campos se hunden un tono respecto de
@@ -39,42 +38,42 @@
     U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* --- La paleta: arena tibia, barro y salvia ---------------------------------
-   El fondo NO es blanco: es una arena cálida. Las fichas sí son blancas, y esa
-   diferencia de un par de tonos es lo que las hace flotar sin necesidad de una
-   sombra pesada.
+/* --- La paleta: grises azulados, índigo y menta -----------------------------
+   Todo es frío. No hay un solo tono de tierra, y eso es a propósito: el café
+   de la versión anterior no cuadraba con el verde y el rojo del dinero, y los
+   tres juntos se ensuciaban.
 
-   Un solo color de marca —un barro/terracota— y dos del dinero. El barro y el
-   vino del gasto son distinguibles a propósito: el barro tira a naranja y el
-   vino a morado, así que nunca se confunden aunque caigan en la misma fila. */
+   Un solo color de marca —un índigo— y dos del dinero: menta para lo que entra
+   y rosa para lo que sale. Los tres están a la misma distancia entre sí en el
+   círculo de color, así que ninguno se confunde con otro. */
 :root {
-  --color-bg: #f5f1ea;
+  --color-bg: #f3f4f8;
   --color-surface: #ffffff;
-  --color-surface-2: #faf6f0;
-  --color-text: #2b2521;
-  --color-divider: #e7dccd;
+  --color-surface-2: #f7f8fc;
+  --color-text: #1b1b28;
+  --color-divider: #e3e4ee;
 
-  --color-neutral-100: #f3ede4;
-  --color-neutral-200: #e7dccd;
-  --color-neutral-300: #d4c7b4;
-  --color-neutral-400: #b8a893;
-  --color-neutral-500: #998a76;
-  --color-neutral-600: #7d6f5d;
-  --color-neutral-700: #635747;
-  --color-neutral-800: #4a4136;
-  --color-neutral-900: #2b2521;
+  --color-neutral-100: #f1f2f7;
+  --color-neutral-200: #e3e4ee;
+  --color-neutral-300: #cdcfdd;
+  --color-neutral-400: #a9acc0;
+  --color-neutral-500: #8a8da3;
+  --color-neutral-600: #6d7088;
+  --color-neutral-700: #54576c;
+  --color-neutral-800: #3a3c4d;
+  --color-neutral-900: #1b1b28;
 
-  /* Barro: el color de marca. Botones, foco y todo lo que pide una acción. */
-  --color-accent: #b4603e;
-  --color-accent-100: #fbeade;
-  --color-accent-200: #f4d0ba;
-  --color-accent-300: #e8ac8b;
-  --color-accent-400: #d4845c;
-  --color-accent-500: #b4603e;
-  --color-accent-600: #97492b;
-  --color-accent-700: #7b3a22;
-  --color-accent-800: #5d2b19;
-  --color-accent-900: #3f1d11;
+  /* Índigo: la marca. Botones, foco y todo lo que pide una acción. */
+  --color-accent: #5b4bd6;
+  --color-accent-100: #eeecfd;
+  --color-accent-200: #dcd8fb;
+  --color-accent-300: #bfb7f6;
+  --color-accent-400: #9b8ef0;
+  --color-accent-500: #7c6cf0;
+  --color-accent-600: #5b4bd6;
+  --color-accent-700: #4839b0;
+  --color-accent-800: #362a86;
+  --color-accent-900: #241c5c;
 
   --font-heading: 'Fraunces', Georgia, serif;
   --font-heading-weight: 600;
@@ -87,19 +86,17 @@
   --space-6: 30px;
   --space-8: 42px;
 
-  /* Esquinas francamente redondas: es lo que más rápido quita la sensación de
-     documento y la vuelve de app. */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-pill: 999px;
 
-  /* Sombras CÁLIDAS, no grises: una sombra neutra sobre un fondo de arena se
-     ve sucia. Van en dos capas —una pegada y una difusa— que es lo que hace
-     que algo parezca apoyado sobre el papel y no pegado con pegante. */
-  --shadow-sm: 0 1px 2px rgba(78, 58, 40, 0.06), 0 2px 6px rgba(78, 58, 40, 0.05);
-  --shadow-md: 0 2px 4px rgba(78, 58, 40, 0.07), 0 8px 20px rgba(78, 58, 40, 0.08);
-  --shadow-lg: 0 4px 8px rgba(78, 58, 40, 0.08), 0 20px 48px rgba(78, 58, 40, 0.16);
+  /* Sombras FRÍAS, del mismo azul del texto: sobre un gris azulado, una sombra
+     café o neutra se ve sucia. Van en dos capas —una pegada y una difusa— que
+     es lo que hace que algo parezca apoyado y no pegado. */
+  --shadow-sm: 0 1px 2px rgba(27, 27, 40, 0.06), 0 2px 6px rgba(27, 27, 40, 0.05);
+  --shadow-md: 0 2px 4px rgba(27, 27, 40, 0.07), 0 8px 20px rgba(27, 27, 40, 0.09);
+  --shadow-lg: 0 4px 8px rgba(27, 27, 40, 0.09), 0 20px 48px rgba(27, 27, 40, 0.18);
 
   /* --- Los nombres que ya usaba la app --- */
   --fondo: var(--color-bg);
@@ -110,71 +107,72 @@
   --tenue: color-mix(in srgb, var(--color-text) 58%, transparent);
   --acento: var(--color-accent);
   --hover: color-mix(in srgb, var(--color-text) 6%, transparent);
-  --sombra-modal: rgba(43, 37, 33, 0.45);
+  --sombra-modal: rgba(27, 27, 40, 0.45);
 
   /* --- LOS COLORES DEL DINERO ---
-     Salvia para lo que entra, vino para lo que sale. Los dos son colores de
-     tierra, no de semáforo: conviven con el barro de la marca en vez de
-     pelearse con él.
-
-     El vino tira a morado y el barro a naranja: aunque caigan en la misma
-     fila, no se confunden.
+     Menta para lo que entra, rosa para lo que sale. En claro los dos bajan de
+     tono para tener contraste contra el blanco de las fichas; en oscuro suben.
 
      El signo (+ − ↔) y la etiqueta de tipo van SIEMPRE, con color o sin él. El
      color acelera la lectura; no la sostiene.
 
-     El barro (--ambar) no es "positivo" ni "negativo": es "atiéndeme" — una
-     deuda con saldo, una cuota vencida, un cobro de hoy. */
-  --verde: #48784f;
+     El índigo (--ambar, el nombre viene de antes) no es "positivo" ni
+     "negativo": es "atiéndeme" — una deuda con saldo, una cuota vencida, un
+     cobro de hoy. */
+  /* El texto que va ENCIMA de un relleno de color. No es blanco fijo: en
+     oscuro el acento y el verde son claros, y el blanco encima no se lee. */
+  --sobre-acento: #ffffff;
+  --verde: #0b8365;
   --verde-texto: #ffffff;
-  --rojo: #8a3246;
+  --rojo: #cf2049;
   --ambar: var(--color-accent-600);
 
   font-family: var(--font-body);
   color-scheme: light;
 }
 
-/* El mismo sistema de noche: carbón cálido en vez de negro, y las fichas un
-   par de tonos por encima para que sigan flotando. Los tres colores suben de
-   luminosidad — los de día, sobre carbón, se hunden. */
+/* De noche: casi negro azulado, con las fichas un par de tonos por encima para
+   que sigan flotando. Los tres colores suben de luminosidad — los de día,
+   sobre un fondo oscuro, se hunden. */
 :root[data-tema='oscuro'] {
-  --color-bg: #1c1a17;
-  --color-surface: #272320;
-  --color-surface-2: #221f1c;
-  --color-text: #f4efe8;
-  --color-divider: rgba(244, 239, 232, 0.13);
+  --color-bg: #14141c;
+  --color-surface: #1e1e2a;
+  --color-surface-2: #191922;
+  --color-text: #eceaf5;
+  --color-divider: rgba(236, 234, 245, 0.12);
 
-  --color-neutral-100: #2f2b26;
-  --color-neutral-200: #3a352f;
-  --color-neutral-300: #4b453d;
-  --color-neutral-400: #6b6357;
-  --color-neutral-500: #8b8274;
-  --color-neutral-600: #a89e8e;
-  --color-neutral-700: #c4bbab;
-  --color-neutral-800: #e0d8cb;
-  --color-neutral-900: #f4efe8;
+  --color-neutral-100: #262633;
+  --color-neutral-200: #2b2b3a;
+  --color-neutral-300: #3a3a4d;
+  --color-neutral-400: #565669;
+  --color-neutral-500: #7b7b90;
+  --color-neutral-600: #9a9ab0;
+  --color-neutral-700: #b8b8cc;
+  --color-neutral-800: #d8d6e6;
+  --color-neutral-900: #eceaf5;
 
-  --color-accent: #dd9264;
-  --color-accent-100: #3f1d11;
-  --color-accent-200: #5d2b19;
-  --color-accent-300: #7b3a22;
-  --color-accent-400: #97492b;
-  --color-accent-500: #b4603e;
-  --color-accent-600: #d4845c;
-  --color-accent-700: #e8ac8b;
-  --color-accent-800: #f4d0ba;
-  --color-accent-900: #fbeade;
+  --color-accent: #8b7bf5;
+  --color-accent-100: #241c5c;
+  --color-accent-200: #362a86;
+  --color-accent-300: #4839b0;
+  --color-accent-400: #5b4bd6;
+  --color-accent-500: #7c6cf0;
+  --color-accent-600: #9b8ef0;
+  --color-accent-700: #bfb7f6;
+  --color-accent-800: #dcd8fb;
+  --color-accent-900: #eeecfd;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.45), 0 8px 20px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5), 0 20px 48px rgba(0, 0, 0, 0.55);
 
-  --hover: rgba(244, 239, 232, 0.07);
-  --sombra-modal: rgba(0, 0, 0, 0.66);
+  --hover: rgba(236, 234, 245, 0.07);
+  --sombra-modal: rgba(8, 8, 12, 0.7);
 
-  --verde: #84b78c;
-  --verde-texto: #1c1a17;
-  --rojo: #dd8398;
+  --sobre-acento: #14141c;
+  --verde: #4fd1a5;
+  --verde-texto: #14141c;
+  --rojo: #fb7185;
 
   color-scheme: dark;
 }
@@ -877,7 +875,7 @@ button {
   justify-content: center;
   gap: 6px;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--sobre-acento);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   padding: 10px var(--space-4);
@@ -988,7 +986,7 @@ button.icono {
   align-items: center;
   justify-content: center;
   background: var(--color-accent);
-  color: #fff;
+  color: var(--sobre-acento);
   border-radius: var(--radius-sm);
   padding: 10px var(--space-4);
   font-size: 14px;
@@ -2372,9 +2370,12 @@ button.burbuja-asistente:focus-visible {
   right: -2px;
   min-width: 16px;
   padding: 0 4px;
-  border-radius: 999px;
-  background: var(--rojo);
-  color: #fff;
+  border-radius: var(--radius-pill);
+  /* El punto de la campana va en el acento, no en rojo: un aviso sin leer no
+     es un error. Y el texto sale del mismo token que los botones rellenos,
+     porque de noche el acento es claro y el blanco encima no se lee. */
+  background: var(--color-accent);
+  color: var(--sobre-acento);
   font-size: 10px;
   font-weight: 700;
   line-height: 16px;
