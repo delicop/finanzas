@@ -254,7 +254,13 @@ function Contraparte({ c }) {
             también es una categoría
           </div>
         )}
-        <FechaCobro fecha={c.proxima_fecha} propia={!aFavor} />
+        {/* En su propio renglón, no pegada al nombre: JSX se come el salto de
+            línea entre dos elementos en línea, y quedaba "camilote paga el…". */}
+        {c.proxima_fecha && (
+          <div>
+            <FechaCobro fecha={c.proxima_fecha} propia={!aFavor} />
+          </div>
+        )}
       </td>
 
       {/* Cuando hay deuda en los dos sentidos se muestran las dos: decir solo
