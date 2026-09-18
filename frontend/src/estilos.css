@@ -124,7 +124,7 @@
   --sobre-acento: #ffffff;
   --verde: #0b8365;
   --verde-texto: #ffffff;
-  --rojo: #cf2049;
+  --rojo: #d81f2f;
   --ambar: var(--color-accent-600);
 
   font-family: var(--font-body);
@@ -172,7 +172,7 @@
   --sobre-acento: #14141c;
   --verde: #4fd1a5;
   --verde-texto: #14141c;
-  --rojo: #fb7185;
+  --rojo: #ff4451;
 
   color-scheme: dark;
 }

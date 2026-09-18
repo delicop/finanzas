@@ -51,11 +51,11 @@ Dos colores, y ninguno es de semáforo:
 | | Light | Dark | Qué es |
 |---|---|---|---|
 | `.positivo` | `#0b8365` menta | `#4fd1a5` | lo que entra |
-| `.negativo` | `#cf2049` rosa | `#fb7185` | lo que sale |
+| `.negativo` | `#d81f2f` rojo | `#ff4451` | lo que sale |
 | `.advertencia` | índigo | índigo | **lo que pide una acción** |
 | `.neutro` | gris | gris | un traslado, que no suma ni resta |
 
-Índigo, menta y rosa están **a la misma distancia entre sí en el círculo de
+Índigo, menta y rojo están **a la misma distancia entre sí en el círculo de
 color**, así que ninguno se confunde con otro aunque caigan en la misma fila.
 En claro los dos del dinero bajan de tono para contrastar contra el blanco de
 las fichas; en oscuro suben.
@@ -133,4 +133,4 @@ Vale la pena saber por dónde pasó, para no repetir el camino:
    el rojo del dinero: los tres juntos se veían sucios, y en modo claro peor.
    Las letras y las formas de ese paso sí quedaron, y son las de hoy.
 5. **Versión actual.** Misma organización, mismas letras, mismas formas; paleta
-   fría de grises azulados con índigo, menta y rosa.
+   fría de grises azulados con índigo, menta y rojo.
