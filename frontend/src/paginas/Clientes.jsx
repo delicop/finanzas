@@ -4,6 +4,7 @@ import { adminApi, negocioApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import { diasHasta, formatearFecha, formatearMonto } from '../lib/formato'
+import MenuAcciones from '../componentes/MenuAcciones'
 import Modal from '../componentes/Modal'
 
 // Los clientes del servidor: quién existe, en qué plan está y qué puede hacer.
@@ -143,6 +144,17 @@ export default function Clientes() {
                     {u.nombre || u.email} {puedeAbrir(u) && <span className="flecha-abrir">›</span>}
                   </strong>
                   <EtiquetasUsuario usuario={u} yo={yo} />
+                  {/* El menú va aquí arriba y no al final: si cuelga del pie,
+                      la ficha vuelve a crecer y el pulgar tiene que bajar
+                      hasta el fondo de cada una. */}
+                  <AccionesUsuario
+                    usuario={u}
+                    yo={yo}
+                    onResetear={() => setReseteando(u)}
+                    onRol={() => alternarRol(u)}
+                    onActivo={() => alternarActivo(u)}
+                    onEliminar={() => setEliminando(u)}
+                  />
                 </div>
                 <div className="tenue sub">
                   {u.email} · {u.movimientos} mov{u.movimientos === 1 ? '' : 's'}.
@@ -156,19 +168,14 @@ export default function Clientes() {
                   planes={planes}
                   onCambiar={(plan, ciclo) => asignarPlan(u, plan, ciclo)}
                 />
-                <AccionesUsuario
-                  usuario={u}
-                  yo={yo}
-                  onResetear={() => setReseteando(u)}
-                  onRol={() => alternarRol(u)}
-                  onActivo={() => alternarActivo(u)}
-                  onEliminar={() => setEliminando(u)}
-                />
               </article>
             ))}
           </div>
         ) : (
-          <div className="tabla-scroll">
+          /* Sin .tabla-scroll a propósito: el menú "⋯" se posiciona en
+             absoluto y cualquier overflow por encima lo recortaría. Ahora que
+             las acciones ocupan una columna de 40px, la tabla cabe. */
+          <div>
             <table className="tabla-clientes">
               <thead>
                 <tr>
@@ -338,27 +345,27 @@ function AccionesUsuario({ usuario, yo, onResetear, onRol, onActivo, onEliminar 
   const soyYo = usuario.id === yo.id
 
   return (
-    // Botones de TEXTO y no rellenos: son cuatro por fila en una tabla que ya
-    // tiene nueve columnas. Con botones sólidos no caben, se apilan y cada
-    // fila crece hasta ocupar media pantalla.
-    <div className="acciones-fila">
-      <button className="menor" onClick={onResetear}>
+    // Detrás de un "⋯" y no a la vista: son cuatro y no caben. Sueltas, cada
+    // fila de la tabla crecía a cuatro renglones, y en el teléfono la ficha
+    // quedaba más alta que la pantalla.
+    <MenuAcciones etiqueta={`Acciones de ${usuario.nombre || usuario.email}`}>
+      <button type="button" role="menuitem" onClick={onResetear}>
         Resetear clave
       </button>
       {!soyYo && (
         <>
-          <button className="menor" onClick={onRol}>
+          <button type="button" role="menuitem" onClick={onRol}>
             {usuario.rol === 'admin' ? 'Quitar admin' : 'Hacer admin'}
           </button>
-          <button className="menor" onClick={onActivo}>
+          <button type="button" role="menuitem" onClick={onActivo}>
             {usuario.activo ? 'Desactivar' : 'Reactivar'}
           </button>
-          <button className="menor menor-peligro" onClick={onEliminar}>
+          <button type="button" role="menuitem" className="peligro" onClick={onEliminar}>
             Eliminar
           </button>
         </>
       )}
-    </div>
+    </MenuAcciones>
   )
 }
 

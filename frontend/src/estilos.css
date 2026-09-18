@@ -1858,51 +1858,124 @@ button.menor-peligro:hover:not(:disabled) {
    columna — está pensado para las tarjetas del teléfono, y dentro de una celda
    deja la fila altísima.) En el móvil esta misma clase vuelve a apilar, que es
    donde el pulgar necesita los blancos. */
-/* En escritorio van en UNA línea. Si se les deja envolver, cada fila de la
-   tabla crece a cuatro renglones y la lista se vuelve ilegible; prefiero que
-   la tabla se desplace de lado (ya tiene su .tabla-scroll). */
+/* Planes tiene tres acciones y una tabla corta: ahí sí caben a la vista, en
+   una fila. (Clientes las escondió tras un menú porque son cuatro en una
+   tabla de nueve columnas.) */
 .acciones-fila {
   display: inline-flex;
-  gap: 2px;
+  gap: var(--space-1);
   justify-content: flex-end;
-  flex-wrap: nowrap;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
-/* Separador finito entre acciones, como en la lista de movimientos. */
-.acciones-fila button + button {
-  border-left: 1px solid var(--color-divider);
-  border-radius: 0;
-}
-
-/* El margen suelto de "td.acciones button" sobra aquí: el gap ya separa. */
-td.acciones .acciones-fila button {
+.acciones-fila button {
   margin: 0;
 }
 
-/* En el teléfono sí se apilan, que es donde el pulgar necesita blancos: a lo
-   ancho, alineadas a la izquierda y con altura de dedo. */
+/* En el teléfono se apilan a lo ancho, que es donde el pulgar necesita
+   blancos. */
 .tarjeta-cat .acciones-fila {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: var(--space-2);
   margin-top: var(--space-3);
-  padding-top: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--color-divider);
-  white-space: normal;
 }
 
-.tarjeta-cat .acciones-fila button {
+/* ---------- el menú "⋯" de acciones ---------- */
+
+.menu-acciones {
+  position: relative;
+  display: inline-flex;
+}
+
+.menu-acciones-boton {
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--tenue);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.menu-acciones-boton:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--color-divider);
+  color: var(--color-text);
+  filter: none;
+  transform: none;
+}
+
+.menu-acciones-boton[aria-expanded='true'] {
+  background: var(--hover);
+  border-color: var(--color-divider);
+  color: var(--color-text);
+}
+
+.menu-acciones-lista {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.menu-acciones-lista button {
   justify-content: flex-start;
-  min-height: 42px;
-  padding: 0 var(--space-2);
+  text-align: left;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 14px;
+  white-space: nowrap;
 }
 
-/* Apiladas, el separador va arriba y no a un lado. */
-.tarjeta-cat .acciones-fila button + button {
-  border-left: 0;
-  border-top: 1px solid var(--color-divider);
+.menu-acciones-lista button:hover:not(:disabled) {
+  background: var(--hover);
+  filter: none;
+  transform: none;
+}
+
+.menu-acciones-lista button.peligro {
+  color: var(--rojo);
+}
+
+.menu-acciones-lista button.peligro:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--rojo) 12%, transparent);
+  color: var(--rojo);
+}
+
+/* En la ficha del teléfono el botón se va al borde derecho del encabezado, al
+   lado del nombre, en vez de ocupar un renglón propio abajo. */
+.tarjeta-cat-arriba .menu-acciones {
+  margin-left: auto;
+}
+
+/* Cerca del borde de la pantalla el menú se saldría; anclado a la derecha del
+   botón, que va a la derecha de la ficha, siempre cae hacia adentro. */
+@media (max-width: 720px) {
+  .menu-acciones-lista {
+    min-width: 220px;
+  }
 }
 
 /* ---------- navegador de mes (panel del negocio) ---------- */
