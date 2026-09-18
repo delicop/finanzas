@@ -12,6 +12,7 @@ import (
 
 	"finanzas/internal/httpx"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/recurrentes"
 )
 
 // Aqui vive la unica escritura del agente, y la hace el usuario.
@@ -49,6 +50,8 @@ func (h *Handler) ConfirmarPropuesta(w http.ResponseWriter, r *http.Request) {
 		h.confirmarMarcarPagado(w, r, usuarioID, propuesta)
 	case TipoPropuestaAbono:
 		h.confirmarAbono(w, r, usuarioID, propuesta)
+	case TipoPropuestaRecurrente:
+		h.confirmarRecurrente(w, r, usuarioID, propuesta)
 	default:
 		// No deberia pasar: el tipo lo limita un CHECK de la base.
 		httpx.ErrorInterno(w, r, errors.New("tipo de propuesta desconocido: "+propuesta.Tipo),
@@ -217,6 +220,74 @@ func (h *Handler) confirmarAbono(w http.ResponseWriter, r *http.Request, usuario
 	h.anotarMovimiento(r, usuarioID, propuesta.ID, m.ID)
 
 	httpx.JSON(w, http.StatusOK, m)
+}
+
+// confirmarRecurrente da por pagado el gasto que se repite.
+//
+// Aqui esta lo que evita el gasto duplicado: NO se crea un movimiento suelto,
+// se resuelve la MISMA ocurrencia que estaba esperando en el resumen, por el
+// mismo Confirmador que usa el boton de alla. Cuando esto termina, el internet
+// queda una sola vez y deja de aparecer pendiente.
+//
+// Cual ocurrencia es lo dice la propuesta, no el cuerpo de la peticion: eso ya
+// quedo fijado cuando el usuario vio la tarjeta. Del cuerpo solo se toma lo
+// que pudo corregir, que es el monto — el recibo nunca llega igual.
+func (h *Handler) confirmarRecurrente(w http.ResponseWriter, r *http.Request, usuarioID int64, propuesta *Propuesta) {
+	if h.catalogo.confirmarRec == nil {
+		httpx.Error(w, http.StatusConflict, "Este servidor no tiene gastos recurrentes")
+		return
+	}
+
+	var datos datosRecurrente
+	if err := json.Unmarshal(propuesta.Datos, &datos); err != nil {
+		httpx.ErrorInterno(w, r, err, "agente: leyendo la propuesta del recurrente")
+		return
+	}
+
+	// Se reserva la tarjeta antes de escribir, igual que en las demas: dos
+	// clics seguidos no pueden registrar el arriendo dos veces. Adentro, el
+	// Confirmador reserva ademas la ocurrencia.
+	if err := h.store.ReservarPropuesta(r.Context(), usuarioID, propuesta.ID, EstadoPropuestaConfirmada); err != nil {
+		h.responderReserva(w, r, err)
+		return
+	}
+
+	var errCuerpo error
+	m, campos, err := h.catalogo.confirmarRec.Confirmar(r.Context(), usuarioID, datos.OcurrenciaID,
+		func(entrada *movimientos.Entrada) error {
+			// El cuerpo llega con lo que quedo en la tarjeta y pisa campo por
+			// campo lo que dice la plantilla.
+			if r.ContentLength == 0 {
+				return nil
+			}
+			errCuerpo = httpx.DecodeJSON(w, r, entrada)
+			return errCuerpo
+		})
+
+	if err != nil || campos != nil {
+		// No se registro nada: la tarjeta vuelve a estar disponible para que
+		// el usuario corrija y reintente.
+		h.devolverAPendiente(r, usuarioID, propuesta.ID)
+
+		switch {
+		case errCuerpo != nil:
+			httpx.Error(w, http.StatusBadRequest, errCuerpo.Error())
+		case campos != nil:
+			httpx.ErrorCampos(w, campos)
+		case errors.Is(err, recurrentes.ErrOcurrenciaNoExiste):
+			httpx.Error(w, http.StatusNotFound, "Ese gasto recurrente ya no existe")
+		case errors.Is(err, recurrentes.ErrYaResuelta):
+			// Lo confirmo desde el resumen mientras la tarjeta seguia abierta.
+			httpx.Error(w, http.StatusConflict, "Ese gasto ya lo habías confirmado desde el resumen")
+		default:
+			httpx.ErrorInterno(w, r, err, "agente: confirmando el recurrente")
+		}
+		return
+	}
+
+	h.anotarMovimiento(r, usuarioID, propuesta.ID, m.ID)
+
+	httpx.JSON(w, http.StatusCreated, m)
 }
 
 // propuestaUsable revisa que la tarjeta siga viva antes de tocar nada.

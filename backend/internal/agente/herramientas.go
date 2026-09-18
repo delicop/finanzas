@@ -11,6 +11,7 @@ import (
 	"finanzas/internal/categorias"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/recurrentes"
 )
 
 // Catalogo es lo que el agente puede consultar. Cada herramienta envuelve un
@@ -30,10 +31,28 @@ type Catalogo struct {
 	movimientos *movimientos.Store
 	categorias  *categorias.Store
 	medios      *medios.Store
+
+	// Los recurrentes son opcionales: si no llegan, el agente sencillamente
+	// no ofrece esas dos herramientas y sigue funcionando igual. El
+	// confirmador es el MISMO que usa el botón del resumen — el chat no tiene
+	// un camino propio para dar por pagado un recurrente.
+	recurrentes  *recurrentes.Store
+	confirmarRec *recurrentes.Confirmador
 }
 
 func NuevoCatalogo(m *movimientos.Store, c *categorias.Store, me *medios.Store) *Catalogo {
 	return &Catalogo{movimientos: m, categorias: c, medios: me}
+}
+
+// ConRecurrentes le enseña al agente los gastos que se repiten.
+//
+// Va aparte del constructor a propósito: es lo único del catálogo que puede no
+// estar, y meterlo en NuevoCatalogo obligaría a pasar dos nils en cada prueba
+// que no los necesita.
+func (c *Catalogo) ConRecurrentes(store *recurrentes.Store, confirmador *recurrentes.Confirmador) *Catalogo {
+	c.recurrentes = store
+	c.confirmarRec = confirmador
+	return c
 }
 
 // Los nombres son los que ve el modelo; tambien son los que la app le muestra
@@ -68,7 +87,7 @@ const (
 // que el modelo lee para decidir cual usar y con que argumentos. Una
 // descripcion floja se paga en llamadas equivocadas.
 func (c *Catalogo) Esquemas() []Herramienta {
-	return []Herramienta{
+	lista := []Herramienta{
 		{
 			Nombre: HerramientaResumen,
 			Descripcion: "Devuelve el resumen financiero del usuario: totales (recibido, pagado, por cobrar, por pagar, balance), " +
@@ -251,6 +270,14 @@ func (c *Catalogo) Esquemas() []Herramienta {
 			Parametros: objeto(nil),
 		},
 	}
+
+	// Las de los recurrentes solo se ofrecen si el servidor los tiene: una
+	// herramienta que no puede funcionar es una invitación a que el modelo la
+	// llame y reciba un error.
+	if c.recurrentes != nil {
+		lista = append(lista, esquemasDeRecurrentes()...)
+	}
+	return lista
 }
 
 // Los tipos que el modelo puede usar, y como se los explicamos.
@@ -316,6 +343,11 @@ func (c *Catalogo) Ejecutar(ctx context.Context, usuarioID int64, llamada Llamad
 		return c.proponerMarcarPagado(ctx, usuarioID, llamada.Argumentos)
 	case HerramientaProponerAbono:
 		return c.proponerAbono(ctx, usuarioID, llamada.Argumentos)
+
+	case HerramientaRecurrentesPendientes:
+		texto, err = c.listarRecurrentesPendientes(ctx, usuarioID)
+	case HerramientaProponerRecurrente:
+		return c.proponerRecurrente(ctx, usuarioID, llamada.Argumentos)
 
 	default:
 		texto = errorParaElModelo("no existe una herramienta llamada %q", llamada.Nombre)

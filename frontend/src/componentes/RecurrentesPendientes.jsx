@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { recurrentesApi } from '../lib/api'
 import { diasHasta, entradaAMonto, formatearFecha, formatearMonto, montoAEntrada } from '../lib/formato'
-import { avisarMovimientoGuardado } from '../lib/eventos'
+import { avisarMovimientoGuardado, useAlGuardarMovimiento } from '../lib/eventos'
 import InputMonto from './InputMonto'
 
 // Lo que toca confirmar de los gastos e ingresos que se repiten, y —con
@@ -48,6 +48,11 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
     cargar(control.signal)
     return () => control.abort()
   }, [cargar])
+
+  // El asistente también puede confirmar uno de estos ("ya pagué el internet").
+  // Sin esto, el que acaba de quedar registrado seguiría pintado aquí hasta
+  // recargar la página, y parecería que hay que confirmarlo otra vez.
+  useAlGuardarMovimiento(() => cargar())
 
   async function confirmar(o, monto) {
     setOcupado(o.id)

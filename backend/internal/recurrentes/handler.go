@@ -1,7 +1,6 @@
 package recurrentes
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -17,14 +16,15 @@ import (
 
 type Handler struct {
 	store *Store
-	// El store de movimientos: confirmar una ocurrencia crea un movimiento de
-	// verdad, por la MISMA puerta que el formulario. Aqui no hay un camino
-	// propio a la tabla del dinero.
-	movimientos *movimientos.Store
+	// El confirmador convierte una ocurrencia en movimiento, por la MISMA
+	// puerta que el formulario. Aqui no hay un camino propio a la tabla del
+	// dinero, y tampoco uno propio del boton "Lo pague": el chat confirma por
+	// este mismo, que es lo que impide que el internet quede dos veces.
+	confirmador *Confirmador
 }
 
 func NewHandler(store *Store, mov *movimientos.Store) *Handler {
-	return &Handler{store: store, movimientos: mov}
+	return &Handler{store: store, confirmador: NuevoConfirmador(store, mov)}
 }
 
 func (h *Handler) Rutas() chi.Router {
@@ -294,73 +294,39 @@ func (h *Handler) Confirmar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	o, err := h.store.Ocurrencia(r.Context(), usuarioID, id)
-	if errors.Is(err, ErrOcurrenciaNoExiste) {
+	// El cuerpo se decodifica ENCIMA de lo que dice la plantilla: sin cuerpo
+	// (o con uno vacío) se confirma tal cual, y lo que venga pisa campo por
+	// campo. El caso de siempre es que solo traiga el monto corregido.
+	var errCuerpo error
+	m, campos, err := h.confirmador.Confirmar(r.Context(), usuarioID, id,
+		func(entrada *movimientos.Entrada) error {
+			if r.ContentLength == 0 {
+				return nil
+			}
+			errCuerpo = httpx.DecodeJSON(w, r, entrada)
+			return errCuerpo
+		})
+
+	if errCuerpo != nil {
+		httpx.Error(w, http.StatusBadRequest, errCuerpo.Error())
+		return
+	}
+
+	switch {
+	case errors.Is(err, ErrOcurrenciaNoExiste):
 		httpx.Error(w, http.StatusNotFound, "Ese pendiente no existe")
 		return
-	}
-	if err != nil {
-		httpx.ErrorInterno(w, r, err, "recurrentes: consultando el pendiente")
-		return
-	}
-	if o.Estado != Pendiente {
-		// 409: la peticion es valida pero choca con el estado actual.
+	case errors.Is(err, ErrYaResuelta):
+		// 409: la petición es válida pero choca con el estado actual.
 		httpx.Error(w, http.StatusConflict, "Ese pendiente ya se había resuelto")
 		return
-	}
-
-	// Lo que llegue del cliente pisa a la plantilla, campo por campo.
-	entrada := movimientos.Entrada{
-		CategoriaID: o.CategoriaID,
-		MedioPagoID: o.MedioPagoID,
-		Tipo:        o.Tipo,
-		Monto:       o.Monto,
-		Fecha:       o.Fecha,
-		Descripcion: o.Descripcion,
-	}
-	// Sin cuerpo se confirma la plantilla tal cual, que es el caso de un solo
-	// clic en "Sí, lo pagué". Con cuerpo, lo que venga pisa a la plantilla.
-	if r.ContentLength > 0 {
-		if err := httpx.DecodeJSON(w, r, &entrada); err != nil {
-			httpx.Error(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-
-	datos, campos := movimientos.Validar(entrada)
-	if len(campos) > 0 {
+	case campos != nil:
 		httpx.ErrorCampos(w, campos)
 		return
-	}
-
-	// Primero se reserva y despues se escribe. Al reves, dos clics seguidos
-	// (o dos pestañas) crearian dos arriendos: el UPDATE condicional de
-	// Resolver es lo unico que puede decidir quien gana esa carrera.
-	if err := h.store.Resolver(r.Context(), usuarioID, id, Confirmada, nil); err != nil {
-		h.responderReserva(w, r, err)
+	case err != nil:
+		httpx.ErrorInterno(w, r, err, "recurrentes: confirmando el pendiente")
 		return
 	}
-
-	m, err := h.movimientos.Crear(r.Context(), usuarioID, datos)
-	if err != nil {
-		// No se creo nada: el pendiente vuelve a estar disponible para que el
-		// usuario corrija y reintente.
-		h.devolverAPendiente(r, usuarioID, id)
-
-		switch {
-		case errors.Is(err, movimientos.ErrCategoriaInvalida):
-			httpx.ErrorCampos(w, map[string]string{"categoria_id": "La categoría no existe"})
-		case errors.Is(err, movimientos.ErrMedioInvalido):
-			httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
-		default:
-			httpx.ErrorInterno(w, r, err, "recurrentes: creando el movimiento")
-		}
-		return
-	}
-
-	// Rastro: de que pendiente salio este movimiento. Si falla, el movimiento
-	// ya existe y no vamos a tumbar la respuesta por una anotacion.
-	h.anotarMovimiento(r, usuarioID, id, m.ID)
 
 	httpx.JSON(w, http.StatusCreated, m)
 }
@@ -412,34 +378,6 @@ func (h *Handler) responderReserva(w http.ResponseWriter, r *http.Request, err e
 	default:
 		httpx.ErrorInterno(w, r, err, "recurrentes: reservando el pendiente")
 	}
-}
-
-// devolverAPendiente y anotarMovimiento son tareas de CIERRE de una escritura,
-// y por eso no usan r.Context() a secas: si el usuario cierra la pestaña justo
-// cuando falla la escritura, ese context ya esta cancelado y el "deshacer"
-// fallaria tambien, dejando el pendiente marcado como confirmado sin que
-// exista el movimiento. WithoutCancel conserva los valores del request (el
-// usuario, el id de la peticion) pero no hereda la cancelacion.
-func (h *Handler) devolverAPendiente(r *http.Request, usuarioID, id int64) {
-	ctx, cancelar := contextoDeCierre(r)
-	defer cancelar()
-
-	if err := h.store.DevolverAPendiente(ctx, usuarioID, id); err != nil {
-		httpx.RegistrarFalloSiempre(r, err, "recurrentes: devolviendo el pendiente")
-	}
-}
-
-func (h *Handler) anotarMovimiento(r *http.Request, usuarioID, id, movimientoID int64) {
-	ctx, cancelar := contextoDeCierre(r)
-	defer cancelar()
-
-	if err := h.store.AnotarMovimiento(ctx, usuarioID, id, movimientoID); err != nil {
-		httpx.RegistrarFalloSiempre(r, err, "recurrentes: anotando el movimiento")
-	}
-}
-
-func contextoDeCierre(r *http.Request) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 }
 
 func (h *Handler) contexto(w http.ResponseWriter, r *http.Request) (int64, int64, bool) {

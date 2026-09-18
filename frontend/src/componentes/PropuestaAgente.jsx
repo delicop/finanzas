@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { agenteApi, movimientosApi } from '../lib/api'
-import { entradaAMonto, formatearMonto, montoAEntrada, ETIQUETAS_TIPO } from '../lib/formato'
+import { entradaAMonto, formatearFecha, formatearMonto, montoAEntrada, ETIQUETAS_TIPO } from '../lib/formato'
 import { hoyISO } from '../lib/formato'
 import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
 import InputMonto from './InputMonto'
@@ -21,6 +21,9 @@ export default function PropuestaAgente({ propuesta, categorias, medios, factura
   }
   if (propuesta.tipo === 'abono') {
     return <AbonoParcial propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
+  }
+  if (propuesta.tipo === 'recurrente') {
+    return <PagoRecurrente propuesta={propuesta} onResuelta={onResuelta} />
   }
   return (
     <MovimientoNuevo
@@ -242,6 +245,68 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
             )}
           </div>
         </div>
+      )}
+    </Tarjeta>
+  )
+}
+
+// Un gasto que se repite y estaba esperando confirmación: el arriendo, el
+// internet, la luz.
+//
+// Esta tarjeta NO crea un gasto suelto: confirma la MISMA ocurrencia que estaba
+// pendiente en el resumen, por la misma puerta que el botón de allá. Sin ella,
+// decirle al chat "ya pagué el internet" dejaba el gasto registrado dos veces.
+//
+// El monto es lo único editable, y es lo único que hace falta: de qué es, de
+// qué categoría y por dónde sale ya lo dice la plantilla. El recibo casi nunca
+// llega por el mismo valor, así que si viene distinto al de siempre se dice
+// aquí mismo, para que no se confirme sin mirar.
+function PagoRecurrente({ propuesta, onResuelta }) {
+  const datos = propuesta.datos
+  const [monto, setMonto] = useState(montoAEntrada(datos.monto))
+  const recibido = datos.tipo === 'recibi'
+  const distinto = datos.monto !== datos.monto_de_siempre
+
+  return (
+    <Tarjeta
+      propuesta={propuesta}
+      onResuelta={onResuelta}
+      cuerpo={() => ({
+        categoria_id: datos.categoria_id,
+        medio_pago_id: datos.medio_pago_id,
+        tipo: datos.tipo,
+        monto: entradaAMonto(monto),
+        fecha: datos.fecha,
+        descripcion: datos.descripcion,
+      })}
+      etiqueta={recibido ? 'Lo recibí' : 'Lo pagué'}
+    >
+      {(campos) => (
+        <>
+          <p className="propuesta-resumen">
+            <strong>{datos.descripcion}</strong>, que se repite {recibido ? 'y entra' : 'y sale'} por{' '}
+            {datos.medio_pago} en {datos.categoria}. Tocaba el {formatearFecha(datos.fecha)}.
+          </p>
+
+          <div className="propuesta-campos">
+            <div className="propuesta-campo crece">
+              <label htmlFor={`recurrente-monto-${propuesta.id}`}>
+                {recibido ? '¿Cuánto entró?' : '¿Cuánto pagaste?'}
+              </label>
+              <InputMonto
+                id={`recurrente-monto-${propuesta.id}`}
+                valor={monto}
+                onCambio={setMonto}
+              />
+              {campos.monto && <span className="error-campo">{campos.monto}</span>}
+              <span className="tenue">
+                {distinto
+                  ? `De costumbre son ${formatearMonto(datos.monto_de_siempre)}.`
+                  : 'Es el valor de siempre; cámbialo si este mes vino distinto.'}
+              </span>
+            </div>
+          </div>
+        </>
       )}
     </Tarjeta>
   )

@@ -116,7 +116,12 @@ func nuevoRouter(d dependencias) http.Handler {
 		// El catalogo reusa los MISMOS stores que los endpoints: las
 		// herramientas no tienen una puerta propia a la base, y cualquier
 		// filtro que proteja la API protege tambien al agente.
-		catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore)
+		catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore).
+			// Y los recurrentes, con el MISMO confirmador del boton "Lo
+			// pague" del resumen: decirle al chat "ya pague el internet" y
+			// darle al boton tienen que terminar en el mismo movimiento, no
+			// en dos.
+			ConRecurrentes(d.recurrentes, recurrentes.NuevoConfirmador(d.recurrentes, movimientosStore))
 		// El permiso es el plan del cliente: sin IA en el plan, no hay chat.
 		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario, authStore.TieneIA)
 	}

@@ -24,6 +24,7 @@ import (
 	"finanzas/internal/httpx"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
+	"finanzas/internal/recurrentes"
 )
 
 // Estas pruebas corren contra un Postgres DE VERDAD, porque lo que se está
@@ -103,6 +104,7 @@ func pideHerramienta(nombre, argumentos string) agente.Respuesta {
 type entorno struct {
 	pool        *sql.DB
 	store       *agente.Store
+	recurrentes *recurrentes.Store
 	proveedor   *proveedorFalso
 	handler     *agente.Handler
 	movimientos *movimientos.Store
@@ -154,11 +156,14 @@ func nuevoEntorno(t *testing.T, limiteDiario int) *entorno {
 		TokensEntrada: 10,
 		TokensSalida:  3,
 	}}
-	catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore)
+	recurrentesStore := recurrentes.NewStore(pool)
+	catalogo := agente.NuevoCatalogo(movimientosStore, categoriasStore, mediosStore).
+		ConRecurrentes(recurrentesStore, recurrentes.NuevoConfirmador(recurrentesStore, movimientosStore))
 
 	return &entorno{
 		pool:        pool,
 		store:       store,
+		recurrentes: recurrentesStore,
 		proveedor:   proveedor,
 		handler:     agente.NewHandler(store, proveedor, catalogo, limiteDiario, auth.NewStore(pool).TieneIA),
 		movimientos: movimientosStore,
@@ -234,7 +239,9 @@ func crearUsuario(t *testing.T, pool *sql.DB, nombre string) int64 {
 	// consumo se van solas por CASCADE.
 	t.Cleanup(func() {
 		limpieza := context.Background()
-		for _, tabla := range []string{"movimientos", "categorias", "medios_pago"} {
+		// Los recurrentes antes que las categorías y los medios: esas dos
+		// llaves foráneas son RESTRICT, igual que las de movimientos.
+		for _, tabla := range []string{"recurrentes_ocurrencias", "recurrentes", "movimientos", "categorias", "medios_pago"} {
 			if _, err := pool.ExecContext(limpieza, "DELETE FROM "+tabla+" WHERE usuario_id = $1", usuario.ID); err != nil {
 				t.Errorf("limpiando %s: %v", tabla, err)
 			}
@@ -1479,5 +1486,266 @@ func TestSinPermisoConfiguradoNadieEntra(t *testing.T) {
 
 	if res := e.enviar(t, e.ana, "hola"); res.Code != http.StatusForbidden {
 		t.Errorf("status = %d, se esperaba 403", res.Code)
+	}
+}
+
+// --------------------------------------------------------------- recurrentes
+
+// crearRecurrente deja un gasto que se repite, con su ocurrencia pendiente:
+// es lo que el usuario ve en el resumen esperando un clic.
+func (e *entorno) crearRecurrente(t *testing.T, descripcion, monto string) recurrentes.Ocurrencia {
+	t.Helper()
+	ctx := context.Background()
+
+	rec, err := e.recurrentes.Crear(ctx, e.ana, recurrentes.Datos{
+		CategoriaID: e.categoria,
+		MedioPagoID: e.efectivo,
+		Tipo:        movimientos.TipoPague,
+		Monto:       monto,
+		Descripcion: descripcion,
+		Frecuencia:  recurrentes.Mensual,
+		Dia:         time.Now().Day(),
+		Desde:       time.Now().AddDate(-1, 0, 0).Format("2006-01-02"),
+		Activo:      true,
+	})
+	if err != nil {
+		t.Fatalf("creando el recurrente: %v", err)
+	}
+
+	if _, err := e.recurrentes.Generar(ctx, *rec, e.ana, time.Now()); err != nil {
+		t.Fatalf("generando ocurrencias: %v", err)
+	}
+
+	pendientes, err := e.recurrentes.Pendientes(ctx, e.ana, time.Now())
+	if err != nil {
+		t.Fatalf("listando pendientes: %v", err)
+	}
+	if len(pendientes) == 0 {
+		t.Fatal("el recurrente no dejó ninguna ocurrencia pendiente")
+	}
+	return pendientes[len(pendientes)-1]
+}
+
+// EL BUG QUE ESTO EVITA: el chat y el resumen escribían por caminos distintos,
+// así que decirle "ya pagué el internet" creaba un gasto suelto Y dejaba la
+// ocurrencia esperando. Se confirmaba también y el internet quedaba dos veces.
+func TestConfirmarUnRecurrenteDesdeElChatNoDuplicaElGasto(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	pendiente := e.crearRecurrente(t, "internet", "100000")
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaRecurrentesPendientes, `{}`),
+		pideHerramienta(agente.HerramientaProponerRecurrente,
+			fmt.Sprintf(`{"ocurrencia_id": %d}`, pendiente.ID)),
+		{Contenido: "Te preparé el internet de $100.000, confírmalo ahí."},
+	}
+
+	res := e.enviar(t, e.ana, "ya pagué el internet")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+	if len(envio.Propuestas) != 1 || envio.Propuestas[0].Tipo != agente.TipoPropuestaRecurrente {
+		t.Fatalf("propuestas = %+v, se esperaba una de tipo recurrente", envio.Propuestas)
+	}
+
+	// Todavía no se ha registrado nada: es una tarjeta, no una escritura.
+	if n := e.contarMovimientos(t, e.ana); n != 0 {
+		t.Fatalf("proponer creó %d movimientos", n)
+	}
+
+	res = e.confirmar(t, e.ana, envio.Propuestas[0].ID, map[string]any{
+		"categoria_id":  e.categoria,
+		"medio_pago_id": e.efectivo,
+		"tipo":          "pague",
+		"monto":         "100000",
+		"fecha":         pendiente.Fecha,
+		"descripcion":   "internet",
+	})
+	if res.Code != http.StatusCreated {
+		t.Fatalf("confirmar: %d — %s", res.Code, res.Body.String())
+	}
+
+	// UN movimiento, no dos.
+	if n := e.contarMovimientos(t, e.ana); n != 1 {
+		t.Errorf("quedaron %d movimientos: el recurrente se registró más de una vez", n)
+	}
+
+	// Y la ocurrencia dejó de estar pendiente: el resumen ya no la pide.
+	pendientes, err := e.recurrentes.Pendientes(context.Background(), e.ana, time.Now())
+	if err != nil {
+		t.Fatalf("listando pendientes: %v", err)
+	}
+	for _, o := range pendientes {
+		if o.ID == pendiente.ID {
+			t.Error("el recurrente sigue pendiente en el resumen después de pagarlo por el chat")
+		}
+	}
+}
+
+// El recibo casi nunca llega igual: si dijo un valor distinto, ese es el que
+// va en la tarjeta — y la plantilla no se mueve.
+func TestElMontoQueDijoLaPersonaMandaSobreElDeLaPlantilla(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	pendiente := e.crearRecurrente(t, "luz", "100000")
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerRecurrente,
+			fmt.Sprintf(`{"ocurrencia_id": %d, "monto": "118000"}`, pendiente.ID)),
+		{Contenido: "Lo dejé en $118.000 y no en los $100.000 de siempre; confírmalo ahí."},
+	}
+
+	res := e.enviar(t, e.ana, "pagué la luz, vinieron 118 mil este mes")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+	if len(envio.Propuestas) != 1 {
+		t.Fatalf("propuestas = %d, se esperaba 1", len(envio.Propuestas))
+	}
+
+	var datos struct {
+		Monto          string `json:"monto"`
+		MontoDeSiempre string `json:"monto_de_siempre"`
+	}
+	if err := json.Unmarshal(envio.Propuestas[0].Datos, &datos); err != nil {
+		t.Fatalf("datos ilegibles: %v", err)
+	}
+	if datos.Monto != "118000" {
+		t.Errorf("monto = %q, se esperaba el que dijo la persona", datos.Monto)
+	}
+	// El de siempre viaja también: es lo que deja ver la diferencia en la
+	// tarjeta, para que no se confirme sin mirar.
+	if datos.MontoDeSiempre != "100000.00" {
+		t.Errorf("monto_de_siempre = %q", datos.MontoDeSiempre)
+	}
+}
+
+// Sin monto, la tarjeta sale con el de siempre: no se inventa ninguno.
+func TestSinMontoSeUsaElDeLaPlantilla(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	pendiente := e.crearRecurrente(t, "arriendo", "1200000")
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerRecurrente,
+			fmt.Sprintf(`{"ocurrencia_id": %d}`, pendiente.ID)),
+		{Contenido: "Te lo preparé; confírmalo ahí."},
+	}
+
+	res := e.enviar(t, e.ana, "ya pagué el arriendo")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+
+	var datos struct {
+		Monto string `json:"monto"`
+	}
+	if err := json.Unmarshal(envio.Propuestas[0].Datos, &datos); err != nil {
+		t.Fatalf("datos ilegibles: %v", err)
+	}
+	if datos.Monto != "1200000.00" {
+		t.Errorf("monto = %q, se esperaba el de la plantilla", datos.Monto)
+	}
+}
+
+// El recurrente de otro no existe para el chat, aunque el modelo acierte el id.
+func TestNoSePuedePagarElRecurrenteDeOtro(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	pendiente := e.crearRecurrente(t, "internet", "100000")
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerRecurrente,
+			fmt.Sprintf(`{"ocurrencia_id": %d}`, pendiente.ID)),
+		{Contenido: "No encontré ese pendiente."},
+	}
+
+	// Pregunta BETO, con el id de un recurrente de Ana.
+	res := e.enviar(t, e.beto, "ya pagué el internet")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+	if len(envio.Propuestas) != 0 {
+		t.Fatalf("se preparó el pago del recurrente de otro: %+v", envio.Propuestas)
+	}
+
+	// Y la de Ana sigue intacta, esperándola a ella.
+	pendientes, err := e.recurrentes.Pendientes(context.Background(), e.ana, time.Now())
+	if err != nil {
+		t.Fatalf("listando pendientes: %v", err)
+	}
+	if len(pendientes) == 0 {
+		t.Error("el recurrente de Ana desapareció")
+	}
+}
+
+// Si lo confirmó desde el resumen con la tarjeta del chat abierta, la tarjeta
+// no puede volver a registrarlo.
+func TestUnRecurrenteYaConfirmadoNoSeRegistraDosVeces(t *testing.T) {
+	e := nuevoEntorno(t, 10)
+	pendiente := e.crearRecurrente(t, "internet", "100000")
+
+	e.proveedor.guion = []agente.Respuesta{
+		pideHerramienta(agente.HerramientaProponerRecurrente,
+			fmt.Sprintf(`{"ocurrencia_id": %d}`, pendiente.ID)),
+		{Contenido: "Te lo preparé; confírmalo ahí."},
+	}
+	res := e.enviar(t, e.ana, "ya pagué el internet")
+	if res.Code != http.StatusOK {
+		t.Fatalf("enviar: %d — %s", res.Code, res.Body.String())
+	}
+
+	var envio struct {
+		Propuestas []agente.Propuesta `json:"propuestas"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envio); err != nil {
+		t.Fatalf("respuesta ilegible: %v", err)
+	}
+
+	// Mientras tanto, lo confirma desde el resumen.
+	confirmador := recurrentes.NuevoConfirmador(e.recurrentes, e.movimientos)
+	if _, campos, err := confirmador.Confirmar(context.Background(), e.ana, pendiente.ID, nil); err != nil || campos != nil {
+		t.Fatalf("confirmando desde el resumen: %v — %v", err, campos)
+	}
+
+	// Ahora la tarjeta del chat: tiene que chocar, no crear un segundo gasto.
+	res = e.confirmar(t, e.ana, envio.Propuestas[0].ID, map[string]any{
+		"categoria_id":  e.categoria,
+		"medio_pago_id": e.efectivo,
+		"tipo":          "pague",
+		"monto":         "100000",
+		"fecha":         pendiente.Fecha,
+		"descripcion":   "internet",
+	})
+	if res.Code != http.StatusConflict {
+		t.Fatalf("confirmar la segunda vez: %d — %s", res.Code, res.Body.String())
+	}
+	if n := e.contarMovimientos(t, e.ana); n != 1 {
+		t.Errorf("quedaron %d movimientos: el internet se registró más de una vez", n)
 	}
 }
