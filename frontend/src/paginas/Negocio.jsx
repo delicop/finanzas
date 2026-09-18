@@ -197,7 +197,7 @@ export default function Negocio() {
                   ? 'Todos al día este mes. '
                   : 'Nada por cobrar. '}
               </p>
-            ) : (
+            ) : esMovil ? (
               <div className="lista-movil">
                 {resumen.pendientes.map((p) => (
                   <article className="tarjeta-cat" key={p.usuario_id}>
@@ -213,6 +213,40 @@ export default function Negocio() {
                     </div>
                   </article>
                 ))}
+              </div>
+            ) : (
+              <div className="tabla-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Plan</th>
+                      <th className="num">Monto</th>
+                      <th className="acciones"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumen.pendientes.map((p) => (
+                      <tr key={p.usuario_id}>
+                        <td>
+                          {p.nombre || p.email}
+                          {/* El correo solo va abajo si arriba hay un nombre:
+                              si no, se repetiría la misma línea dos veces. */}
+                          {p.nombre && <div className="tenue">{p.email}</div>}
+                        </td>
+                        <td className="tenue">
+                          {p.plan_nombre} <EtiquetaCiclo ciclo={p.ciclo} />
+                        </td>
+                        <td className="num advertencia">{formatearMonto(p.monto)}</td>
+                        <td className="acciones">
+                          <button className="menor" onClick={() => setCobrando(p)}>
+                            Registrar pago
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>

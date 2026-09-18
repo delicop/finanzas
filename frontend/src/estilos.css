@@ -1243,6 +1243,21 @@ code {
   border-top: 1px solid var(--color-divider);
 }
 
+/* Esa columna estirada es para el teléfono. En una pantalla ancha un botón de
+   1100px de largo deja de leerse como botón y se lee como una barra de color:
+   arriba del punto de quiebre las acciones vuelven a una fila pegada a la
+   derecha y cada botón mide lo que dice.
+
+   Hace falta porque quedan listas que siguen siendo fichas en escritorio (la
+   de errores, por ejemplo). */
+@media (min-width: 721px) {
+  .tarjeta-mov-acciones {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
 /* ---------- jerarquía de acciones ----------
    Lo que se usa todos los días (cobrar un préstamo, mirar la factura) va
    en botones grandes. Editar y eliminar son de vez en cuando: van chiquitos
