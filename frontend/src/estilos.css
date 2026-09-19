@@ -1258,6 +1258,21 @@ code {
   }
 }
 
+/* Y cuando la acción es UNA sola, tampoco en el teléfono necesita renglón
+   propio ni un separador que la anuncie. Estirada de lado a lado, "Registrar
+   pago" pesaba más que el nombre y el monto del cliente juntos, que es lo que
+   la ficha viene a decir. Va pegada a la derecha, del ancho de su texto.
+
+   El separador existe para cuando hay varias y hace falta despegarlas de los
+   datos; con una sola solo agrega una línea. */
+.tarjeta-mov-acciones:has(> button:only-child) {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* ---------- jerarquía de acciones ----------
    Lo que se usa todos los días (cobrar un préstamo, mirar la factura) va
    en botones grandes. Editar y eliminar son de vez en cuando: van chiquitos
