@@ -18,10 +18,10 @@ import InputMonto from './InputMonto'
 // muestra y la sube como factura del movimiento al guardarlo.
 export default function PropuestaAgente({ propuesta, categorias, medios, factura, onResuelta }) {
   if (propuesta.tipo === 'marcar_pagado') {
-    return <SaldarDeuda propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
+    return <SaldarDeuda propuesta={propuesta} categorias={categorias} medios={medios} onResuelta={onResuelta} />
   }
   if (propuesta.tipo === 'abono') {
-    return <AbonoParcial propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
+    return <AbonoParcial propuesta={propuesta} categorias={categorias} medios={medios} onResuelta={onResuelta} />
   }
   if (propuesta.tipo === 'recurrente') {
     return (
@@ -358,17 +358,31 @@ function PagoRecurrente({ propuesta, categorias, medios, onResuelta }) {
 
 // Saldar una deuda entera. El monto que se registra es el SALDO, no el monto
 // original: si ya habían abonado, lo que falta es menos.
-function SaldarDeuda({ propuesta, medios, onResuelta }) {
+//
+// Si es una deuda tuya, la plata sale del medio: si ahí no alcanza, la tarjeta
+// pregunta de dónde salió, como en un gasto.
+function SaldarDeuda({ propuesta, categorias, medios, onResuelta }) {
   const datos = propuesta.datos
-  const [medioID, setMedioID] = useState(datos.medio_cobro_id ?? 0)
+  const [medioID, setMedioIDCrudo] = useState(datos.medio_cobro_id ?? 0)
   const propia = datos.tipo === 'me_prestaron'
+  const [falta, setFalta] = useState(null)
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
+
+  function setMedioID(v) {
+    setMedioIDCrudo(v)
+    setFalta(null)
+  }
 
   return (
     <Tarjeta
       propuesta={propuesta}
       onResuelta={onResuelta}
-      cuerpo={() => ({ medio_cobro_id: Number(medioID) })}
-      etiqueta={propia ? 'Marcar pagada' : 'Marcar cobrado'}
+      cuerpo={() => ({
+        medio_cobro_id: Number(medioID),
+        cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
+      })}
+      onFaltaPlata={setFalta}
+      etiqueta={falta ? 'Guardar todo' : propia ? 'Marcar pagada' : 'Marcar cobrado'}
     >
       {(campos) => (
         <>
@@ -407,6 +421,20 @@ function SaldarDeuda({ propuesta, medios, onResuelta }) {
               </select>
               {campos.medio_cobro_id && <span className="error-campo">{campos.medio_cobro_id}</span>}
             </div>
+
+            {falta && (
+              <div className="propuesta-campo crece">
+                <CubrirFaltante
+                  falta={falta}
+                  valor={cubrir}
+                  onCambio={setCubrir}
+                  categorias={categorias}
+                  medios={medios}
+                  campos={campos}
+                  prefijo={`cubrir-${propuesta.id}`}
+                />
+              </div>
+            )}
           </div>
         </>
       )}
@@ -419,14 +447,26 @@ function SaldarDeuda({ propuesta, medios, onResuelta }) {
 // El monto es editable como en todas las tarjetas, y aquí más que en ninguna:
 // "me abonó cincuenta" puede ser 50.000 o 50 mil quinientos, y confirmarlo mal
 // deja la deuda diciendo que falta menos de lo que falta.
-function AbonoParcial({ propuesta, medios, onResuelta }) {
+function AbonoParcial({ propuesta, categorias, medios, onResuelta }) {
   const datos = propuesta.datos
   const propia = datos.tipo === 'me_prestaron'
 
-  const [monto, setMonto] = useState(montoAEntrada(datos.monto))
+  const [monto, setMontoCrudo] = useState(montoAEntrada(datos.monto))
   const [fecha, setFecha] = useState(datos.fecha || hoyISO())
-  const [medioID, setMedioID] = useState(datos.medio_id ?? 0)
+  const [medioID, setMedioIDCrudo] = useState(datos.medio_id ?? 0)
   const [nota, setNota] = useState(datos.nota ?? '')
+  const [falta, setFalta] = useState(null)
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
+
+  // Otro monto u otro medio, otras cifras: el aviso de antes ya no aplica.
+  function setMonto(v) {
+    setMontoCrudo(v)
+    setFalta(null)
+  }
+  function setMedioID(v) {
+    setMedioIDCrudo(v)
+    setFalta(null)
+  }
 
   return (
     <Tarjeta
@@ -437,8 +477,10 @@ function AbonoParcial({ propuesta, medios, onResuelta }) {
         fecha,
         medio_id: Number(medioID),
         nota,
+        cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
       })}
-      etiqueta="Registrar abono"
+      onFaltaPlata={setFalta}
+      etiqueta={falta ? 'Guardar todo' : 'Registrar abono'}
     >
       {(campos) => (
         <>
@@ -505,6 +547,21 @@ function AbonoParcial({ propuesta, medios, onResuelta }) {
               />
               {campos.nota && <span className="error-campo">{campos.nota}</span>}
             </div>
+
+            {falta && (
+              <div className="propuesta-campo crece">
+                <CubrirFaltante
+                  falta={falta}
+                  valor={cubrir}
+                  onCambio={setCubrir}
+                  categorias={categorias}
+                  medios={medios}
+                  fecha={fecha}
+                  campos={campos}
+                  prefijo={`cubrir-${propuesta.id}`}
+                />
+              </div>
+            )}
           </div>
         </>
       )}

@@ -128,6 +128,8 @@ func (h *Handler) confirmarMarcarPagado(w http.ResponseWriter, r *http.Request, 
 	var cuerpo struct {
 		// Por donde le devolvieron la plata. 0 = sin registrar.
 		MedioCobroID int64 `json:"medio_cobro_id"`
+		// Si es una deuda propia y el medio no alcanza: de donde salio.
+		Cubrir *movimientos.EntradaCubrir `json:"cubrir"`
 	}
 	if err := httpx.DecodeJSON(w, r, &cuerpo); err != nil {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
@@ -147,7 +149,14 @@ func (h *Handler) confirmarMarcarPagado(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	m, err := h.catalogo.MarcarPagado(r.Context(), usuarioID, datos.MovimientoID, cuerpo.MedioCobroID)
+	cubrir, campos := movimientos.ValidarCubrirPago(cuerpo.MedioCobroID, movimientos.HoyEnColombia(), cuerpo.Cubrir)
+	if campos != nil {
+		h.devolverAPendiente(r, usuarioID, propuesta.ID)
+		httpx.ErrorCampos(w, campos)
+		return
+	}
+
+	m, err := h.catalogo.MarcarPagado(r.Context(), usuarioID, datos.MovimientoID, cuerpo.MedioCobroID, cubrir)
 	if err != nil {
 		h.devolverAPendiente(r, usuarioID, propuesta.ID)
 

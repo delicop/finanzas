@@ -43,6 +43,10 @@ type EntradaAbono struct {
 	// MedioID es por donde entro (o salio) el abono. Opcional.
 	MedioID int64  `json:"medio_id"`
 	Nota    string `json:"nota"`
+
+	// Cubrir: al pagar una deuda propia sin fondos en el medio, de donde
+	// salio la plata. Ver fondos.go.
+	Cubrir *EntradaCubrir `json:"cubrir"`
 }
 
 // Abonar: POST /api/movimientos/{id}/abonos
@@ -112,11 +116,16 @@ func ValidarAbono(req EntradaAbono) (AbonoDatos, map[string]string) {
 
 	v.MaxLargo("nota", req.Nota, 200)
 
+	var cubrir *Cubrir
+	if req.Cubrir != nil {
+		cubrir = validarCubrir(v, Entrada{MedioPagoID: req.MedioID, Fecha: req.Fecha}, *req.Cubrir)
+	}
+
 	if !v.Valido() {
 		return AbonoDatos{}, v.Campos
 	}
 
-	datos := AbonoDatos{Monto: monto, Fecha: req.Fecha, Nota: req.Nota}
+	datos := AbonoDatos{Monto: monto, Fecha: req.Fecha, Nota: req.Nota, Cubrir: cubrir}
 	if req.MedioID > 0 {
 		id := req.MedioID
 		datos.MedioID = &id

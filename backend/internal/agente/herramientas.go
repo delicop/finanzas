@@ -944,6 +944,13 @@ func (c *Catalogo) proponerMarcarPagado(ctx context.Context, usuarioID int64, cr
 		instruccion += " Ojo: esa deuda ya tenía abonos, así que lo que se va a registrar es solo lo que faltaba (" +
 			m.Saldo + "), no el monto original. Díselo."
 	}
+	if m.Tipo == movimientos.TipoMePrestaron && medioID > 0 {
+		aviso, err := c.avisoSinFondos(ctx, usuarioID, medioID, m.Saldo)
+		if err != nil {
+			return Resultado{}, err
+		}
+		instruccion += aviso
+	}
 
 	confirmacion, err := aJSON(map[string]any{
 		"estado":      "pendiente de confirmación",
@@ -994,12 +1001,15 @@ func (c *Catalogo) CrearMovimiento(ctx context.Context, usuarioID int64, entrada
 // MarcarPagado cobra un prestamo. Reusa el mismo metodo que el boton de la
 // lista, con sus reglas: solo prestamos, y el medio de cobro solo existe
 // cuando el prestamo queda pagado.
-func (c *Catalogo) MarcarPagado(ctx context.Context, usuarioID, movimientoID, medioCobroID int64) (*movimientos.Movimiento, error) {
+//
+// `cubrir` es la respuesta a "¿de dónde salió la plata?" cuando es una deuda
+// propia y el medio no alcanza; nil si no hace falta.
+func (c *Catalogo) MarcarPagado(ctx context.Context, usuarioID, movimientoID, medioCobroID int64, cubrir *movimientos.Cubrir) (*movimientos.Movimiento, error) {
 	var medio *int64
 	if medioCobroID > 0 {
 		medio = &medioCobroID
 	}
-	return c.movimientos.CambiarEstado(ctx, usuarioID, movimientoID, movimientos.EstadoPagado, medio)
+	return c.movimientos.CambiarEstadoCubriendo(ctx, usuarioID, movimientoID, movimientos.EstadoPagado, medio, cubrir)
 }
 
 // --------------------------------------------------------------------------

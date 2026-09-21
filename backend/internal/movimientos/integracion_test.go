@@ -969,15 +969,17 @@ func TestLaGuardiaNoDejaNingunMedioEnRojo(t *testing.T) {
 		t.Fatalf("lo rechazado movió el efectivo: %s", s)
 	}
 
-	// Pagar una deuda propia con más de lo que hay en el medio.
+	// Pagar una deuda propia con más de lo que hay en el medio. Este lo
+	// frena antes la verificación de un pago, que además dice cuánto falta.
 	deuda := e.crear(t, movimientos.Datos{
 		Tipo: movimientos.TipoMePrestaron, Monto: "500000", Fecha: "2026-09-03",
 		AQuien: ptr("Mi hermano"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
 	})
+	var falta *movimientos.FaltaPlata
 	if _, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, movimientos.AbonoDatos{
 		Monto: "150000", Fecha: "2026-09-04", MedioID: ptr(e.efectivo),
-	}); !errors.As(err, &rojo) {
-		t.Errorf("abonar sin plata: err = %v, se esperaba QuedaEnRojo", err)
+	}); !errors.As(err, &falta) || falta.Falta != "50000.00" {
+		t.Errorf("abonar sin plata: err = %v, se esperaba FaltaPlata de 50000.00", err)
 	}
 	if _, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, movimientos.AbonoDatos{
 		Monto: "100000", Fecha: "2026-09-04", MedioID: ptr(e.efectivo),
@@ -1054,5 +1056,75 @@ func TestCubrirUsandoPrimeroLosOtrosMedios(t *testing.T) {
 	})
 	if s := e.saldoDe(t, "Efectivo"); s != "20000.00" {
 		t.Errorf("efectivo = %s, se esperaba 20000.00", s)
+	}
+}
+
+// Pagarle a quien te prestó con plata que no hay en ese medio: pregunta de
+// dónde salió, y con la respuesta registra las dos cosas juntas.
+func TestPagarUnaDeudaSinFondosPreguntaDeDonde(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	// Me prestaron 300.000 por el banco y me los gasté.
+	deuda := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoMePrestaron, Monto: "300000", Fecha: "2026-09-01",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
+	})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "300000", Fecha: "2026-09-01", MedioPagoID: ptr(e.banco)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "100000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo)})
+
+	// Un abono de 150.000 por el banco: no hay nada ahí.
+	abono := movimientos.AbonoDatos{Monto: "150000", Fecha: "2026-09-03", MedioID: ptr(e.banco)}
+	var falta *movimientos.FaltaPlata
+	if _, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, abono); !errors.As(err, &falta) {
+		t.Fatalf("abonar sin fondos: err = %v, se esperaba FaltaPlata", err)
+	}
+	if falta.Falta != "150000.00" || falta.OtrosTotal != "100000.00" {
+		t.Errorf("falta = %+v", falta)
+	}
+
+	// Usando lo del efectivo y un ingreso por el resto.
+	abono.Cubrir = &movimientos.Cubrir{UsarOtros: true, Tipo: movimientos.CubrirIngreso, CategoriaID: e.categoria}
+	con, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, abono)
+	if err != nil {
+		t.Fatalf("abonar cubriendo: %v", err)
+	}
+	if con.Saldo != "150000.00" {
+		t.Errorf("saldo de la deuda = %s, se esperaba 150000.00", con.Saldo)
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
+	}
+	if s := e.saldoDe(t, "Transferencia"); s != "0.00" {
+		t.Errorf("transferencia = %s, se esperaba 0.00", s)
+	}
+
+	// Saldar lo que falta: tampoco hay, y ahora se lo presta otra persona.
+	if _, err := e.store.CambiarEstado(ctx, e.usuarioID, deuda.ID, movimientos.EstadoPagado, ptr(e.banco)); !errors.As(err, &falta) {
+		t.Fatalf("saldar sin fondos: err = %v, se esperaba FaltaPlata", err)
+	}
+	saldada, err := e.store.CambiarEstadoCubriendo(ctx, e.usuarioID, deuda.ID, movimientos.EstadoPagado, ptr(e.banco),
+		&movimientos.Cubrir{Tipo: movimientos.CubrirPrestamo, AQuien: "Ana"})
+	if err != nil {
+		t.Fatalf("saldar cubriendo: %v", err)
+	}
+	if saldada.Saldo != "0.00" {
+		t.Errorf("la deuda con Carlos debería quedar saldada: %s", saldada.Saldo)
+	}
+	r := e.resumen(t)
+	if r.DebidoPendiente != "150000.00" || len(r.Contrapartes) != 1 || r.Contrapartes[0].Nombre != "Ana" {
+		t.Errorf("ahora se le debe a Ana: debido=%s contrapartes=%+v", r.DebidoPendiente, r.Contrapartes)
+	}
+
+	// Lo que te devuelven a ti ENTRA: no pide nada aunque el medio esté en cero.
+	prestamo := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "100000", Fecha: "2026-09-04",
+		AQuien: ptr("Luis"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
+		Cubrir: &movimientos.Cubrir{Tipo: movimientos.CubrirIngreso, CategoriaID: e.categoria},
+	})
+	if _, err := e.store.Abonar(ctx, e.usuarioID, prestamo.ID, movimientos.AbonoDatos{
+		Monto: "50000", Fecha: "2026-09-05", MedioID: ptr(e.banco),
+	}); err != nil {
+		t.Errorf("un abono que entra no debería pedir fondos: %v", err)
 	}
 }

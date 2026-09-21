@@ -462,3 +462,50 @@ func guardia(ctx context.Context, tx *sql.Tx, usuarioID int64) (func() error, er
 	}
 	return func() error { return comparar(ctx, tx, usuarioID, foto) }, nil
 }
+
+// cubrirPagoDeDeuda aplica a un pago de deuda propia (un abono que SALE del
+// medio) la misma verificacion que a un gasto: si el medio no alcanza,
+// FaltaPlata; si el usuario dijo de donde salio, se registra en la misma
+// transaccion. Los abonos de un prestamo que te hacen a ti ENTRAN, asi que
+// con esos no hace nada; tampoco sin medio, que no sale de ningun lado.
+func (s *Store) cubrirPagoDeDeuda(ctx context.Context, tx *sql.Tx, usuarioID, movimientoID int64,
+	tipo, monto, fecha string, medioID *int64, cubrir *Cubrir) error {
+	if tipo != TipoMePrestaron || medioID == nil {
+		return nil
+	}
+
+	var (
+		categoria int64
+		aQuien    sql.NullString
+	)
+	err := tx.QueryRowContext(ctx,
+		`SELECT categoria_id, a_quien FROM movimientos WHERE id = $1 AND usuario_id = $2`,
+		movimientoID, usuarioID).Scan(&categoria, &aQuien)
+	if err != nil {
+		return fmt.Errorf("leyendo la deuda: %w", err)
+	}
+
+	descripcion := "Pago de una deuda"
+	if aQuien.String != "" {
+		descripcion = "Pago a " + aQuien.String
+	}
+	// Se verifica como si fuera un gasto: es plata que sale del medio. Solo
+	// se usa para la verificacion y para armar lo que cubre; el abono lo
+	// inserta quien llama.
+	return s.cubrirSiFalta(ctx, tx, usuarioID, 0, Datos{
+		CategoriaID: categoria,
+		Tipo:        TipoPague,
+		Monto:       monto,
+		Fecha:       fecha,
+		Descripcion: descripcion,
+		MedioPagoID: medioID,
+		Cubrir:      cubrir,
+	})
+}
+
+// VerificarPago dice si sacar `monto` de un medio lo deja en rojo, sin
+// escribir nada. La usa el asistente para avisar al PROPONER el pago de una
+// deuda propia, antes de que el usuario llegue a la tarjeta.
+func (s *Store) VerificarPago(ctx context.Context, usuarioID, medioID int64, monto string) error {
+	return verificarFondos(ctx, s.db, usuarioID, 0, Datos{Tipo: TipoPague, Monto: monto, MedioPagoID: &medioID})
+}

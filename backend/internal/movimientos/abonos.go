@@ -43,6 +43,10 @@ type AbonoDatos struct {
 	Fecha   string
 	MedioID *int64
 	Nota    string
+
+	// Cubrir: de donde salio la plata cuando se paga una deuda propia y el
+	// medio no alcanza. Igual que en un gasto (ver fondos.go).
+	Cubrir *Cubrir
 }
 
 // Cuota es un pedazo del acuerdo de pago: cuanto y para cuando.
@@ -135,6 +139,9 @@ func (s *Store) Abonar(ctx context.Context, usuarioID, movimientoID int64, d Abo
 	}
 	if sobra {
 		return nil, ErrAbonoDeMas
+	}
+	if err := s.cubrirPagoDeDeuda(ctx, tx, usuarioID, movimientoID, tipo, d.Monto, d.Fecha, d.MedioID, d.Cubrir); err != nil {
+		return nil, err
 	}
 
 	const insertar = `
@@ -447,7 +454,7 @@ func (s *Store) ListarCuotas(ctx context.Context, usuarioID, movimientoID int64)
 // Es lo que hace el boton "Ya me pagó" de la lista. Por dentro NO escribe
 // 'pagado' en ningun lado: crea el abono que faltaba y deja que
 // recalcularEstado saque la conclusion. Un solo camino, una sola verdad.
-func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medioID *int64, fecha string) (*Movimiento, error) {
+func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medioID *int64, fecha string, cubrir *Cubrir) (*Movimiento, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("abriendo transaccion: %w", err)
@@ -488,6 +495,9 @@ func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medio
 	// como esta en vez de crear un abono de cero (que el CHECK rechazaria).
 	if saldada {
 		return s.PorID(ctx, usuarioID, movimientoID)
+	}
+	if err := s.cubrirPagoDeDeuda(ctx, tx, usuarioID, movimientoID, tipo, saldo, fecha, medioID, cubrir); err != nil {
+		return nil, err
 	}
 
 	const insertar = `
@@ -532,9 +542,16 @@ func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medio
 // 'parcial' no se puede pedir: sale solo de abonar una parte. Pedirlo seria
 // decir "quedate a medias" sin decir de cuanto, que no significa nada.
 func (s *Store) CambiarEstado(ctx context.Context, usuarioID, id int64, estado string, medioID *int64) (*Movimiento, error) {
+	return s.CambiarEstadoCubriendo(ctx, usuarioID, id, estado, medioID, nil)
+}
+
+// CambiarEstadoCubriendo es CambiarEstado con la respuesta a "¿de donde
+// salio la plata?" para cuando saldar una deuda propia deja el medio sin
+// fondos. En los demas casos cubrir se ignora.
+func (s *Store) CambiarEstadoCubriendo(ctx context.Context, usuarioID, id int64, estado string, medioID *int64, cubrir *Cubrir) (*Movimiento, error) {
 	switch estado {
 	case EstadoPagado:
-		return s.Saldar(ctx, usuarioID, id, medioID, HoyEnColombia())
+		return s.Saldar(ctx, usuarioID, id, medioID, HoyEnColombia(), cubrir)
 	case EstadoPendiente:
 		return s.BorrarAbonos(ctx, usuarioID, id)
 	default:

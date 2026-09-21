@@ -154,11 +154,11 @@ export default function Movimientos() {
     setCobrando(m)
   }
 
-  async function guardarEstado(m, estado, medioCobroID) {
+  async function guardarEstado(m, estado, medioCobroID, cubrir) {
     setCambiandoEstado(m.id)
     setError('')
     try {
-      const actualizado = await movimientosApi.cambiarEstado(m.id, estado, medioCobroID)
+      const actualizado = await movimientosApi.cambiarEstado(m.id, estado, medioCobroID, cubrir)
       // Reemplazamos solo esa fila en vez de recargar toda la lista:
       // el cambio se ve al instante y no se pierde el scroll.
       setMovimientos((prev) => prev.map((x) => (x.id === m.id ? actualizado : x)))
@@ -425,16 +425,20 @@ export default function Movimientos() {
       {cobrando && (
         <ModalCobro
           movimiento={cobrando}
+          categorias={categorias}
           medios={medios}
+          contrapartes={contrapartes}
           onCerrar={() => setCobrando(null)}
-          onConfirmar={(medioCobroID) => guardarEstado(cobrando, 'pagado', medioCobroID)}
+          onConfirmar={(medioCobroID, cubrir) => guardarEstado(cobrando, 'pagado', medioCobroID, cubrir)}
         />
       )}
 
       {abonando && (
         <ModalAbonos
           movimiento={abonando}
+          categorias={categorias}
           medios={medios}
+          contrapartes={contrapartes}
           onCerrar={() => setAbonando(null)}
           onCambio={(actualizada) => {
             // La fila de atrás se actualiza sola: si no, la lista quedaría

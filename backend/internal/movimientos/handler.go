@@ -457,6 +457,21 @@ func Validar(req Entrada) (Datos, map[string]string) {
 	return datos, nil
 }
 
+// ValidarCubrirPago valida el `cubrir` de un pago de deuda (un abono o
+// saldarla), que no llega dentro de una Entrada de movimiento. Devuelve nil
+// si no viene nada.
+func ValidarCubrirPago(medioID int64, fecha string, c *EntradaCubrir) (*Cubrir, map[string]string) {
+	if c == nil {
+		return nil, nil
+	}
+	v := httpx.NuevoValidador()
+	cubrir := validarCubrir(v, Entrada{MedioPagoID: medioID, Fecha: fecha}, *c)
+	if !v.Valido() {
+		return nil, v.Campos
+	}
+	return cubrir, nil
+}
+
 // validarCubrir revisa de donde dice el usuario que salio lo que faltaba. Los
 // errores van con el prefijo "cubrir." para que el formulario los ponga junto
 // a la pregunta y no junto a los campos del gasto.
@@ -521,6 +536,9 @@ func (h *Handler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
 		// antes de esta version.
 		MedioID      int64 `json:"medio_id"`
 		MedioCobroID int64 `json:"medio_cobro_id"`
+
+		// Al saldar una deuda propia sin fondos en el medio: de donde salio.
+		Cubrir *EntradaCubrir `json:"cubrir"`
 	}
 	if err := httpx.DecodeJSON(w, r, &req); err != nil {
 		httpx.Error(w, http.StatusBadRequest, err.Error())
@@ -547,7 +565,13 @@ func (h *Handler) CambiarEstado(w http.ResponseWriter, r *http.Request) {
 		medio = &medioID
 	}
 
-	m, err := h.store.CambiarEstado(r.Context(), usuarioID, id, req.Estado, medio)
+	cubrir, campos := ValidarCubrirPago(medioID, HoyEnColombia(), req.Cubrir)
+	if campos != nil {
+		httpx.ErrorCampos(w, campos)
+		return
+	}
+
+	m, err := h.store.CambiarEstadoCubriendo(r.Context(), usuarioID, id, req.Estado, medio, cubrir)
 	h.responderDeuda(w, r, m, err, "movimientos: cambiando estado")
 }
 

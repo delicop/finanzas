@@ -317,6 +317,12 @@ Los errores de `cubrir` llegan como `cubrir.a_quien`, `cubrir.categoria_id`...
 Confirmar un recurrente y la tarjeta del asistente reciben el mismo cuerpo, con
 el mismo `cubrir`.
 
+**Pagar una deuda propia** también saca plata del medio: un abono
+(`POST /api/movimientos/{id}/abonos`) o saldarla (`PATCH .../estado` con
+`"estado":"pagado"`) sobre un `me_prestaron` responden el mismo 409 con
+`falta_plata`, y aceptan el mismo `cubrir` en el cuerpo. Los abonos de un
+`preste` entran, así que nunca lo piden.
+
 Además, **cualquier** escritura de plata (editar, borrar un movimiento, abonar,
 saldar, volver a pendiente, borrar un abono) pasa por una guardia: si deja un
 medio en negativo **y peor que antes**, se deshace y responde **409**:

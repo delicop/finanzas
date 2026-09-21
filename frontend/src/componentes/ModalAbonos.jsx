@@ -9,6 +9,7 @@ import {
   montoAEntrada,
   sumarDias,
 } from '../lib/formato'
+import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
 import Modal from './Modal'
 
@@ -21,7 +22,7 @@ import Modal from './Modal'
 //
 // Ninguna cuenta se hace aquí: el saldo, lo abonado y si una cuota está
 // cubierta los calcula Postgres y llegan ya resueltos.
-export default function ModalAbonos({ movimiento, medios, onCerrar, onCambio }) {
+export default function ModalAbonos({ movimiento, categorias = [], medios, contrapartes = [], onCerrar, onCambio }) {
   const propia = esDeudaPropia(movimiento)
 
   const [deuda, setDeuda] = useState(movimiento)
@@ -32,6 +33,9 @@ export default function ModalAbonos({ movimiento, medios, onCerrar, onCambio }) 
   const [campos, setCampos] = useState({})
   const [guardando, setGuardando] = useState(false)
   const [armandoAcuerdo, setArmandoAcuerdo] = useState(false)
+  // Pagar una deuda tuya con plata que no hay en ese medio: el backend dice
+  // cuánto falta y el formulario pregunta de dónde salió.
+  const [falta, setFalta] = useState(null)
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -94,20 +98,29 @@ export default function ModalAbonos({ movimiento, medios, onCerrar, onCambio }) 
           ) : (
             <FormAbono
               deuda={deuda}
+              categorias={categorias}
               medios={medios}
+              contrapartes={contrapartes}
               propia={propia}
               campos={campos}
               guardando={guardando}
+              falta={falta}
+              onSinAviso={() => setFalta(null)}
               onGuardar={async (datos) => {
                 setGuardando(true)
                 setError('')
                 setCampos({})
                 try {
                   const actualizada = await movimientosApi.abonar(movimiento.id, datos)
+                  setFalta(null)
                   aplicar(actualizada)
                   await cargar()
                 } catch (err) {
-                  setError(err.message)
+                  if (err.faltaPlata) {
+                    setFalta(err.faltaPlata)
+                  } else {
+                    setError(err.message)
+                  }
                   setCampos(err.campos ?? {})
                 } finally {
                   setGuardando(false)
@@ -218,13 +231,36 @@ function ListaAbonos({ abonos, propia, onBorrar }) {
   )
 }
 
-function FormAbono({ deuda, medios, propia, campos, guardando, onGuardar }) {
-  const [monto, setMonto] = useState('')
+function FormAbono({
+  deuda,
+  categorias,
+  medios,
+  contrapartes,
+  propia,
+  campos,
+  guardando,
+  falta,
+  onSinAviso,
+  onGuardar,
+}) {
+  const [monto, setMontoCrudo] = useState('')
   const [fecha, setFecha] = useState(hoyISO())
   // Arranca con el mismo medio del préstamo: es lo más común (te devuelven por
   // donde prestaste), así casi siempre es un campo menos que tocar.
-  const [medioID, setMedioID] = useState(deuda.medio_pago_id ?? '')
+  const [medioID, setMedioIDCrudo] = useState(deuda.medio_pago_id ?? '')
   const [nota, setNota] = useState('')
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
+
+  // Cambiar el monto o el medio cambia las cifras: el aviso de "no te
+  // alcanza" que había ya no dice la verdad.
+  function setMonto(v) {
+    setMontoCrudo(v)
+    onSinAviso()
+  }
+  function setMedioID(v) {
+    setMedioIDCrudo(v)
+    onSinAviso()
+  }
 
   function enviar(e) {
     e.preventDefault()
@@ -233,6 +269,7 @@ function FormAbono({ deuda, medios, propia, campos, guardando, onGuardar }) {
       fecha,
       medio_id: medioID ? Number(medioID) : 0,
       nota,
+      cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
     })
   }
 
@@ -289,8 +326,21 @@ function FormAbono({ deuda, medios, propia, campos, guardando, onGuardar }) {
         placeholder="Opcional"
       />
 
+      {falta && (
+        <CubrirFaltante
+          falta={falta}
+          valor={cubrir}
+          onCambio={setCubrir}
+          categorias={categorias}
+          medios={medios}
+          contrapartes={contrapartes}
+          fecha={fecha}
+          campos={campos}
+        />
+      )}
+
       <button type="submit" disabled={guardando}>
-        {guardando ? 'Guardando...' : 'Registrar abono'}
+        {guardando ? 'Guardando...' : falta ? 'Guardar todo' : 'Registrar abono'}
       </button>
     </form>
   )

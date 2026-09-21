@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"finanzas/internal/dinero"
 	"finanzas/internal/movimientos"
 )
 
@@ -163,6 +164,13 @@ func (c *Catalogo) proponerAbono(ctx context.Context, usuarioID int64, crudos js
 	instruccion := "El abono NO está registrado todavía. Al usuario le apareció una tarjeta para confirmarlo. " +
 		"Dile en una frase de qué deuda se trata, cuánto es el abono y cuánto quedaría faltando, " +
 		"y pídele que confirme ahí."
+	if m.Tipo == movimientos.TipoMePrestaron && medioID > 0 {
+		aviso, err := c.avisoSinFondos(ctx, usuarioID, medioID, datos.Monto)
+		if err != nil {
+			return Resultado{}, err
+		}
+		instruccion += aviso
+	}
 
 	confirmacion, err := aJSON(map[string]any{
 		"estado":      "pendiente de confirmación",
@@ -237,4 +245,25 @@ func (c *Catalogo) Abonar(ctx context.Context, usuarioID, movimientoID int64, en
 		return nil, nil, err
 	}
 	return m, nil, nil
+}
+
+// avisoSinFondos es lo que se le agrega a la instruccion cuando el usuario va
+// a PAGAR (una deuda suya) con plata que no hay en ese medio. Vacio si
+// alcanza. Sin esto, la tarjeta salia normal y solo al confirmarla aparecia
+// el "no te alcanza": la conversacion ya habia seguido de largo.
+func (c *Catalogo) avisoSinFondos(ctx context.Context, usuarioID, medioID int64, monto string) (string, error) {
+	var falta *movimientos.FaltaPlata
+	err := c.movimientos.VerificarPago(ctx, usuarioID, medioID, monto)
+	if !errors.As(err, &falta) {
+		return "", err
+	}
+	aviso := fmt.Sprintf(" OJO: en %s solo hay %s y este pago es de %s, así que faltan %s. "+
+		"Nadie puede quedar en negativo: pregúntale de dónde salió lo que falta (si se lo prestaron, "+
+		"si fue un ingreso o si lo pasó de otro medio). La tarjeta también se lo preguntará al confirmar.",
+		falta.Medio, dinero.Formatear(falta.Disponible), dinero.Formatear(falta.Monto), dinero.Formatear(falta.Falta))
+	if len(falta.EnOtros) > 0 {
+		aviso += fmt.Sprintf(" En sus otros medios tiene %s: pregúntale primero si usó esa plata.",
+			dinero.Formatear(falta.OtrosTotal))
+	}
+	return aviso, nil
 }

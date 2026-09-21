@@ -186,10 +186,11 @@ export const movimientosApi = {
   // PATCH (no PUT) porque cambia un solo campo: así ningún otro dato
   // del movimiento puede pisarse por accidente.
   // medioCobroID: por dónde te devolvieron el préstamo (0 = sin registrar).
-  cambiarEstado: (id, estado, medioCobroID = 0) =>
+  // `cubrir` va solo al saldar una deuda propia cuando el medio no alcanza.
+  cambiarEstado: (id, estado, medioCobroID = 0, cubrir) =>
     apiFetch(`/api/movimientos/${id}/estado`, {
       metodo: 'PATCH',
-      body: { estado, medio_cobro_id: medioCobroID },
+      body: { estado, medio_cobro_id: medioCobroID, cubrir },
     }),
 
   // Los pagos parciales de una deuda. El saldo lo calcula el backend; aquí
