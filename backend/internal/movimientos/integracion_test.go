@@ -134,6 +134,13 @@ func (e *entorno) crear(t *testing.T, d movimientos.Datos) *movimientos.Movimien
 	return m
 }
 
+// fondear mete plata en el medio para que las pruebas que no tratan de eso
+// puedan gastar: ningun medio puede quedar en negativo (ver fondos.go).
+func (e *entorno) fondear(t *testing.T, medio int64) {
+	t.Helper()
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "10000000", Fecha: "2026-01-01", MedioPagoID: ptr(medio)})
+}
+
 func (e *entorno) resumen(t *testing.T) *movimientos.Resumen {
 	t.Helper()
 	r, err := e.store.Resumen(context.Background(), e.usuarioID)
@@ -274,6 +281,7 @@ func TestPrestarEnEfectivoYCobrarPorBanco(t *testing.T) {
 	e := nuevoEntorno(t)
 	ctx := context.Background()
 
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "500000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
 	prestamo := e.crear(t, movimientos.Datos{
 		Tipo: movimientos.TipoPreste, Monto: "500000", Fecha: "2026-09-01",
 		AQuien: ptr("Andrés"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.efectivo),
@@ -290,16 +298,16 @@ func TestPrestarEnEfectivoYCobrarPorBanco(t *testing.T) {
 		return ""
 	}
 
-	if s := saldo("Efectivo"); s != "-500000.00" {
-		t.Errorf("al prestar, el efectivo debería quedar en -500000.00, está en %s", s)
+	if s := saldo("Efectivo"); s != "0.00" {
+		t.Errorf("al prestar, el efectivo debería quedar en 0.00, está en %s", s)
 	}
 
 	if _, err := e.store.CambiarEstado(ctx, e.usuarioID, prestamo.ID, movimientos.EstadoPagado, ptr(e.banco)); err != nil {
 		t.Fatalf("CambiarEstado: %v", err)
 	}
 
-	if s := saldo("Efectivo"); s != "-500000.00" {
-		t.Errorf("el efectivo debe seguir en -500000.00 (de ahí salió), está en %s", s)
+	if s := saldo("Efectivo"); s != "0.00" {
+		t.Errorf("el efectivo debe seguir en 0.00 (de ahí salió), está en %s", s)
 	}
 	if s := saldo("Transferencia"); s != "500000.00" {
 		t.Errorf("la transferencia debería quedar en 500000.00 (por ahí volvió), está en %s", s)
@@ -313,6 +321,7 @@ func TestLosSaldosPorMedioSumanElBalance(t *testing.T) {
 	ctx := context.Background()
 
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "2500000", Fecha: "2026-09-01", MedioPagoID: ptr(e.banco)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "600000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "400000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{
 		Tipo: movimientos.TipoPreste, Monto: "150000", Fecha: "2026-09-03",
@@ -374,6 +383,7 @@ func sumarSaldos(r *movimientos.Resumen) string {
 // monto completo.
 func TestVolverAPendienteBorraLosAbonos(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	p := e.crear(t, movimientos.Datos{
@@ -414,6 +424,7 @@ func TestVolverAPendienteBorraLosAbonos(t *testing.T) {
 // monto original.
 func TestAbonoParcial(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	p := e.crear(t, movimientos.Datos{
@@ -543,6 +554,7 @@ func medioLlamado(r *movimientos.Resumen, nombre string) *movimientos.ResumenMed
 // Nadie puede tocar datos de otro usuario aunque adivine el id (IDOR).
 func TestNoSeVenDatosDeOtroUsuario(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	mio := e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "1000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
@@ -584,7 +596,7 @@ func TestFiltros(t *testing.T) {
 	e := nuevoEntorno(t)
 	ctx := context.Background()
 
-	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "1000", Fecha: "2026-09-01", Descripcion: "Venta grande", MedioPagoID: ptr(e.banco)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "10000", Fecha: "2026-09-01", Descripcion: "Venta grande", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "2000", Fecha: "2026-09-15", Descripcion: "Arriendo", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{
 		Tipo: movimientos.TipoPreste, Monto: "3000", Fecha: "2026-09-20",
@@ -599,7 +611,7 @@ func TestFiltros(t *testing.T) {
 		{"sin filtros", movimientos.Filtros{}, 3},
 		{"por tipo", movimientos.Filtros{Tipo: movimientos.TipoPague}, 1},
 		{"por estado", movimientos.Filtros{Estado: movimientos.EstadoPendiente}, 1},
-		{"por medio", movimientos.Filtros{MedioPagoID: e.efectivo}, 2},
+		{"por medio", movimientos.Filtros{MedioPagoID: e.efectivo}, 3},
 		{"desde", movimientos.Filtros{Desde: "2026-09-15"}, 2},
 		{"hasta", movimientos.Filtros{Hasta: "2026-09-15"}, 2},
 		{"rango", movimientos.Filtros{Desde: "2026-09-10", Hasta: "2026-09-16"}, 1},
@@ -626,7 +638,7 @@ func TestBusquedaNoEsVulnerableAInyeccion(t *testing.T) {
 	e := nuevoEntorno(t)
 	ctx := context.Background()
 
-	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "1000", Fecha: "2026-09-01", Descripcion: "normal", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "1000", Fecha: "2026-09-01", Descripcion: "normal", MedioPagoID: ptr(e.efectivo)})
 
 	ataques := []string{
 		"'; DROP TABLE movimientos; --",
@@ -654,6 +666,7 @@ func TestBusquedaNoEsVulnerableAInyeccion(t *testing.T) {
 // registros de dinero.
 func TestNoSeBorraCategoriaConMovimientos(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "1000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
@@ -666,6 +679,7 @@ func TestNoSeBorraCategoriaConMovimientos(t *testing.T) {
 
 func TestNoSeBorraMedioEnUso(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "1000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
@@ -695,6 +709,7 @@ func TestLosCentavosNoSePierden(t *testing.T) {
 
 func TestPrestamoConFechaDeCobro(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	m := e.crear(t, movimientos.Datos{
@@ -734,6 +749,7 @@ func TestPrestamoConFechaDeCobro(t *testing.T) {
 // aunque la validación se salte.
 func TestLaBaseCuidaLaFechaDeCobro(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t, e.efectivo)
 	ctx := context.Background()
 
 	_, err := e.store.Crear(ctx, e.usuarioID, movimientos.Datos{
@@ -751,5 +767,235 @@ func TestLaBaseCuidaLaFechaDeCobro(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("un gasto quedó con fecha de cobro")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Ningún medio queda en negativo (fondos.go)
+// ---------------------------------------------------------------------------
+
+func (e *entorno) saldoDe(t *testing.T, nombre string) string {
+	t.Helper()
+	m := medioLlamado(e.resumen(t), nombre)
+	if m == nil {
+		t.Fatalf("no apareció el medio %q en el resumen", nombre)
+	}
+	return m.Saldo
+}
+
+// Tengo 400.000 y gasto 600.000: no entra, y dice cuánto falta.
+func TestNoSeGastaMasDeLoQueHay(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+
+	gasto := movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "600000",
+		Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo),
+	}
+	_, err := e.store.Crear(ctx, e.usuarioID, gasto)
+
+	var falta *movimientos.FaltaPlata
+	if !errors.As(err, &falta) {
+		t.Fatalf("err = %v, se esperaba FaltaPlata", err)
+	}
+	if falta.Disponible != "400000.00" || falta.Falta != "200000.00" || falta.Medio != "Efectivo" {
+		t.Errorf("falta = %+v", falta)
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "400000.00" {
+		t.Errorf("el gasto rechazado movió el efectivo: %s", s)
+	}
+
+	// Justo lo que hay sí se puede gastar: el medio queda en cero, no en rojo.
+	gasto.Monto = "400000"
+	if _, err := e.store.Crear(ctx, e.usuarioID, gasto); err != nil {
+		t.Fatalf("gastar exactamente lo que hay: %v", err)
+	}
+}
+
+// "Me prestaron lo que faltaba": entran las dos cosas y el medio queda en cero.
+func TestCubrirConUnPrestamo(t *testing.T) {
+	e := nuevoEntorno(t)
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPague, Monto: "600000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo),
+		Cubrir: &movimientos.Cubrir{Tipo: movimientos.CubrirPrestamo, AQuien: "Mi hermano"},
+	})
+
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
+	}
+	r := e.resumen(t)
+	if r.DebidoPendiente != "200000.00" {
+		t.Errorf("le debes = %s, se esperaba 200000.00", r.DebidoPendiente)
+	}
+	if len(r.Contrapartes) != 1 || r.Contrapartes[0].Nombre != "Mi hermano" {
+		t.Errorf("contrapartes = %+v", r.Contrapartes)
+	}
+}
+
+// "Fue un ingreso": entra por la categoría que se elija.
+func TestCubrirConUnIngreso(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	ventas, err := categorias.NewStore(e.pool).Crear(ctx, e.usuarioID, "Ventas")
+	if err != nil {
+		t.Fatalf("creando categoría: %v", err)
+	}
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPague, Monto: "600000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo),
+		Cubrir: &movimientos.Cubrir{Tipo: movimientos.CubrirIngreso, CategoriaID: ventas.ID},
+	})
+
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
+	}
+	for _, c := range e.resumen(t).Categorias {
+		if c.Nombre == "Ventas" && c.Recibido != "200000.00" {
+			t.Errorf("Ventas recibió %s, se esperaba 200000.00", c.Recibido)
+		}
+	}
+}
+
+// "Lo pasé de otro medio": si ese otro tampoco tiene, no entra nada.
+func TestCubrirConUnTraslado(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	gasto := movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "600000", Fecha: "2026-09-02",
+		MedioPagoID: ptr(e.efectivo),
+		Cubrir:      &movimientos.Cubrir{Tipo: movimientos.CubrirTraslado, OrigenID: e.banco},
+	}
+
+	_, err := e.store.Crear(ctx, e.usuarioID, gasto)
+	var falta *movimientos.FaltaPlata
+	if !errors.As(err, &falta) || falta.Medio != "Transferencia" {
+		t.Fatalf("con el banco vacío, err = %v; se esperaba FaltaPlata de Transferencia", err)
+	}
+	if _, total, _ := e.store.Listar(ctx, e.usuarioID, movimientos.Filtros{}); total != 1 {
+		t.Fatalf("quedaron %d movimientos: la transacción dejó algo a medias", total)
+	}
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "500000", Fecha: "2026-09-01", MedioPagoID: ptr(e.banco)})
+	e.crear(t, gasto)
+
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
+	}
+	if s := e.saldoDe(t, "Transferencia"); s != "300000.00" {
+		t.Errorf("transferencia = %s, se esperaba 300000.00", s)
+	}
+}
+
+// Al editar: subir el gasto por encima de lo que hay no entra, pero corregir
+// un gasto viejo en un medio que ya venía en rojo sí.
+func TestEditarRespetaLosFondos(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	g := e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "300000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo)})
+
+	datos := movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "400000",
+		Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo),
+	}
+	if _, err := e.store.Actualizar(ctx, e.usuarioID, g.ID, datos); err != nil {
+		t.Fatalf("subir hasta lo que hay debe poder: %v", err)
+	}
+	datos.Monto = "400001"
+	var falta *movimientos.FaltaPlata
+	if _, err := e.store.Actualizar(ctx, e.usuarioID, g.ID, datos); !errors.As(err, &falta) || falta.Falta != "1.00" {
+		t.Fatalf("pasarse por un peso: err = %v", err)
+	}
+
+	// Un gasto de antes de la regla que dejó el banco en rojo.
+	var viejo int64
+	err := e.pool.QueryRowContext(ctx, `
+		INSERT INTO movimientos (usuario_id, categoria_id, tipo, monto, fecha, descripcion, medio_pago_id)
+		VALUES ($1, $2, 'pague', 50000, '2026-08-01', '', $3) RETURNING id`,
+		e.usuarioID, e.categoria, e.banco).Scan(&viejo)
+	if err != nil {
+		t.Fatalf("insertando el gasto viejo: %v", err)
+	}
+	if _, err := e.store.Actualizar(ctx, e.usuarioID, viejo, movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "50000",
+		Fecha: "2026-08-01", Descripcion: "Ahora con descripción", MedioPagoID: ptr(e.banco),
+	}); err != nil {
+		t.Errorf("corregir la descripción de un gasto viejo no debería pedir cuadrar: %v", err)
+	}
+}
+
+// La guardia: ni borrando, ni editando un ingreso, ni con abonos, ningún medio
+// termina en rojo.
+func TestLaGuardiaNoDejaNingunMedioEnRojo(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	ingreso := e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "300000", Fecha: "2026-09-02", MedioPagoID: ptr(e.efectivo)})
+
+	var rojo *movimientos.QuedaEnRojo
+
+	// Borrar el ingreso con el que se pagó.
+	if _, err := e.store.Eliminar(ctx, e.usuarioID, ingreso.ID); !errors.As(err, &rojo) {
+		t.Fatalf("borrar el ingreso: err = %v, se esperaba QuedaEnRojo", err)
+	}
+	if rojo.Saldo != "-300000.00" || rojo.Falta != "300000.00" {
+		t.Errorf("rojo = %+v", rojo)
+	}
+
+	// Bajarle el monto por debajo de lo gastado.
+	editado := movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoRecibi, Monto: "299999",
+		Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo),
+	}
+	if _, err := e.store.Actualizar(ctx, e.usuarioID, ingreso.ID, editado); !errors.As(err, &rojo) {
+		t.Errorf("bajar el ingreso: err = %v, se esperaba QuedaEnRojo", err)
+	}
+	// Pasarlo a otro medio deja al efectivo sin con qué.
+	editado.Monto, editado.MedioPagoID = "400000", ptr(e.banco)
+	if _, err := e.store.Actualizar(ctx, e.usuarioID, ingreso.ID, editado); !errors.As(err, &rojo) {
+		t.Errorf("mover el ingreso: err = %v, se esperaba QuedaEnRojo", err)
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "100000.00" {
+		t.Fatalf("lo rechazado movió el efectivo: %s", s)
+	}
+
+	// Pagar una deuda propia con más de lo que hay en el medio.
+	deuda := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoMePrestaron, Monto: "500000", Fecha: "2026-09-03",
+		AQuien: ptr("Mi hermano"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
+	})
+	if _, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, movimientos.AbonoDatos{
+		Monto: "150000", Fecha: "2026-09-04", MedioID: ptr(e.efectivo),
+	}); !errors.As(err, &rojo) {
+		t.Errorf("abonar sin plata: err = %v, se esperaba QuedaEnRojo", err)
+	}
+	if _, err := e.store.Abonar(ctx, e.usuarioID, deuda.ID, movimientos.AbonoDatos{
+		Monto: "100000", Fecha: "2026-09-04", MedioID: ptr(e.efectivo),
+	}); err != nil {
+		t.Errorf("abonar justo lo que hay: %v", err)
+	}
+
+	// Te devuelven un préstamo por el banco, gastas esa plata y luego
+	// intentas borrar el abono: el banco quedaría en rojo.
+	prestamo := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "500000", Fecha: "2026-09-05",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
+	})
+	if _, err := e.store.CambiarEstado(ctx, e.usuarioID, prestamo.ID, movimientos.EstadoPagado, ptr(e.banco)); err != nil {
+		t.Fatalf("cobrar: %v", err)
+	}
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "500000", Fecha: "2026-09-06", MedioPagoID: ptr(e.banco)})
+	if _, err := e.store.CambiarEstado(ctx, e.usuarioID, prestamo.ID, movimientos.EstadoPendiente, nil); !errors.As(err, &rojo) {
+		t.Errorf("borrar lo que te devolvieron ya gastado: err = %v, se esperaba QuedaEnRojo", err)
 	}
 }

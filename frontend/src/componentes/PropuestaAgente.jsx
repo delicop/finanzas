@@ -3,6 +3,7 @@ import { agenteApi, movimientosApi } from '../lib/api'
 import { entradaAMonto, formatearFecha, formatearMonto, montoAEntrada, ETIQUETAS_TIPO } from '../lib/formato'
 import { hoyISO } from '../lib/formato'
 import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
+import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
 
 // La tarjeta que aparece cuando el asistente prepara algo.
@@ -23,7 +24,9 @@ export default function PropuestaAgente({ propuesta, categorias, medios, factura
     return <AbonoParcial propuesta={propuesta} medios={medios} onResuelta={onResuelta} />
   }
   if (propuesta.tipo === 'recurrente') {
-    return <PagoRecurrente propuesta={propuesta} onResuelta={onResuelta} />
+    return (
+      <PagoRecurrente propuesta={propuesta} categorias={categorias} medios={medios} onResuelta={onResuelta} />
+    )
   }
   return (
     <MovimientoNuevo
@@ -58,6 +61,11 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
     if (facturaInicial) setFactura(facturaInicial)
   }
 
+  // Igual que en el formulario: si el medio no alcanza, la tarjeta pregunta
+  // de dónde salió el resto y lo manda con el siguiente Guardar.
+  const [falta, setFalta] = useState(null)
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
+
   const esDeuda = tipo === 'preste' || tipo === 'me_prestaron'
   const esPropia = tipo === 'me_prestaron'
   const esTraslado = tipo === 'traslado'
@@ -76,6 +84,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
       a_quien: esDeuda ? aQuien : '',
       estado: esDeuda ? estado : '',
       cobrar_el: esDeuda ? cobrarEl : '',
+      cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
     }
   }
 
@@ -84,7 +93,8 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
       propuesta={propuesta}
       onResuelta={onResuelta}
       cuerpo={cuerpo}
-      etiqueta="Guardar"
+      onFaltaPlata={setFalta}
+      etiqueta={falta ? 'Guardar las dos cosas' : 'Guardar'}
       despues={factura ? (movimiento) => movimientosApi.subirFactura(movimiento.id, factura) : null}
     >
       {(campos) => (
@@ -244,6 +254,21 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
               </>
             )}
           </div>
+
+          {falta && (
+            <div className="propuesta-campo crece">
+              <CubrirFaltante
+                falta={falta}
+                valor={cubrir}
+                onCambio={setCubrir}
+                categorias={categorias}
+                medios={medios}
+                fecha={fecha}
+                campos={campos}
+                prefijo={`cubrir-${propuesta.id}`}
+              />
+            </div>
+          )}
         </div>
       )}
     </Tarjeta>
@@ -261,9 +286,11 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
 // qué categoría y por dónde sale ya lo dice la plantilla. El recibo casi nunca
 // llega por el mismo valor, así que si viene distinto al de siempre se dice
 // aquí mismo, para que no se confirme sin mirar.
-function PagoRecurrente({ propuesta, onResuelta }) {
+function PagoRecurrente({ propuesta, categorias, medios, onResuelta }) {
   const datos = propuesta.datos
   const [monto, setMonto] = useState(montoAEntrada(datos.monto))
+  const [falta, setFalta] = useState(null)
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
   const recibido = datos.tipo === 'recibi'
   const distinto = datos.monto !== datos.monto_de_siempre
 
@@ -278,8 +305,10 @@ function PagoRecurrente({ propuesta, onResuelta }) {
         monto: entradaAMonto(monto),
         fecha: datos.fecha,
         descripcion: datos.descripcion,
+        cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
       })}
-      etiqueta={recibido ? 'Lo recibí' : 'Lo pagué'}
+      onFaltaPlata={setFalta}
+      etiqueta={falta ? 'Guardar las dos cosas' : recibido ? 'Lo recibí' : 'Lo pagué'}
     >
       {(campos) => (
         <>
@@ -305,6 +334,21 @@ function PagoRecurrente({ propuesta, onResuelta }) {
                   : 'Es el valor de siempre; cámbialo si este mes vino distinto.'}
               </span>
             </div>
+
+            {falta && (
+              <div className="propuesta-campo crece">
+                <CubrirFaltante
+                  falta={falta}
+                  valor={cubrir}
+                  onCambio={setCubrir}
+                  categorias={categorias}
+                  medios={medios}
+                  fecha={datos.fecha}
+                  campos={campos}
+                  prefijo={`cubrir-${propuesta.id}`}
+                />
+              </div>
+            )}
           </div>
         </>
       )}
@@ -474,7 +518,7 @@ function AbonoParcial({ propuesta, medios, onResuelta }) {
 // `despues` es opcional: lo que hay que hacer con el movimiento ya creado (subir
 // su factura). Si falla, el movimiento YA quedó guardado: la tarjeta se cierra
 // igual y se avisa, para que no se intente guardar dos veces.
-function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, despues, children }) {
+function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, despues, onFaltaPlata, children }) {
   const [campos, setCampos] = useState({})
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -495,7 +539,12 @@ function Tarjeta({ propuesta, onResuelta, cuerpo, etiqueta, despues, children })
       }
       onResuelta(propuesta.id, movimiento, aviso)
     } catch (err) {
-      setError(err.message)
+      if (err.faltaPlata && onFaltaPlata) {
+        // La tarjeta pinta la pregunta: el mensaje arriba sobraría.
+        onFaltaPlata(err.faltaPlata)
+      } else {
+        setError(err.message)
+      }
       setCampos(err.campos ?? {})
     } finally {
       setOcupado(false)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"finanzas/internal/categorias"
+	"finanzas/internal/dinero"
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
 	"finanzas/internal/recurrentes"
@@ -826,6 +827,19 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		instruccion += " Como es un gasto, pregúntale también si tiene la foto o el PDF de la factura: " +
 			"puede adjuntarla en la misma tarjeta con el botón 📎 Adjuntar factura antes de guardar. " +
 			"Si ya te dijo que la adjuntó, no se lo vuelvas a pedir."
+	}
+	// Si el medio no alcanza, la tarjeta no se va a poder guardar tal cual:
+	// mejor preguntarlo ya en la conversación, que es donde la persona sabe
+	// contestar "me los prestó mi hermano".
+	var falta *movimientos.FaltaPlata
+	if err := c.movimientos.VerificarFondos(ctx, usuarioID, datos); errors.As(err, &falta) {
+		instruccion += fmt.Sprintf(" OJO: en %s solo hay %s y esto es de %s, así que faltan %s. "+
+			"Nadie puede quedar en negativo: pregúntale de dónde salió lo que falta. Puede ser que se lo "+
+			"prestaron (¿quién?), que fue un ingreso (¿por qué categoría entró?) o que lo pasó de otro medio "+
+			"(¿de cuál?). Cuando confirme la tarjeta, ella misma le pedirá ese dato y registrará las dos cosas juntas.",
+			falta.Medio, dinero.Formatear(falta.Disponible), dinero.Formatear(falta.Monto), dinero.Formatear(falta.Falta))
+	} else if err != nil {
+		return Resultado{}, err
 	}
 	if datos.Tipo == movimientos.TipoTraslado {
 		// El traslado es el único tipo que no cambia el balance, y eso

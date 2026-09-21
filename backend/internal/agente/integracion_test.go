@@ -150,6 +150,16 @@ func nuevoEntorno(t *testing.T, limiteDiario int) *entorno {
 		t.Fatalf("creando medio: %v", err)
 	}
 
+	// Plata vieja en el efectivo para que las pruebas puedan gastar: ningun
+	// medio puede quedar en negativo. Con fecha del 2000 para que no caiga en
+	// ninguna ventana que las pruebas miren.
+	if _, err := pool.ExecContext(context.Background(), `
+		INSERT INTO movimientos (usuario_id, categoria_id, tipo, monto, fecha, descripcion, medio_pago_id)
+		VALUES ($1, $2, 'recibi', 100000000, '2000-01-01', 'Saldo inicial', $3)`,
+		ana, categoria.ID, efectivo.ID); err != nil {
+		t.Fatalf("fondeando el efectivo: %v", err)
+	}
+
 	store := agente.NewStore(pool)
 	proveedor := &proveedorFalso{repetir: agente.Respuesta{
 		Contenido:     "Listo, te explico.",
@@ -796,9 +806,10 @@ func (e *entorno) proponerAlmuerzo(t *testing.T) agente.Propuesta {
 func (e *entorno) contarMovimientos(t *testing.T, usuarioID int64) int {
 	t.Helper()
 
+	// Sin el saldo inicial que pone nuevoEntorno, que es del 2000.
 	var n int
 	if err := e.pool.QueryRowContext(context.Background(),
-		"SELECT count(*) FROM movimientos WHERE usuario_id = $1", usuarioID).Scan(&n); err != nil {
+		"SELECT count(*) FROM movimientos WHERE usuario_id = $1 AND fecha > '2000-01-01'", usuarioID).Scan(&n); err != nil {
 		t.Fatalf("contando movimientos: %v", err)
 	}
 	return n

@@ -34,11 +34,15 @@ export const verComoStorage = {
 }
 
 // Error con el detalle por campo que devuelve el backend (formato {error, campos}).
+//
+// `faltaPlata` llega cuando el medio no alcanza para el movimiento (409): trae
+// cuánto hay y cuánto falta, para preguntar de dónde salió el resto.
 export class ApiError extends Error {
-  constructor(mensaje, status, campos) {
+  constructor(mensaje, status, campos, faltaPlata) {
     super(mensaje)
     this.status = status
     this.campos = campos ?? {}
+    this.faltaPlata = faltaPlata ?? null
   }
 }
 
@@ -91,7 +95,7 @@ export async function apiFetch(ruta, { metodo = 'GET', body, auth = true, senal 
   if (!respuesta.ok) {
     // 401 = token vencido o invalido: limpiamos para forzar login de nuevo.
     if (respuesta.status === 401) tokenStorage.clear()
-    throw new ApiError(datos?.error ?? 'Error inesperado', respuesta.status, datos?.campos)
+    throw new ApiError(datos?.error ?? 'Error inesperado', respuesta.status, datos?.campos, datos?.falta_plata)
   }
 
   return datos

@@ -3,6 +3,7 @@ package movimientos_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,7 +27,7 @@ func (e *entorno) exportar(t *testing.T, usuarioID int64, consulta string) *http
 // datosDeSeptiembre deja movimientos dentro y fuera del rango que se exporta.
 func (e *entorno) datosDeSeptiembre(t *testing.T) {
 	t.Helper()
-	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "1000000", Fecha: "2026-09-01", Descripcion: "Sueldo", MedioPagoID: ptr(e.banco)})
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "1000000", Fecha: "2026-09-01", Descripcion: "Sueldo", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPague, Monto: "45000.50", Fecha: "2026-09-10", Descripcion: "=HYPERLINK(\"http://malo\")", MedioPagoID: ptr(e.efectivo)})
 	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoPreste, Monto: "200000", Fecha: "2026-09-15", Descripcion: "Préstamo", AQuien: ptr("Ñoño"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.efectivo)})
 	// Fuera del rango: no puede aparecer ni sumar.
@@ -206,5 +207,45 @@ func TestExportarRespetaLosFiltros(t *testing.T) {
 	}
 	if inf.Totales.Recibido != "0.00" || inf.Totales.Pagado != "45000.50" {
 		t.Errorf("los totales no respetan el filtro: %+v", inf.Totales)
+	}
+}
+
+// El camino completo del formulario: POST sin decir de dónde salió el resto
+// da 409 con las cifras; el mismo POST con `cubrir` guarda las dos cosas.
+func TestElEndpointPreguntaDeDondeSaleLaPlata(t *testing.T) {
+	e := nuevoEntorno(t)
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+
+	enviar := func(cuerpo string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(cuerpo))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(httpx.ConUsuarioID(context.Background(), e.usuarioID))
+		res := httptest.NewRecorder()
+		movimientos.NewHandler(e.store, nil).Rutas().ServeHTTP(res, req)
+		return res
+	}
+
+	gasto := fmt.Sprintf(`{"categoria_id":%d,"medio_pago_id":%d,"tipo":"pague","monto":"600000","fecha":"2026-09-02"`,
+		e.categoria, e.efectivo)
+
+	res := enviar(gasto + `}`)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("sin cubrir: %d — %s", res.Code, res.Body.String())
+	}
+	if !strings.Contains(res.Body.String(), `"falta":"200000.00"`) {
+		t.Errorf("la respuesta no dice cuánto falta: %s", res.Body.String())
+	}
+
+	res = enviar(gasto + `,"cubrir":{"tipo":"me_prestaron","a_quien":""}}`)
+	if res.Code != http.StatusUnprocessableEntity || !strings.Contains(res.Body.String(), "cubrir.a_quien") {
+		t.Errorf("préstamo sin a quién: %d — %s", res.Code, res.Body.String())
+	}
+
+	res = enviar(gasto + `,"cubrir":{"tipo":"me_prestaron","a_quien":"Mi hermano"}}`)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("con cubrir: %d — %s", res.Code, res.Body.String())
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
 	}
 }

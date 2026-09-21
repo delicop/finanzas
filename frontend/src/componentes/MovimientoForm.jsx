@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { movimientosApi } from '../lib/api'
 import { entradaAMonto, finDeMes, hoyISO, montoAEntrada, sumarDias } from '../lib/formato'
+import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
 import Modal from './Modal'
 
@@ -63,6 +64,11 @@ export default function MovimientoForm({
   const [campos, setCampos] = useState({})
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  // Si el medio no alcanza, el backend dice cuánto falta y aquí se pregunta
+  // de dónde salió. Desde ese momento cada Guardar manda también la respuesta.
+  const [falta, setFalta] = useState(null)
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
 
   // Las reglas del negocio en tres variables. Todo lo que el formulario
   // muestra u oculta sale de aquí.
@@ -133,6 +139,8 @@ export default function MovimientoForm({
         a_quien: esDeuda ? datos.a_quien : '',
         estado: esDeuda ? datos.estado : '',
         cobrar_el: esDeuda ? datos.cobrar_el : '',
+        // Si con los cambios ya alcanza, el backend lo ignora.
+        cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
       }
 
       const guardado = esNuevo
@@ -150,7 +158,13 @@ export default function MovimientoForm({
 
       await onGuardado()
     } catch (err) {
-      setError(err.message)
+      if (err.faltaPlata) {
+        // El recuadro ya dice lo que pasa: repetirlo arriba sería ruido.
+        setFalta(err.faltaPlata)
+        setError('')
+      } else {
+        setError(err.message)
+      }
       setCampos(err.campos ?? {})
     } finally {
       setGuardando(false)
@@ -400,12 +414,25 @@ export default function MovimientoForm({
           </label>
         )}
 
+        {falta && (
+          <CubrirFaltante
+            falta={falta}
+            valor={cubrir}
+            onCambio={setCubrir}
+            categorias={categorias}
+            medios={medios}
+            contrapartes={contrapartes}
+            fecha={datos.fecha}
+            campos={campos}
+          />
+        )}
+
         <div className="acciones-modal">
           <button type="button" className="secundario" onClick={onCerrar}>
             Cancelar
           </button>
           <button type="submit" disabled={guardando}>
-            {guardando ? 'Guardando...' : 'Guardar'}
+            {guardando ? 'Guardando...' : falta ? 'Guardar las dos cosas' : 'Guardar'}
           </button>
         </div>
       </form>

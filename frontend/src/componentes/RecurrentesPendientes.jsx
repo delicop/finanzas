@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { recurrentesApi } from '../lib/api'
+import { categoriasApi, mediosApi, recurrentesApi } from '../lib/api'
 import { diasHasta, entradaAMonto, formatearFecha, formatearMonto, montoAEntrada } from '../lib/formato'
 import { avisarMovimientoGuardado, useAlGuardarMovimiento } from '../lib/eventos'
+import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
+import Modal from './Modal'
 
 // Lo que toca confirmar de los gastos e ingresos que se repiten, y —con
 // `conProximas`— lo que se viene en los próximos días.
@@ -27,6 +29,14 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
   const [error, setError] = useState('')
   const [ocupado, setOcupado] = useState(null)
   const [corrigiendo, setCorrigiendo] = useState(null)
+
+  // Si el medio no alcanza para lo que se confirma, se pregunta de dónde
+  // salió el resto en un modal. Las categorías y los medios solo se cargan
+  // entonces: el resto del tiempo este componente no los necesita.
+  const [cubriendo, setCubriendo] = useState(null) // { o, monto, falta }
+  const [cubrir, setCubrir] = useState(CUBRIR_VACIO)
+  const [camposCubrir, setCamposCubrir] = useState({})
+  const [listas, setListas] = useState({ categorias: [], medios: [] })
 
   const cargar = useCallback(async (senal) => {
     try {
@@ -54,13 +64,15 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
   // recargar la página, y parecería que hay que confirmarlo otra vez.
   useAlGuardarMovimiento(() => cargar())
 
-  async function confirmar(o, monto) {
+  async function confirmar(o, monto, datosCubrir) {
     setOcupado(o.id)
     setError('')
     try {
       // Sin monto se confirma la plantilla tal cual; con monto, se manda el
-      // movimiento completo porque el backend valida la entrada entera.
-      const cuerpo = monto
+      // movimiento completo porque el backend valida la entrada entera. El
+      // backend lee el cuerpo ENCIMA de la plantilla, así que `cubrir` solo
+      // también sirve.
+      let cuerpo = monto
         ? {
             categoria_id: o.categoria_id,
             medio_pago_id: o.medio_pago_id,
@@ -70,8 +82,10 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
             descripcion: o.descripcion,
           }
         : undefined
+      if (datosCubrir) cuerpo = { ...cuerpo, cubrir: cuerpoCubrir(datosCubrir) }
 
       await recurrentesApi.confirmar(o.id, cuerpo)
+      setCubriendo(null)
       setPendientes((prev) => prev.filter((x) => x.id !== o.id))
       setProximas((prev) => prev.filter((x) => x.id !== o.id))
       setCorrigiendo(null)
@@ -80,10 +94,32 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
       avisarMovimientoGuardado()
       onConfirmado?.()
     } catch (err) {
-      setError(err.message)
+      if (err.faltaPlata) {
+        await preguntarDeDonde(o, monto, err.faltaPlata)
+        setCamposCubrir(err.campos ?? {})
+      } else if (datosCubrir && Object.keys(err.campos ?? {}).length > 0) {
+        setCamposCubrir(err.campos)
+      } else {
+        setError(err.message)
+        setCubriendo(null)
+      }
     } finally {
       setOcupado(null)
     }
+  }
+
+  async function preguntarDeDonde(o, monto, falta) {
+    if (listas.medios.length === 0) {
+      try {
+        const [categorias, medios] = await Promise.all([categoriasApi.listar(), mediosApi.listar()])
+        setListas({ categorias, medios })
+      } catch (err) {
+        setError(err.message)
+        return
+      }
+    }
+    if (cubriendo?.o.id !== o.id) setCubrir(CUBRIR_VACIO)
+    setCubriendo({ o, monto, falta })
   }
 
   async function descartar(o) {
@@ -151,6 +187,35 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
 
   return (
     <>
+      {cubriendo && (
+        <Modal titulo="¿De dónde salió la plata?" onCerrar={() => setCubriendo(null)}>
+          <p>
+            <strong>{cubriendo.o.descripcion}</strong> · {formatearFecha(cubriendo.o.fecha)}
+          </p>
+          <CubrirFaltante
+            falta={cubriendo.falta}
+            valor={cubrir}
+            onCambio={setCubrir}
+            categorias={listas.categorias}
+            medios={listas.medios}
+            fecha={cubriendo.o.fecha}
+            campos={camposCubrir}
+          />
+          <div className="acciones-modal">
+            <button type="button" className="secundario" onClick={() => setCubriendo(null)}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={ocupado === cubriendo.o.id}
+              onClick={() => confirmar(cubriendo.o, cubriendo.monto, cubrir)}
+            >
+              {ocupado === cubriendo.o.id ? 'Guardando...' : 'Guardar las dos cosas'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {(pendientes.length > 0 || error) && (
         <section className="tarjeta pendientes-recurrentes">
           <h2>

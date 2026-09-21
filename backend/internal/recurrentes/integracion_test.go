@@ -86,6 +86,19 @@ func nuevoEntorno(t *testing.T) *entorno {
 	}
 }
 
+// fondear mete plata en el efectivo para poder confirmar gastos: ningun medio
+// puede quedar en negativo.
+func (e *entorno) fondear(t *testing.T) {
+	t.Helper()
+	_, err := movimientos.NewStore(e.pool).Crear(context.Background(), e.ana, movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoRecibi, Monto: "10000000",
+		Fecha: "2026-01-01", MedioPagoID: &e.efectivo,
+	})
+	if err != nil {
+		t.Fatalf("fondeando el efectivo: %v", err)
+	}
+}
+
 var contador atomic.Int64
 
 // Cada prueba crea sus usuarios y borra solo los suyos: los paquetes corren en
@@ -254,6 +267,7 @@ func TestLoQueVieneNoCreaNingunMovimiento(t *testing.T) {
 // veces se paga el 2 — y ahí sí nace el movimiento.
 func TestSePuedePagarAntesDeQueVenza(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t)
 	e.arriendo(t, time.Now().AddDate(0, 0, 10).Day())
 
 	_, proximas := e.listas(t)
@@ -296,6 +310,7 @@ func TestSePuedePagarAntesDeQueVenza(t *testing.T) {
 // proponer su valor de siempre.
 func TestSePuedeCorregirElMontoAlConfirmar(t *testing.T) {
 	e := nuevoEntorno(t)
+	e.fondear(t)
 	rec := e.arriendo(t, time.Now().AddDate(0, 0, 10).Day())
 
 	_, proximas := e.listas(t)

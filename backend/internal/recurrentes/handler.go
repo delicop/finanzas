@@ -323,6 +323,8 @@ func (h *Handler) Confirmar(w http.ResponseWriter, r *http.Request) {
 	case campos != nil:
 		httpx.ErrorCampos(w, campos)
 		return
+	case movimientos.ResponderFaltaPlata(w, err):
+		return
 	case err != nil:
 		httpx.ErrorInterno(w, r, err, "recurrentes: confirmando el pendiente")
 		return

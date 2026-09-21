@@ -345,6 +345,7 @@ func (h *Handler) BorrarAcuerdo(w http.ResponseWriter, r *http.Request) {
 // en los tres endpoints.
 func (h *Handler) responderDeuda(w http.ResponseWriter, r *http.Request, m *Movimiento, err error, contexto string) {
 	switch {
+	case ResponderFaltaPlata(w, err):
 	case errors.Is(err, ErrNoEncontrado):
 		httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
 	case errors.Is(err, ErrAbonoNoExiste):

@@ -33,6 +33,10 @@ type Datos struct {
 	// MedioCobroID es el DESTINO de un traslado, y solo eso. Para los demas
 	// tipos va nil: por donde volvio un prestamo lo dice cada abono.
 	MedioCobroID *int64
+
+	// Cubrir dice de donde salio lo que faltaba cuando el medio no alcanza
+	// (ver fondos.go). nil si el cliente no lo sabe todavia.
+	Cubrir *Cubrir
 }
 
 // Filtros del listado. Los campos vacios simplemente no filtran.
@@ -226,7 +230,43 @@ func (s *Store) PorID(ctx context.Context, usuarioID, id int64) (*Movimiento, er
 // la condicion, el SELECT no devuelve filas y el INSERT no inserta nada.
 // Asi no hay dos consultas separadas con una ventana de tiempo entre ellas
 // en la que la categoria podria borrarse (condicion de carrera).
+//
+// Todo va en una transaccion: si el medio no alcanza (ver fondos.go), primero
+// entra el movimiento que cubre el faltante y luego este, o ninguno.
 func (s *Store) Crear(ctx context.Context, usuarioID int64, d Datos) (*Movimiento, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("iniciando transaccion: %w", err)
+	}
+	defer tx.Rollback()
+
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.cubrirSiFalta(ctx, tx, usuarioID, 0, d); err != nil {
+		return nil, err
+	}
+
+	m, err := s.insertar(ctx, tx, usuarioID, d)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, s.porQueNoEntro(ctx, usuarioID, d)
+	}
+	if err != nil {
+		return nil, traducirCheck(err, "creando movimiento")
+	}
+	if err := revisar(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("confirmando movimiento: %w", err)
+	}
+	return s.relerSiNacioSaldada(ctx, usuarioID, m, d)
+}
+
+// insertar es el INSERT de Crear, sin traducir errores: un sql.ErrNoRows
+// significa que la categoria o algun medio no son del usuario.
+func (s *Store) insertar(ctx context.Context, tx *sql.Tx, usuarioID int64, d Datos) (*Movimiento, error) {
 	q := fmt.Sprintf(`
 		WITH cat AS (
 			SELECT id, nombre FROM categorias WHERE id = $2 AND usuario_id = $1
@@ -259,16 +299,8 @@ func (s *Store) Crear(ctx context.Context, usuarioID int64, d Datos) (*Movimient
 		FROM ins m
 		%s`, columnas, unionesCTE)
 
-	m, err := escanear(s.db.QueryRowContext(ctx, q,
+	return escanear(tx.QueryRowContext(ctx, q,
 		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
-
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, s.porQueNoEntro(ctx, usuarioID, d)
-	}
-	if err != nil {
-		return nil, traducirCheck(err, "creando movimiento")
-	}
-	return s.relerSiNacioSaldada(ctx, usuarioID, m, d)
 }
 
 // relerSiNacioSaldada vuelve a consultar cuando el INSERT creo tambien un
@@ -308,6 +340,22 @@ func (s *Store) porQueNoEntro(ctx context.Context, usuarioID int64, d Datos) err
 // cambia un movimiento de 'preste' a 'pague', los dos campos quedan en NULL
 // y el CHECK de la base de datos lo exige asi.
 func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*Movimiento, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("iniciando transaccion: %w", err)
+	}
+	defer tx.Rollback()
+
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+	// Si el id no es del usuario, la version vieja no aparece en sus flujos y
+	// la verificacion lo trata como nuevo; el UPDATE de abajo da el 404.
+	if err := s.cubrirSiFalta(ctx, tx, usuarioID, id, d); err != nil {
+		return nil, err
+	}
+
 	q := fmt.Sprintf(`
 		WITH cat AS (
 			SELECT id, nombre FROM categorias WHERE id = $3 AND usuario_id = $1
@@ -359,7 +407,7 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 	// La fila que devuelve esta consulta se descarta a proposito: mas abajo se
 	// relee con PorID, porque el SELECT de aqui no alcanza a ver el abono que
 	// la CTE de al lado pudo haber insertado.
-	_, err := escanear(s.db.QueryRowContext(ctx, q,
+	_, err = escanear(tx.QueryRowContext(ctx, q,
 		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -377,6 +425,14 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 	if err != nil {
 		return nil, traducirCheck(err, "actualizando movimiento")
 	}
+	// Esto atrapa lo que verificarFondos no ve: bajarle el monto a un
+	// ingreso, pasarlo a otro medio o volverlo un gasto.
+	if err := revisar(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("confirmando cambios: %w", err)
+	}
 	// Tras un UPDATE siempre se relee: el estado lo calculo la propia consulta
 	// a partir de los abonos, y pudo quedar distinto del que venia en `d`.
 	return s.PorID(ctx, usuarioID, id)
@@ -384,19 +440,39 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 
 // Eliminar borra la fila y devuelve la ruta de la factura (si tenia) para que
 // el handler borre tambien el archivo del disco.
+//
+// Borrar un ingreso puede dejar sin fondos lo que se pago con el: la guardia
+// (fondos.go) lo impide.
 func (s *Store) Eliminar(ctx context.Context, usuarioID, id int64) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("iniciando transaccion: %w", err)
+	}
+	defer tx.Rollback()
+
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return "", err
+	}
+
 	const q = `
 		DELETE FROM movimientos
 		WHERE id = $1 AND usuario_id = $2
 		RETURNING coalesce(factura_ruta, '')`
 
 	var ruta string
-	err := s.db.QueryRowContext(ctx, q, id, usuarioID).Scan(&ruta)
+	err = tx.QueryRowContext(ctx, q, id, usuarioID).Scan(&ruta)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNoEncontrado
 	}
 	if err != nil {
 		return "", fmt.Errorf("eliminando movimiento: %w", err)
+	}
+	if err := revisar(); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("confirmando el borrado: %w", err)
 	}
 	return ruta, nil
 }

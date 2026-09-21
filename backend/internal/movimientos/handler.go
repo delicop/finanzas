@@ -183,6 +183,42 @@ type Entrada struct {
 	AQuien       string `json:"a_quien"`
 	Estado       string `json:"estado"`
 	CobrarEl     string `json:"cobrar_el"`
+
+	// Cubrir llega cuando el medio no alcanzaba y el usuario ya dijo de donde
+	// salio el resto. Ver fondos.go.
+	Cubrir *EntradaCubrir `json:"cubrir"`
+}
+
+type EntradaCubrir struct {
+	Tipo        string `json:"tipo"` // me_prestaron, recibi o traslado
+	CategoriaID int64  `json:"categoria_id"`
+	AQuien      string `json:"a_quien"`
+	CobrarEl    string `json:"cobrar_el"`
+	OrigenID    int64  `json:"origen_id"`
+}
+
+// respuestaFaltaPlata es el 409 de "en ese medio no alcanza": el mensaje de
+// siempre mas las cifras, para que el formulario pregunte de donde sale el resto.
+type respuestaFaltaPlata struct {
+	Error       string       `json:"error"`
+	FaltaPlata  *FaltaPlata  `json:"falta_plata,omitempty"`
+	QuedaEnRojo *QuedaEnRojo `json:"queda_en_rojo,omitempty"`
+}
+
+// ResponderFaltaPlata responde el 409 si err es un FaltaPlata o un
+// QuedaEnRojo (ver fondos.go). Devuelve false si no es ninguno.
+func ResponderFaltaPlata(w http.ResponseWriter, err error) bool {
+	var falta *FaltaPlata
+	if errors.As(err, &falta) {
+		httpx.JSON(w, http.StatusConflict, respuestaFaltaPlata{Error: falta.Mensaje(), FaltaPlata: falta})
+		return true
+	}
+	var rojo *QuedaEnRojo
+	if errors.As(err, &rojo) {
+		httpx.JSON(w, http.StatusConflict, respuestaFaltaPlata{Error: rojo.Mensaje(), QuedaEnRojo: rojo})
+		return true
+	}
+	return false
 }
 
 func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
@@ -198,6 +234,9 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m, err := h.store.Crear(r.Context(), usuarioID, datos)
+	if ResponderFaltaPlata(w, err) {
+		return
+	}
 	if errors.Is(err, ErrCategoriaInvalida) {
 		httpx.ErrorCampos(w, map[string]string{"categoria_id": "La categoría no existe"})
 		return
@@ -229,6 +268,9 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m, err := h.store.Actualizar(r.Context(), usuarioID, id, datos)
+	if ResponderFaltaPlata(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, ErrNoEncontrado):
 		httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
@@ -252,6 +294,9 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rutaFactura, err := h.store.Eliminar(r.Context(), usuarioID, id)
+	if ResponderFaltaPlata(w, err) {
+		return
+	}
 	if errors.Is(err, ErrNoEncontrado) {
 		httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
 		return
@@ -399,11 +444,55 @@ func Validar(req Entrada) (Datos, map[string]string) {
 	// sin tener que limpiar campos. El CHECK de la base garantiza que asi
 	// queden guardados.
 
+	if req.Cubrir != nil && sacaPlata(req.Tipo) {
+		datos.Cubrir = validarCubrir(v, req, *req.Cubrir)
+	}
+
 	if !v.Valido() {
 		return Datos{}, v.Campos
 	}
 
 	return datos, nil
+}
+
+// validarCubrir revisa de donde dice el usuario que salio lo que faltaba. Los
+// errores van con el prefijo "cubrir." para que el formulario los ponga junto
+// a la pregunta y no junto a los campos del gasto.
+func validarCubrir(v *httpx.Validador, req Entrada, c EntradaCubrir) *Cubrir {
+	c.Tipo = strings.TrimSpace(c.Tipo)
+	c.AQuien = strings.TrimSpace(c.AQuien)
+	c.CobrarEl = strings.TrimSpace(c.CobrarEl)
+
+	cubrir := &Cubrir{Tipo: c.Tipo, CategoriaID: c.CategoriaID}
+
+	switch c.Tipo {
+	case CubrirPrestamo:
+		v.Check(c.AQuien != "", "cubrir.a_quien", "Indica quién te prestó")
+		v.MaxLargo("cubrir.a_quien", c.AQuien, 100)
+		cubrir.AQuien = c.AQuien
+		if c.CobrarEl != "" {
+			if !fechaValida(c.CobrarEl) {
+				v.Check(false, "cubrir.cobrar_el", "Fecha inválida, usa el formato AAAA-MM-DD")
+			} else if fechaValida(req.Fecha) && c.CobrarEl < req.Fecha {
+				v.Check(false, "cubrir.cobrar_el", "No puede ser antes de la fecha del movimiento")
+			} else {
+				cobrarEl := c.CobrarEl
+				cubrir.CobrarEl = &cobrarEl
+			}
+		}
+	case CubrirIngreso:
+		v.Check(c.CategoriaID > 0, "cubrir.categoria_id", "Indica por qué categoría entró la plata")
+	case CubrirTraslado:
+		if c.OrigenID <= 0 {
+			v.Check(false, "cubrir.origen_id", "Indica de qué medio pasaste la plata")
+		} else {
+			v.Check(c.OrigenID != req.MedioPagoID, "cubrir.origen_id", "Tiene que ser otro medio, no el mismo del pago")
+		}
+		cubrir.OrigenID = c.OrigenID
+	default:
+		v.Check(false, "cubrir.tipo", "Indica si te prestaron, fue un ingreso o la pasaste de otro medio")
+	}
+	return cubrir
 }
 
 // CambiarEstado marca un prestamo como pagado o pendiente de un solo clic

@@ -81,6 +81,16 @@ func nuevoEntorno(t *testing.T) *entorno {
 		t.Fatalf("creando medio: %v", err)
 	}
 
+	// Plata vieja en el efectivo para que las pruebas puedan gastar: ningun
+	// medio puede quedar en negativo. Con fecha del 2000 para que no caiga en
+	// ninguna ventana que las pruebas miren.
+	if _, err := pool.ExecContext(ctx, `
+		INSERT INTO movimientos (usuario_id, categoria_id, tipo, monto, fecha, descripcion, medio_pago_id)
+		VALUES ($1, $2, 'recibi', 100000000, '2000-01-01', 'Saldo inicial', $3)`,
+		ana, categoria.ID, efectivo.ID); err != nil {
+		t.Fatalf("fondeando el efectivo: %v", err)
+	}
+
 	store := avisos.NewStore(pool)
 
 	return &entorno{

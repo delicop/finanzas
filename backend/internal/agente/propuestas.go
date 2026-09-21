@@ -110,6 +110,9 @@ func (h *Handler) confirmarMovimiento(w http.ResponseWriter, r *http.Request, us
 			httpx.ErrorCampos(w, campos)
 			return
 		}
+		if movimientos.ResponderFaltaPlata(w, err) {
+			return
+		}
 		httpx.ErrorInterno(w, r, err, "agente: creando el movimiento propuesto")
 		return
 	}
@@ -156,6 +159,7 @@ func (h *Handler) confirmarMarcarPagado(w http.ResponseWriter, r *http.Request, 
 			httpx.Error(w, http.StatusConflict, "Ese movimiento no es un préstamo")
 		case errors.Is(err, movimientos.ErrMedioInvalido):
 			httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": "El medio de pago no existe"})
+		case movimientos.ResponderFaltaPlata(w, err):
 		default:
 			httpx.ErrorInterno(w, r, err, "agente: marcando el préstamo como pagado")
 		}
@@ -211,6 +215,7 @@ func (h *Handler) confirmarAbono(w http.ResponseWriter, r *http.Request, usuario
 			httpx.Error(w, http.StatusNotFound, "Esa deuda ya no existe")
 		case errors.Is(err, movimientos.ErrNoEsDeuda):
 			httpx.Error(w, http.StatusConflict, "Ese movimiento no es una deuda")
+		case movimientos.ResponderFaltaPlata(w, err):
 		default:
 			httpx.ErrorInterno(w, r, err, "agente: registrando el abono propuesto")
 		}
@@ -279,6 +284,7 @@ func (h *Handler) confirmarRecurrente(w http.ResponseWriter, r *http.Request, us
 		case errors.Is(err, recurrentes.ErrYaResuelta):
 			// Lo confirmo desde el resumen mientras la tarjeta seguia abierta.
 			httpx.Error(w, http.StatusConflict, "Ese gasto ya lo habías confirmado desde el resumen")
+		case movimientos.ResponderFaltaPlata(w, err):
 		default:
 			httpx.ErrorInterno(w, r, err, "agente: confirmando el recurrente")
 		}

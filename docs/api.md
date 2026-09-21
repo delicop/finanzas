@@ -277,6 +277,50 @@ Por dentro **no escribe un flag**: registra un abono por lo que faltaba. Volver
 a `pendiente` borra todos los abonos de esa deuda. `parcial` no se puede pedir
 por aquí: sale solo de abonar una parte.
 
+### Ningún medio queda en negativo
+
+Un `pague`, un `preste` o el origen de un `traslado` que deje su medio por
+debajo de cero se rechaza con **409** y las cifras:
+
+```json
+{"error": "En Efectivo solo tienes $ 400.000 y esto es de $ 600.000. Faltan $ 200.000: ¿de dónde salieron?",
+ "falta_plata": {"medio_id": 2, "medio": "Efectivo", "disponible": "400000.00",
+                 "monto": "600000.00", "falta": "200000.00"}}
+```
+
+Se vuelve a mandar el mismo cuerpo con `cubrir`, que dice de dónde salió el
+resto. El servidor registra ese movimiento por lo que falte **en ese momento**
+(el medio queda en cero) y el gasto, en la misma transacción:
+
+| `cubrir.tipo` | Qué registra | Pide |
+|---|---|---|
+| `me_prestaron` | Una deuda tuya, pendiente | `a_quien`; `cobrar_el` opcional |
+| `recibi` | Un ingreso | `categoria_id` |
+| `traslado` | Un traslado desde otro medio (que también tiene que alcanzar) | `origen_id` |
+
+```bash
+curl -X POST http://localhost:8080/api/movimientos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"categoria_id":1,"medio_pago_id":2,"tipo":"pague","monto":"600000",
+       "fecha":"2026-09-21","cubrir":{"tipo":"me_prestaron","a_quien":"Mi hermano"}}'
+```
+
+Los errores de `cubrir` llegan como `cubrir.a_quien`, `cubrir.categoria_id`...
+Confirmar un recurrente y la tarjeta del asistente reciben el mismo cuerpo, con
+el mismo `cubrir`.
+
+Además, **cualquier** escritura de plata (editar, borrar un movimiento, abonar,
+saldar, volver a pendiente, borrar un abono) pasa por una guardia: si deja un
+medio en negativo **y peor que antes**, se deshace y responde **409**:
+
+```json
+{"error": "Así Efectivo quedaría en $ -300.000, y ningún medio puede quedar en negativo. ...",
+ "queda_en_rojo": {"medio_id": 2, "medio": "Efectivo", "saldo": "-300000.00", "falta": "300000.00"}}
+```
+
+"Peor que antes" es para quien ya venía en rojo por datos viejos: corregir la
+descripción de un gasto no obliga a cuadrar primero.
+
 ### Abonos y acuerdo de pago
 
 | Método | Ruta | Qué hace |

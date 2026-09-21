@@ -3530,3 +3530,14 @@ button.wa-icono:hover:not(:disabled) {
 .uso-movil {
   font-variant-numeric: tabular-nums;
 }
+
+/* "No te alcanza: ¿de dónde salió el resto?". Usa el filete del bloque de la
+   deuda, con el borde en el tono de las alertas para que se vea que frena. */
+.cubrir-faltante {
+  border-color: color-mix(in srgb, var(--rojo) 40%, transparent);
+}
+
+.cubrir-faltante-texto {
+  margin: var(--space-2) 0;
+  font-size: 14px;
+}

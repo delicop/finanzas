@@ -94,6 +94,13 @@ func (s *Store) Abonar(ctx context.Context, usuarioID, movimientoID int64, d Abo
 	}
 	defer tx.Rollback() //nolint:errcheck // tras un Commit exitoso no hace nada
 
+	// Pagar una deuda tuya saca plata de un medio, y borrar lo que te
+	// devolvieron le quita: ninguno puede dejarlo en rojo (fondos.go).
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Bloquea la deuda y trae lo que falta. El saldo lo calcula Postgres
 	// restando la suma de abonos, nunca Go.
 	const saldoSQL = `
@@ -154,6 +161,9 @@ func (s *Store) Abonar(ctx context.Context, usuarioID, movimientoID int64, d Abo
 	if err := recalcularEstado(ctx, tx, movimientoID); err != nil {
 		return nil, err
 	}
+	if err := revisar(); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("confirmando el abono: %w", err)
 	}
@@ -169,6 +179,13 @@ func (s *Store) BorrarAbono(ctx context.Context, usuarioID, abonoID int64) (*Mov
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// Pagar una deuda tuya saca plata de un medio, y borrar lo que te
+	// devolvieron le quita: ninguno puede dejarlo en rojo (fondos.go).
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+
 	const borrar = `DELETE FROM abonos WHERE id = $1 AND usuario_id = $2 RETURNING movimiento_id`
 
 	var movimientoID int64
@@ -181,6 +198,9 @@ func (s *Store) BorrarAbono(ctx context.Context, usuarioID, abonoID int64) (*Mov
 	}
 
 	if err := recalcularEstado(ctx, tx, movimientoID); err != nil {
+		return nil, err
+	}
+	if err := revisar(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -201,10 +221,17 @@ func (s *Store) BorrarAbonos(ctx context.Context, usuarioID, movimientoID int64)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	const revisar = `SELECT tipo FROM movimientos WHERE id = $1 AND usuario_id = $2 FOR UPDATE`
+	// Pagar una deuda tuya saca plata de un medio, y borrar lo que te
+	// devolvieron le quita: ninguno puede dejarlo en rojo (fondos.go).
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+
+	const tipoSQL = `SELECT tipo FROM movimientos WHERE id = $1 AND usuario_id = $2 FOR UPDATE`
 
 	var tipo string
-	err = tx.QueryRowContext(ctx, revisar, movimientoID, usuarioID).Scan(&tipo)
+	err = tx.QueryRowContext(ctx, tipoSQL, movimientoID, usuarioID).Scan(&tipo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNoEncontrado
 	}
@@ -219,6 +246,9 @@ func (s *Store) BorrarAbonos(ctx context.Context, usuarioID, movimientoID int64)
 		return nil, fmt.Errorf("borrando los abonos: %w", err)
 	}
 	if err := recalcularEstado(ctx, tx, movimientoID); err != nil {
+		return nil, err
+	}
+	if err := revisar(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -424,6 +454,13 @@ func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medio
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// Pagar una deuda tuya saca plata de un medio, y borrar lo que te
+	// devolvieron le quita: ninguno puede dejarlo en rojo (fondos.go).
+	revisar, err := guardia(ctx, tx, usuarioID)
+	if err != nil {
+		return nil, err
+	}
+
 	const saldoSQL = `
 		SELECT m.tipo,
 		       (m.monto - coalesce((SELECT sum(a.monto) FROM abonos a WHERE a.movimiento_id = m.id), 0))::text,
@@ -472,6 +509,9 @@ func (s *Store) Saldar(ctx context.Context, usuarioID, movimientoID int64, medio
 	}
 
 	if err := recalcularEstado(ctx, tx, movimientoID); err != nil {
+		return nil, err
+	}
+	if err := revisar(); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

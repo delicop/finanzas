@@ -258,58 +258,7 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 	// efectivo, me pagaron la mitad por transferencia" queda bien en los dos
 	// saldos, que es justo lo que una sola columna no podia representar.
 	const porMedio = `
-		WITH flujos AS (
-			-- Ingresos
-			SELECT medio_pago_id AS medio_id, monto AS entro, 0::numeric AS salio, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'recibi'
-
-			UNION ALL
-
-			-- Gastos
-			SELECT medio_pago_id, 0::numeric, monto, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'pague'
-
-			UNION ALL
-
-			-- Prestar saca la plata del medio con el que se presto, la
-			-- devuelvan despues o no.
-			SELECT medio_pago_id, 0::numeric, monto, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'preste'
-
-			UNION ALL
-
-			-- Que te presten la mete por el medio con el que te la dieron.
-			SELECT medio_pago_id, monto, 0::numeric, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'me_prestaron'
-
-			UNION ALL
-
-			-- Un traslado sale del origen...
-			SELECT medio_pago_id, 0::numeric, monto, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'traslado'
-
-			UNION ALL
-
-			-- ...y entra al destino, por el mismo monto. Se cancelan.
-			SELECT medio_cobro_id, monto, 0::numeric, id
-			FROM movimientos WHERE usuario_id = $1 AND tipo = 'traslado'
-
-			UNION ALL
-
-			-- Cada abono de un prestamo ENTRA por su propio medio.
-			SELECT a.medio_id, a.monto, 0::numeric, m.id
-			FROM abonos a
-			JOIN movimientos m ON m.id = a.movimiento_id
-			WHERE a.usuario_id = $1 AND m.tipo = 'preste'
-
-			UNION ALL
-
-			-- Y cada abono de una deuda propia SALE por el suyo.
-			SELECT a.medio_id, 0::numeric, a.monto, m.id
-			FROM abonos a
-			JOIN movimientos m ON m.id = a.movimiento_id
-			WHERE a.usuario_id = $1 AND m.tipo = 'me_prestaron'
-		)
+		WITH flujos AS (` + flujosSQL + `)
 		SELECT * FROM (
 			SELECT 0 AS orden,
 			       mp.id,
