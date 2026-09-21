@@ -838,6 +838,13 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 			"prestaron (¿quién?), que fue un ingreso (¿por qué categoría entró?) o que lo pasó de otro medio "+
 			"(¿de cuál?). Cuando confirme la tarjeta, ella misma le pedirá ese dato y registrará las dos cosas juntas.",
 			falta.Medio, dinero.Formatear(falta.Disponible), dinero.Formatear(falta.Monto), dinero.Formatear(falta.Falta))
+		if len(falta.EnOtros) > 0 {
+			// Sin esto el modelo sugiere que le prestaron todo, aunque tenga
+			// plata de sobra en el efectivo.
+			instruccion += fmt.Sprintf(" En sus otros medios tiene %s en total: pregúntale primero si usó "+
+				"esa plata, y solo lo que siga faltando puede venir de un préstamo o un ingreso.",
+				dinero.Formatear(falta.OtrosTotal))
+		}
 	} else if err != nil {
 		return Resultado{}, err
 	}

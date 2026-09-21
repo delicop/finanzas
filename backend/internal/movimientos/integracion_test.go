@@ -999,3 +999,60 @@ func TestLaGuardiaNoDejaNingunMedioEnRojo(t *testing.T) {
 		t.Errorf("borrar lo que te devolvieron ya gastado: err = %v, se esperaba QuedaEnRojo", err)
 	}
 }
+
+// El caso real que salió mal: 400.000 en efectivo, un gasto de 600.000 por
+// Nequi (que estaba en cero). Usando primero lo del efectivo, solo se deben
+// 200.000, no 600.000.
+func TestCubrirUsandoPrimeroLosOtrosMedios(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "400000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+	gasto := movimientos.Datos{
+		CategoriaID: e.categoria, Tipo: movimientos.TipoPague, Monto: "600000",
+		Fecha: "2026-09-02", MedioPagoID: ptr(e.banco),
+	}
+
+	_, err := e.store.Crear(ctx, e.usuarioID, gasto)
+	var falta *movimientos.FaltaPlata
+	if !errors.As(err, &falta) {
+		t.Fatalf("err = %v, se esperaba FaltaPlata", err)
+	}
+	if falta.OtrosTotal != "400000.00" || len(falta.EnOtros) != 1 || falta.EnOtros[0].Medio != "Efectivo" {
+		t.Errorf("no avisó de la plata del efectivo: %+v", falta)
+	}
+
+	// Solo con lo de los otros no alcanza y no dijo de dónde sale el resto:
+	// vuelve a preguntar, sin dejar nada a medias.
+	gasto.Cubrir = &movimientos.Cubrir{UsarOtros: true}
+	if _, err := e.store.Crear(ctx, e.usuarioID, gasto); !errors.As(err, &falta) {
+		t.Fatalf("usar_otros sin tipo: err = %v", err)
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "400000.00" {
+		t.Fatalf("el intento fallido movió el efectivo: %s", s)
+	}
+
+	gasto.Cubrir = &movimientos.Cubrir{UsarOtros: true, Tipo: movimientos.CubrirPrestamo, AQuien: "Carlos"}
+	e.crear(t, gasto)
+
+	r := e.resumen(t)
+	if r.DebidoPendiente != "200000.00" {
+		t.Errorf("le debes = %s, se esperaba 200000.00", r.DebidoPendiente)
+	}
+	if s := e.saldoDe(t, "Efectivo"); s != "0.00" {
+		t.Errorf("efectivo = %s, se esperaba 0.00", s)
+	}
+	if s := e.saldoDe(t, "Transferencia"); s != "0.00" {
+		t.Errorf("transferencia = %s, se esperaba 0.00", s)
+	}
+
+	// Y si con lo de los otros alcanza, no hace falta decir nada más.
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "50000", Fecha: "2026-09-03", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPague, Monto: "30000", Fecha: "2026-09-03", MedioPagoID: ptr(e.banco),
+		Cubrir: &movimientos.Cubrir{UsarOtros: true},
+	})
+	if s := e.saldoDe(t, "Efectivo"); s != "20000.00" {
+		t.Errorf("efectivo = %s, se esperaba 20000.00", s)
+	}
+}

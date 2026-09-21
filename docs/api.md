@@ -283,10 +283,18 @@ Un `pague`, un `preste` o el origen de un `traslado` que deje su medio por
 debajo de cero se rechaza con **409** y las cifras:
 
 ```json
-{"error": "En Efectivo solo tienes $ 400.000 y esto es de $ 600.000. Faltan $ 200.000: ¿de dónde salieron?",
- "falta_plata": {"medio_id": 2, "medio": "Efectivo", "disponible": "400000.00",
-                 "monto": "600000.00", "falta": "200000.00"}}
+{"error": "En Nequi solo tienes $ 0 y esto es de $ 600.000. Faltan $ 600.000: ¿de dónde salieron? Tienes $ 400.000 en Efectivo.",
+ "falta_plata": {"medio_id": 3, "medio": "Nequi", "disponible": "0.00",
+                 "monto": "600000.00", "falta": "600000.00",
+                 "en_otros": [{"medio_id": 2, "medio": "Efectivo", "saldo": "400000.00"}],
+                 "otros_total": "400000.00"}}
 ```
+
+`en_otros` es la plata que sí hay en los demás medios. Con `"usar_otros": true`
+en `cubrir`, primero se pasa esa plata al medio del gasto (un traslado por cada
+medio, del que más tiene al que menos) y solo lo que siga faltando se cubre con
+`tipo`. Si con eso alcanza, `tipo` puede ir vacío; si no alcanza y no hay
+`tipo`, vuelve el 409 con las cifras nuevas y no se guarda nada.
 
 Se vuelve a mandar el mismo cuerpo con `cubrir`, que dice de dónde salió el
 resto. El servidor registra ese movimiento por lo que falte **en ese momento**

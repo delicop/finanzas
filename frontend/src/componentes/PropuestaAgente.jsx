@@ -84,7 +84,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
       a_quien: esDeuda ? aQuien : '',
       estado: esDeuda ? estado : '',
       cobrar_el: esDeuda ? cobrarEl : '',
-      cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
+      cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
     }
   }
 
@@ -94,7 +94,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
       onResuelta={onResuelta}
       cuerpo={cuerpo}
       onFaltaPlata={setFalta}
-      etiqueta={falta ? 'Guardar las dos cosas' : 'Guardar'}
+      etiqueta={falta ? 'Guardar todo' : 'Guardar'}
       despues={factura ? (movimiento) => movimientosApi.subirFactura(movimiento.id, factura) : null}
     >
       {(campos) => (
@@ -305,10 +305,10 @@ function PagoRecurrente({ propuesta, categorias, medios, onResuelta }) {
         monto: entradaAMonto(monto),
         fecha: datos.fecha,
         descripcion: datos.descripcion,
-        cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
+        cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
       })}
       onFaltaPlata={setFalta}
-      etiqueta={falta ? 'Guardar las dos cosas' : recibido ? 'Lo recibí' : 'Lo pagué'}
+      etiqueta={falta ? 'Guardar todo' : recibido ? 'Lo recibí' : 'Lo pagué'}
     >
       {(campos) => (
         <>

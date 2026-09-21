@@ -3,6 +3,7 @@ package movimientos
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -105,6 +106,20 @@ type FaltaPlata struct {
 	Monto      string `json:"monto"`
 	// Falta es lo que hay que cubrir para que el medio quede en cero.
 	Falta string `json:"falta"`
+
+	// EnOtros es la plata que SI hay en los demas medios, del que mas tiene
+	// al que menos. Sin esto, pagar por Nequi con Nequi en cero pedia cubrir
+	// el gasto entero aunque hubiera plata de sobra en el efectivo, y la
+	// persona terminaba debiendo lo que no debia.
+	EnOtros    []Disponible `json:"en_otros"`
+	OtrosTotal string       `json:"otros_total"`
+}
+
+// Disponible es un medio con saldo a favor.
+type Disponible struct {
+	MedioID int64  `json:"medio_id"`
+	Medio   string `json:"medio"`
+	Saldo   string `json:"saldo"`
 }
 
 func (f *FaltaPlata) Error() string {
@@ -114,8 +129,20 @@ func (f *FaltaPlata) Error() string {
 
 // Mensaje es la frase que ve el usuario (y el asistente).
 func (f *FaltaPlata) Mensaje() string {
-	return fmt.Sprintf("En %s solo tienes %s y esto es de %s. Faltan %s: ¿de dónde salieron?",
+	m := fmt.Sprintf("En %s solo tienes %s y esto es de %s. Faltan %s: ¿de dónde salieron?",
 		f.Medio, dinero.Formatear(f.Disponible), dinero.Formatear(f.Monto), dinero.Formatear(f.Falta))
+	for i, o := range f.EnOtros {
+		if i == 0 {
+			m += " Tienes"
+		} else {
+			m += ","
+		}
+		m += fmt.Sprintf(" %s en %s", dinero.Formatear(o.Saldo), o.Medio)
+		if i == len(f.EnOtros)-1 {
+			m += "."
+		}
+	}
+	return m
 }
 
 // Los tipos con los que se puede cubrir un faltante.
@@ -128,7 +155,11 @@ const (
 // Cubrir dice de donde salio lo que faltaba. El monto no va aqui: lo pone el
 // servidor (ver el comentario de arriba).
 type Cubrir struct {
-	Tipo string
+	// UsarOtros: primero se pasa a este medio lo que haya en los demas (un
+	// traslado por cada uno), y solo lo que siga faltando se cubre con Tipo.
+	// Si con eso alcanza, Tipo puede venir vacio.
+	UsarOtros bool
+	Tipo      string
 	// CategoriaID: obligatoria en un ingreso ("entro por Ventas"). En los
 	// otros dos es opcional y, si no viene, se usa la del movimiento.
 	CategoriaID int64
@@ -189,7 +220,32 @@ func verificarFondos(ctx context.Context, q consultor, usuarioID, excluirID int6
 	if !rechazar {
 		return nil
 	}
+	if err := otrosMedios(ctx, q, usuarioID, &f); err != nil {
+		return err
+	}
 	return &f
+}
+
+// otrosMedios llena EnOtros y OtrosTotal: los demas medios con saldo a favor.
+func otrosMedios(ctx context.Context, q consultor, usuarioID int64, f *FaltaPlata) error {
+	const consulta = `
+		WITH s AS (` + saldosSQL + `)
+		SELECT coalesce(json_agg(json_build_object(
+		           'medio_id', mp.id, 'medio', mp.nombre, 'saldo', s.saldo::numeric(14,2)::text
+		       ) ORDER BY s.saldo DESC, mp.id), '[]')::text,
+		       coalesce(sum(s.saldo), 0)::numeric(14,2)::text
+		FROM s JOIN medios_pago mp ON mp.id = s.medio_id
+		WHERE s.medio_id <> $2 AND s.saldo > 0`
+
+	var crudo string
+	if err := q.QueryRowContext(ctx, consulta, usuarioID, f.MedioID).Scan(&crudo, &f.OtrosTotal); err != nil {
+		return fmt.Errorf("buscando plata en los otros medios: %w", err)
+	}
+	f.EnOtros = []Disponible{}
+	if err := json.Unmarshal([]byte(crudo), &f.EnOtros); err != nil {
+		return fmt.Errorf("leyendo los otros medios: %w", err)
+	}
+	return nil
 }
 
 // datosCubrir arma el movimiento que cubre `falta` en el medio de `d`.
@@ -245,7 +301,35 @@ func (s *Store) cubrirSiFalta(ctx context.Context, tx *sql.Tx, usuarioID, exclui
 		return falta
 	}
 
-	cubre := datosCubrir(d, d.Cubrir, falta.Falta)
+	restante := falta.Falta
+	if d.Cubrir.UsarOtros {
+		for _, o := range falta.EnOtros {
+			var usar string
+			var queda bool
+			err := tx.QueryRowContext(ctx,
+				`SELECT least($1::numeric, $2::numeric)::numeric(14,2)::text,
+				        ($1::numeric - least($1::numeric, $2::numeric))::numeric(14,2)::text,
+				        $1::numeric > $2::numeric`,
+				restante, o.Saldo).Scan(&usar, &restante, &queda)
+			if err != nil {
+				return fmt.Errorf("repartiendo el faltante: %w", err)
+			}
+			traslado := datosCubrir(d, &Cubrir{Tipo: CubrirTraslado, OrigenID: o.MedioID}, usar)
+			if _, err := s.insertar(ctx, tx, usuarioID, traslado); err != nil {
+				return traducirCheck(err, "pasando plata de otro medio")
+			}
+			if !queda {
+				return nil
+			}
+		}
+		if d.Cubrir.Tipo == "" {
+			// Ni con todo lo de los otros medios alcanza, y no dijo de donde
+			// sale el resto: se pregunta de nuevo, ya con las cifras nuevas.
+			return verificarFondos(ctx, tx, usuarioID, excluirID, d)
+		}
+	}
+
+	cubre := datosCubrir(d, d.Cubrir, restante)
 	// Un traslado para cubrir tambien saca plata, esta vez del origen: si
 	// ahi tampoco alcanza, el error habla de ESE medio y el usuario elige
 	// otra cosa.

@@ -77,16 +77,19 @@ export default function Dashboard() {
           pantalla que pide una acción hoy. */}
       {!soloLectura && <RecurrentesPendientes onConfirmado={cargarResumen} conProximas />}
 
-      {/* El balance va PRIMERO y en grande: es la cifra que se viene a ver.
-          Las otras tres lo explican, y por eso van en fichas más pequeñas a
-          su lado. */}
+      {/* Lo que tienes va PRIMERO y en grande: es la cifra que se viene a
+          ver. Es el balance de siempre, que es exactamente la suma de
+          "¿Dónde está la plata?"; se llamaba "Balance" con la fórmula debajo,
+          y con una deuda de por medio nadie entendía por qué no daba
+          Recibido − Pagado. Ahora dice qué es, y si hay deudas, cuánto queda
+          de verdad tuyo. Las otras tres fichas lo explican. */}
       <div className="fila-tarjetas">
         <Metrica
-          titulo="Balance"
+          titulo="Tienes"
           principal
           monto={totales.balance}
           clase={Number(totales.balance) >= 0 ? 'positivo' : 'negativo'}
-          nota="Recibido − Pagado − Por cobrar + Por pagar"
+          nota={notaTienes(totales)}
         />
         <Metrica titulo="Recibido" monto={totales.recibido} signo="+" clase="positivo" barra={1} />
         <Metrica
@@ -400,4 +403,17 @@ function TarjetaCategoria({ c }) {
       </dl>
     </article>
   )
+}
+
+// Si hay deudas en cualquiera de los dos sentidos, "tienes" no es lo que es
+// tuyo: parte es prestada, o parte está afuera. Lo tuyo es recibido − pagado
+// (pagar una deuda o que te devuelvan no lo cambia). En centavos, que son
+// enteros, para no arrastrar errores de coma flotante.
+function notaTienes(totales) {
+  const centavos = (m) => Math.round(Number(m) * 100)
+  if (centavos(totales.por_pagar) === 0 && centavos(totales.por_cobrar) === 0) {
+    return 'Entre todos tus medios'
+  }
+  const tuyo = (centavos(totales.recibido) - centavos(totales.pagado)) / 100
+  return `Entre todos tus medios · Contando deudas: ${formatearMonto(tuyo)}`
 }

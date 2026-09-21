@@ -140,7 +140,7 @@ export default function MovimientoForm({
         estado: esDeuda ? datos.estado : '',
         cobrar_el: esDeuda ? datos.cobrar_el : '',
         // Si con los cambios ya alcanza, el backend lo ignora.
-        cubrir: falta ? cuerpoCubrir(cubrir) : undefined,
+        cubrir: falta ? cuerpoCubrir(cubrir, falta) : undefined,
       }
 
       const guardado = esNuevo
@@ -432,7 +432,7 @@ export default function MovimientoForm({
             Cancelar
           </button>
           <button type="submit" disabled={guardando}>
-            {guardando ? 'Guardando...' : falta ? 'Guardar las dos cosas' : 'Guardar'}
+            {guardando ? 'Guardando...' : falta ? 'Guardar todo' : 'Guardar'}
           </button>
         </div>
       </form>

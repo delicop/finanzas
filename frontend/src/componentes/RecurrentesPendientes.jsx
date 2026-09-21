@@ -82,7 +82,7 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
             descripcion: o.descripcion,
           }
         : undefined
-      if (datosCubrir) cuerpo = { ...cuerpo, cubrir: cuerpoCubrir(datosCubrir) }
+      if (datosCubrir) cuerpo = { ...cuerpo, cubrir: cuerpoCubrir(datosCubrir, cubriendo?.falta) }
 
       await recurrentesApi.confirmar(o.id, cuerpo)
       setCubriendo(null)
@@ -210,7 +210,7 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
               disabled={ocupado === cubriendo.o.id}
               onClick={() => confirmar(cubriendo.o, cubriendo.monto, cubrir)}
             >
-              {ocupado === cubriendo.o.id ? 'Guardando...' : 'Guardar las dos cosas'}
+              {ocupado === cubriendo.o.id ? 'Guardando...' : 'Guardar todo'}
             </button>
           </div>
         </Modal>

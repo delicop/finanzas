@@ -190,6 +190,8 @@ type Entrada struct {
 }
 
 type EntradaCubrir struct {
+	// UsarOtros: primero lo que haya en los demas medios. Ver fondos.go.
+	UsarOtros   bool   `json:"usar_otros"`
 	Tipo        string `json:"tipo"` // me_prestaron, recibi o traslado
 	CategoriaID int64  `json:"categoria_id"`
 	AQuien      string `json:"a_quien"`
@@ -463,9 +465,13 @@ func validarCubrir(v *httpx.Validador, req Entrada, c EntradaCubrir) *Cubrir {
 	c.AQuien = strings.TrimSpace(c.AQuien)
 	c.CobrarEl = strings.TrimSpace(c.CobrarEl)
 
-	cubrir := &Cubrir{Tipo: c.Tipo, CategoriaID: c.CategoriaID}
+	cubrir := &Cubrir{UsarOtros: c.UsarOtros, Tipo: c.Tipo, CategoriaID: c.CategoriaID}
 
 	switch c.Tipo {
+	case "":
+		// Sin tipo solo vale si se usan los otros medios: si con eso no
+		// alcanza, el servidor vuelve a preguntar por el resto.
+		v.Check(c.UsarOtros, "cubrir.tipo", "Indica si te prestaron, fue un ingreso o la pasaste de otro medio")
 	case CubrirPrestamo:
 		v.Check(c.AQuien != "", "cubrir.a_quien", "Indica quién te prestó")
 		v.MaxLargo("cubrir.a_quien", c.AQuien, 100)
