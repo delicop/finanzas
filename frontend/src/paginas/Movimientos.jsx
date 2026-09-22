@@ -23,6 +23,7 @@ import ModalAbonos from '../componentes/ModalAbonos'
 import ModalExportar from '../componentes/ModalExportar'
 import FechaCobro from '../componentes/FechaCobro'
 import EtiquetaTipo from '../componentes/EtiquetaTipo'
+import Distintivo from '../componentes/Distintivo'
 
 const POR_PAGINA = 50
 
@@ -613,8 +614,16 @@ function FilaMovimiento(props) {
         <EtiquetaTipo m={m} />
       </td>
       <td>
-        {nombreCategoria(m)}
-        {m.medio_pago_nombre && <div className="sub-medio">{m.medio_pago_nombre}</div>}
+        <span className="con-distintivo">
+          <Distintivo nombre={m.categoria_nombre} />
+          {nombreCategoria(m)}
+        </span>
+        {m.medio_pago_nombre && (
+          <div className="sub-medio con-distintivo">
+            <Distintivo nombre={m.medio_pago_nombre} clase="medio" />
+            {m.medio_pago_nombre}
+          </div>
+        )}
       </td>
       <td>
         {m.descripcion || <span className="tenue">—</span>}
@@ -649,9 +658,12 @@ function TarjetaMovimiento(props) {
       </p>
 
       <div className="tarjeta-mov-meta">
-        <span className="tenue">
-          {nombreCategoria(m)}
-          {m.medio_pago_nombre && <span className="sub-medio"> · {m.medio_pago_nombre}</span>}
+        <span className="tenue con-distintivo meta-cat">
+          <Distintivo nombre={m.categoria_nombre} />
+          <span>
+            {nombreCategoria(m)}
+            {m.medio_pago_nombre && <span className="sub-medio"> · {m.medio_pago_nombre}</span>}
+          </span>
         </span>
         <Monto m={m} />
       </div>

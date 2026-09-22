@@ -9,6 +9,7 @@ import MovimientoForm from '../componentes/MovimientoForm'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import FechaCobro from '../componentes/FechaCobro'
 import ModalCategoria from '../componentes/ModalCategoria'
+import Distintivo from '../componentes/Distintivo'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -224,7 +225,10 @@ export default function Dashboard() {
                     title={`Ver los movimientos de ${c.nombre}`}
                   >
                     <td>
-                      <span className="nombre-clic">{c.nombre}</span>
+                      <span className="con-distintivo">
+                        <Distintivo nombre={c.nombre} />
+                        <span className="nombre-clic">{c.nombre}</span>
+                      </span>
                     </td>
                     <td className="num positivo">{formatearMonto(c.recibido)}</td>
                     <td className="num negativo">{formatearMonto(c.pagado)}</td>
@@ -280,7 +284,13 @@ function Contraparte({ c }) {
   return (
     <tr>
       <td>
-        <Link to={`/movimientos?a_quien=${encodeURIComponent(c.nombre)}`}>{c.nombre}</Link>
+        <Link
+          to={`/movimientos?a_quien=${encodeURIComponent(c.nombre)}`}
+          className="con-distintivo nombre-persona"
+        >
+          <Distintivo nombre={c.nombre} clase="persona" grande />
+          <span className="nombre-cat">{c.nombre}</span>
+        </Link>
         {c.es_categoria && (
           <div className="tenue" style={{ fontSize: 11 }} title="También tienes una categoría con este nombre">
             también es una categoría
@@ -381,7 +391,8 @@ function TarjetaMedio({ m, mayor }) {
 
   return (
     <article className={`tarjeta ficha-medio ${sinRegistrar ? 'sin-registrar' : ''}`}>
-      <span className="kicker">
+      <span className="kicker con-distintivo">
+        {!sinRegistrar && <Distintivo nombre={m.nombre} clase="medio" />}
         {sinRegistrar ? (
           m.nombre
         ) : (
@@ -427,7 +438,10 @@ function TarjetaCategoria({ c, onAbrir }) {
       onKeyDown={(e) => e.key === 'Enter' && onAbrir()}
     >
       <div className="tarjeta-cat-arriba">
-        <span className="nombre-clic">{c.nombre}</span>
+        <span className="con-distintivo">
+          <Distintivo nombre={c.nombre} grande />
+          <span className="nombre-clic nombre-cat">{c.nombre}</span>
+        </span>
         <strong className={Number(c.balance) >= 0 ? 'positivo' : 'negativo'}>
           {formatearMonto(c.balance)}
         </strong>

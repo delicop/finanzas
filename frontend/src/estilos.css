@@ -129,6 +129,18 @@
 
   font-family: var(--font-body);
   color-scheme: light;
+
+  /* --- Los distintivos de categorías y medios ---
+     Ocho tonos fríos para los circulitos (ver lib/distintivo.js). Ninguno es
+     verde ni rojo: esos dos son del dinero. */
+  --dist-1: #5b4bd6;
+  --dist-2: #2f6fdb;
+  --dist-3: #0e8aa3;
+  --dist-4: #8a4fd0;
+  --dist-5: #c2408f;
+  --dist-6: #4a5f94;
+  --dist-7: #1a7fb8;
+  --dist-8: #6f5bb5;
 }
 
 /* De noche: casi negro azulado, con las fichas un par de tonos por encima para
@@ -175,6 +187,17 @@
   --rojo: #ff4451;
 
   color-scheme: dark;
+
+  /* Los tonos de los distintivos, más claros para que se lean sobre la
+     noche. */
+  --dist-1: #a99ff5;
+  --dist-2: #7fb0f5;
+  --dist-3: #5ccfe0;
+  --dist-4: #c39af2;
+  --dist-5: #ec8fc8;
+  --dist-6: #93a7d6;
+  --dist-7: #6fc4e8;
+  --dist-8: #b5a8e6;
 }
 
 *,
@@ -3685,4 +3708,110 @@ button.wa-icono:hover:not(:disabled) {
   flex-wrap: wrap;
   gap: var(--space-2);
   font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+   Distintivos: el circulito de categorías y medios de pago
+   -------------------------------------------------------------------------*/
+.distintivo {
+  --tono: var(--dist-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--tono) 16%, var(--color-surface));
+  color: var(--tono);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+}
+
+/* El emoji ya trae su propio color; el fondo tintado es lo que lo amarra a
+   su categoría. */
+.distintivo.con-dibujo {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.distintivo-grande {
+  width: 36px;
+  height: 36px;
+  font-size: 15px;
+}
+
+.distintivo-grande.con-dibujo {
+  font-size: 19px;
+}
+
+.dist-1 { --tono: var(--dist-1); }
+.dist-2 { --tono: var(--dist-2); }
+.dist-3 { --tono: var(--dist-3); }
+.dist-4 { --tono: var(--dist-4); }
+.dist-5 { --tono: var(--dist-5); }
+.dist-6 { --tono: var(--dist-6); }
+.dist-7 { --tono: var(--dist-7); }
+.dist-8 { --tono: var(--dist-8); }
+
+/* Nombre con su distintivo al lado, en una sola línea. */
+.con-distintivo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* El medio, debajo de la categoría en la tabla, va en su propia línea y con
+   un circulito más chico: es el dato secundario de la celda. */
+div.con-distintivo {
+  display: flex;
+  margin-top: var(--space-1);
+}
+
+.sub-medio .distintivo {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.sub-medio .distintivo.con-dibujo {
+  font-size: 11px;
+}
+
+/* En la tarjeta del teléfono el nombre largo se parte en dos líneas antes que
+   empujar el monto fuera de la fila. */
+.meta-cat {
+  flex: 1;
+}
+
+/* En la tarjeta del resumen el nombre es lo que se busca con la vista, así
+   que va en la letra de los títulos y más grande que el monto de al lado.
+   La primera letra en mayúscula: la gente escribe "casa" y se lee mejor
+   "Casa" sin tocar lo que guardó. */
+.nombre-cat {
+  display: inline-block;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 19px;
+  line-height: 1.2;
+  color: var(--color-text);
+}
+
+.nombre-cat::first-letter {
+  text-transform: uppercase;
+}
+
+/* En "Cuentas con cada quien" el nombre es un enlace, pero se lee como el
+   nombre de un contacto: sin subrayado y en el color del texto. */
+.nombre-persona:hover {
+  text-decoration: none;
+}
+
+.nombre-persona:hover .nombre-cat {
+  color: var(--color-accent-700);
 }

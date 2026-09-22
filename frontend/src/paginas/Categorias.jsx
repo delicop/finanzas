@@ -3,6 +3,7 @@ import { categoriasApi } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useEsMovil } from '../lib/useEsMovil'
 import Modal from '../componentes/Modal'
+import Distintivo from '../componentes/Distintivo'
 
 export default function Categorias() {
   const [categorias, setCategorias] = useState([])
@@ -66,7 +67,10 @@ export default function Categorias() {
             {categorias.map((c) => (
               <article className="tarjeta-cat" key={c.id}>
                 <div className="tarjeta-cat-arriba">
-                  <strong>{c.nombre}</strong>
+                  <strong className="con-distintivo">
+                    <Distintivo nombre={c.nombre} grande />
+                    {c.nombre}
+                  </strong>
                   <span className="tenue">
                     {c.movimientos} mov{c.movimientos === 1 ? '' : 's'}.
                   </span>
@@ -97,7 +101,12 @@ export default function Categorias() {
               <tbody>
                 {categorias.map((c) => (
                   <tr key={c.id}>
-                    <td>{c.nombre}</td>
+                    <td>
+                      <span className="con-distintivo">
+                        <Distintivo nombre={c.nombre} />
+                        {c.nombre}
+                      </span>
+                    </td>
                     <td className="num tenue">{c.movimientos}</td>
                     <td className="acciones">
                       {!soloLectura && (
