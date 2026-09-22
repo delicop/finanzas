@@ -5,6 +5,7 @@ import { avisarMovimientoGuardado, useAlGuardarMovimiento } from '../lib/eventos
 import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
 import Modal from './Modal'
+import Distintivo from './Distintivo'
 
 // Lo que toca confirmar de los gastos e ingresos que se repiten, y —con
 // `conProximas`— lo que se viene en los próximos días.
@@ -147,12 +148,15 @@ export default function RecurrentesPendientes({ onConfirmado, conProximas = fals
   // adelantarse.
   const fila = (o, futura) => (
     <article key={o.id} className="pendiente">
-      <div className="pendiente-datos">
-        <strong>{o.descripcion}</strong>
-        <span className="tenue">
-          {futura ? cuandoToca(o.fecha) : formatearFecha(o.fecha)} · {o.categoria_nombre} ·{' '}
-          {o.medio_pago_nombre}
-        </span>
+      <div className="pendiente-cabeza">
+        <Distintivo nombre={o.categoria_nombre} grande />
+        <div className="pendiente-datos">
+          <strong>{o.descripcion}</strong>
+          <span className="tenue">
+            {futura ? cuandoToca(o.fecha) : formatearFecha(o.fecha)} · {o.categoria_nombre} ·{' '}
+            {o.medio_pago_nombre}
+          </span>
+        </div>
       </div>
 
       {corrigiendo === o.id ? (

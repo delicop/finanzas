@@ -4008,3 +4008,19 @@ div.con-distintivo {
   text-align: right;
   min-width: 0;
 }
+
+/* En "Se repiten" la lista ya vive dentro de la ficha de Plantillas: no
+   lleva su propio relleno, que lo pone la ficha. */
+.lista-recurrentes {
+  padding: 0;
+  margin-top: var(--space-2);
+}
+
+/* "Por confirmar" y "Lo que viene": el circulito de la categoría al lado del
+   nombre, como en el resto de las listas. */
+.pendiente-cabeza {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}

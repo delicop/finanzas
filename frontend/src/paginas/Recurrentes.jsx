@@ -4,6 +4,7 @@ import { categoriasApi, mediosApi, recurrentesApi } from '../lib/api'
 import {
   entradaAMonto,
   formatearFecha,
+  formatearFechaCorta,
   formatearMonto,
   hoyISO,
   montoAEntrada,
@@ -14,6 +15,7 @@ import InputMonto from '../componentes/InputMonto'
 import Modal from '../componentes/Modal'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import EtiquetaTipo from '../componentes/EtiquetaTipo'
+import Distintivo from '../componentes/Distintivo'
 
 const DIAS_SEMANA = [
   [1, 'Lunes'],
@@ -36,6 +38,9 @@ export default function Recurrentes() {
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
   const [editando, setEditando] = useState(null)
+  // La plantilla abierta en el detalle del teléfono. Por id, como en
+  // Movimientos: si se pausa o se borra, el detalle lo refleja o se cierra.
+  const [viendoID, setViendoID] = useState(null)
   const esMovil = useEsMovil()
   const { soloLectura } = useAuth()
 
@@ -94,6 +99,14 @@ export default function Recurrentes() {
   }
 
   const listo = categorias.length > 0 && medios.length > 0
+  const ordenados = ordenar(recurrentes)
+  const viendo = recurrentes.find((r) => r.id === viendoID)
+  const acciones = {
+    soloLectura,
+    onEditar: setEditando,
+    onEliminar: eliminar,
+    onAlternar: alternarActivo,
+  }
 
   return (
     <>
@@ -135,18 +148,11 @@ export default function Recurrentes() {
             deja de anotarlos a mano cada mes.
           </p>
         ) : esMovil ? (
-          <div className="lista-movil">
-            {recurrentes.map((r) => (
-              <TarjetaRecurrente
-                key={r.id}
-                r={r}
-                soloLectura={soloLectura}
-                onEditar={setEditando}
-                onEliminar={eliminar}
-                onAlternar={alternarActivo}
-              />
+          <ul className="lista-compacta lista-movs lista-recurrentes">
+            {ordenados.map((r) => (
+              <FilaRecurrente key={r.id} r={r} onAbrir={() => setViendoID(r.id)} />
             ))}
-          </div>
+          </ul>
         ) : (
           <div className="tabla-scroll">
             <table>
@@ -160,10 +166,13 @@ export default function Recurrentes() {
                 </tr>
               </thead>
               <tbody>
-                {recurrentes.map((r) => (
+                {ordenados.map((r) => (
                   <tr key={r.id} className={r.activo ? '' : 'fila-pausada'}>
                     <td>
-                      {r.descripcion}
+                      <span className="con-distintivo">
+                        <Distintivo nombre={r.categoria_nombre} />
+                        {r.descripcion}
+                      </span>
                       <div className="sub-medio">
                         {r.categoria_nombre} · {r.medio_pago_nombre}
                       </div>
@@ -189,13 +198,7 @@ export default function Recurrentes() {
                       </span>
                     </td>
                     <td className="acciones">
-                      <Acciones
-                        r={r}
-                        soloLectura={soloLectura}
-                        onEditar={setEditando}
-                        onEliminar={eliminar}
-                        onAlternar={alternarActivo}
-                      />
+                      <Acciones r={r} {...acciones} />
                     </td>
                   </tr>
                 ))}
@@ -204,6 +207,8 @@ export default function Recurrentes() {
           </div>
         )}
       </section>
+
+      {viendo && <DetalleRecurrente r={viendo} onCerrar={() => setViendoID(null)} {...acciones} />}
 
       {editando && (
         <FormRecurrente
@@ -252,41 +257,126 @@ function Acciones({ r, soloLectura, onEditar, onEliminar, onAlternar }) {
   )
 }
 
-function TarjetaRecurrente({ r, ...acciones }) {
+// Primero lo que toca antes; después lo que ya terminó y al final lo
+// pausado, que por ahora no va a pedir nada. Dentro de cada grupo, por la
+// próxima fecha y luego por nombre, para que el orden no baile al recargar.
+function ordenar(recurrentes) {
+  const grupo = (r) => (!r.activo ? 2 : r.proxima_fecha ? 0 : 1)
+  return [...recurrentes].sort(
+    (a, b) =>
+      grupo(a) - grupo(b) ||
+      (a.proxima_fecha ?? '').localeCompare(b.proxima_fecha ?? '') ||
+      a.descripcion.localeCompare(b.descripcion, 'es'),
+  )
+}
+
+function Monto({ r, className = '' }) {
   return (
-    <article className={`tarjeta-mov ${r.activo ? '' : 'fila-pausada'}`}>
-      <div className="tarjeta-mov-arriba">
-        <EtiquetaTipo m={r} />
-        <span className="tenue fecha">{describirFrecuencia(r)}</span>
-      </div>
+    <span className={`monto-valor ${r.tipo === 'recibi' ? 'positivo' : 'negativo'} ${className}`}>
+      {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
+    </span>
+  )
+}
 
-      <p className="tarjeta-mov-desc">{r.descripcion}</p>
+// Cuándo le vuelve a tocar, dicho corto para la fila.
+function proximaCorta(r) {
+  if (!r.activo) return 'pausado'
+  if (!r.proxima_fecha) return 'ya terminó'
+  return `próxima ${formatearFechaCorta(r.proxima_fecha)}`
+}
 
-      <div className="tarjeta-mov-meta">
-        <span className="tenue">
-          {r.categoria_nombre} · {r.medio_pago_nombre}
-        </span>
-        <strong className={`fig ${r.tipo === 'recibi' ? 'positivo' : 'negativo'}`}>
-          {r.tipo === 'recibi' ? '+' : '−'} {formatearMonto(r.monto)}
-        </strong>
+// En el teléfono, una fila con lo que se busca: qué es, cada cuánto, cuándo
+// vuelve y cuánto. Pausar, editar y eliminar están en el detalle.
+function FilaRecurrente({ r, onAbrir }) {
+  return (
+    <li
+      className={`fila-compacta fila-clic ${r.activo ? '' : 'fila-pausada'}`}
+      onClick={onAbrir}
+      tabIndex={0}
+      role="button"
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onAbrir())}
+    >
+      <Distintivo nombre={r.categoria_nombre} grande />
+      <div className="fila-compacta-texto">
+        <strong>{r.descripcion}</strong>
+        <span className="tenue">{describirFrecuencia(r)}</span>
       </div>
+      <div className="fila-compacta-monto">
+        <Monto r={r} />
+        <span className="tenue fila-compacta-nota">{proximaCorta(r)}</span>
+      </div>
+    </li>
+  )
+}
 
-      <div className="sub">
-        {r.activo ? (
-          r.proxima_fecha ? (
-            <span>próxima: {formatearFecha(r.proxima_fecha)}</span>
-          ) : (
-            <span className="tenue">ya terminó</span>
-          )
-        ) : (
-          <span className="tenue">pausado</span>
-        )}
-      </div>
+// El detalle de una plantilla con sus acciones. Como en Movimientos, tocar
+// una acción cierra el detalle primero: editar abre su propio formulario.
+function DetalleRecurrente({ r, onCerrar, ...props }) {
+  const cerrarY =
+    (accion) =>
+    (...args) => {
+      onCerrar()
+      accion(...args)
+    }
 
-      <div className="tarjeta-mov-acciones">
-        <Acciones r={r} {...acciones} />
+  return (
+    <Modal titulo={r.descripcion} onCerrar={onCerrar}>
+      <div className="detalle-mov">
+        <div className="detalle-mov-cabeza">
+          <EtiquetaTipo m={r} />
+          <span className="detalle-mov-monto">
+            <Monto r={r} />
+          </span>
+        </div>
+
+        <dl className="detalle-mov-datos">
+          <div>
+            <dt>Cada cuánto</dt>
+            <dd>{describirFrecuencia(r)}</dd>
+          </div>
+          <div>
+            <dt>Próxima vez</dt>
+            <dd>
+              {!r.activo ? 'Pausado' : r.proxima_fecha ? formatearFecha(r.proxima_fecha) : 'Ya terminó'}
+            </dd>
+          </div>
+          <div>
+            <dt>Categoría</dt>
+            <dd className="con-distintivo">
+              <Distintivo nombre={r.categoria_nombre} />
+              {r.categoria_nombre}
+            </dd>
+          </div>
+          <div>
+            <dt>Medio</dt>
+            <dd className="con-distintivo">
+              <Distintivo nombre={r.medio_pago_nombre} clase="medio" />
+              {r.medio_pago_nombre}
+            </dd>
+          </div>
+          <div>
+            <dt>Desde</dt>
+            <dd>{formatearFecha(r.desde)}</dd>
+          </div>
+          {r.hasta && (
+            <div>
+              <dt>Hasta</dt>
+              <dd>{formatearFecha(r.hasta)}</dd>
+            </div>
+          )}
+        </dl>
+
+        <div className="tarjeta-mov-acciones">
+          <Acciones
+            r={r}
+            soloLectura={props.soloLectura}
+            onEditar={cerrarY(props.onEditar)}
+            onEliminar={cerrarY(props.onEliminar)}
+            onAlternar={cerrarY(props.onAlternar)}
+          />
+        </div>
       </div>
-    </article>
+    </Modal>
   )
 }
 
