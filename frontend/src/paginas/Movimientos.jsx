@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { categoriasApi, dashboardApi, mediosApi, movimientosApi } from '../lib/api'
 import {
   ETIQUETAS_ESTADO,
@@ -8,7 +8,7 @@ import {
   esDeudaPropia,
   estiloMonto,
   formatearFecha,
-  formatearFechaCorta,
+  nombreDelDia,
   formatearMonto,
   mensajeDeCobro,
   nombreCategoria,
@@ -26,6 +26,7 @@ import FechaCobro from '../componentes/FechaCobro'
 import EtiquetaTipo from '../componentes/EtiquetaTipo'
 import Modal from '../componentes/Modal'
 import Distintivo from '../componentes/Distintivo'
+import Vacio from '../componentes/Vacio'
 
 const POR_PAGINA = 50
 
@@ -352,17 +353,53 @@ export default function Movimientos() {
         {cargando ? (
           <p className="tenue">Cargando...</p>
         ) : movimientos.length === 0 ? (
-          <p className="tenue">
-            {hayFiltros ? 'Ningún movimiento coincide con los filtros.' : 'Aún no hay movimientos.'}
-          </p>
+          hayFiltros ? (
+            <Vacio
+              icono="buscar"
+              titulo="Nada coincide"
+              className={esMovil ? 'tarjeta' : ''}
+              accion={
+                <button className="secundario" onClick={() => setParams(new URLSearchParams())}>
+                  Limpiar filtros
+                </button>
+              }
+            >
+              Ningún movimiento cumple con los filtros que pusiste.
+            </Vacio>
+          ) : (
+            <Vacio
+              icono="movimientos"
+              titulo="Aún no hay movimientos"
+              className={esMovil ? 'tarjeta' : ''}
+              accion={
+                soloLectura ? null : categorias.length === 0 ? (
+                  <Link to="/categorias">Primero crea una categoría</Link>
+                ) : (
+                  <button onClick={() => setEditando({})}>Registrar el primero</button>
+                )
+              }
+            >
+              Anota lo que entra y lo que sale, y aquí lo vas a ver ordenado día por día.
+            </Vacio>
+          )
         ) : (
           <>
             {esMovil ? (
-              <ul className="lista-compacta tarjeta lista-movs">
-                {movimientos.map((m) => (
-                  <FilaCompactaMovimiento key={m.id} m={m} onAbrir={() => setViendoID(m.id)} />
+              // Agrupados por día: "Hoy", "Ayer", "Lunes 20 sep". La fecha va
+              // una vez en el encabezado y no repetida en cada fila, y así se
+              // encuentra "lo que gasté ayer" sin leer fechas.
+              <div className="grupos-dia">
+                {agruparPorDia(movimientos).map(({ fecha, lista }) => (
+                  <section key={fecha} className="grupo-dia">
+                    <h3 className="encabezado-dia">{nombreDelDia(fecha)}</h3>
+                    <ul className="lista-compacta tarjeta lista-movs">
+                      {lista.map((m) => (
+                        <FilaCompactaMovimiento key={m.id} m={m} onAbrir={() => setViendoID(m.id)} />
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             ) : (
               <div className="tabla-scroll">
                 <table>
@@ -660,6 +697,18 @@ function FilaMovimiento(props) {
 
 /* ------------------------------- teléfono ------------------------------- */
 
+// Junta los movimientos seguidos que caen el mismo día. La lista ya viene
+// ordenada por fecha desde el servidor, así que basta con mirar el anterior.
+function agruparPorDia(movimientos) {
+  const grupos = []
+  for (const m of movimientos) {
+    const ultimo = grupos[grupos.length - 1]
+    if (ultimo && ultimo.fecha === m.fecha) ultimo.lista.push(m)
+    else grupos.push({ fecha: m.fecha, lista: [m] })
+  }
+  return grupos
+}
+
 // Una fila por movimiento con lo esencial: qué fue, de qué categoría,
 // cuándo y cuánto. Antes cada movimiento era una tarjeta con todos sus
 // botones, y en la pantalla cabían dos. Lo demás (medio, deuda, abonos,
@@ -669,11 +718,12 @@ function FilaCompactaMovimiento({ m, onAbrir }) {
   const pendiente = esDeuda(m) && m.estado !== 'pagado'
 
   // Debajo del título: la categoría si el título es la descripción (si no,
-  // se repetiría), y en una deuda abierta, con quién. La fecha siempre.
+  // se repetiría), el medio, y en una deuda abierta, con quién. La fecha no:
+  // ya está en el encabezado del día.
   const partes = []
   if (m.descripcion) partes.push(nombreCategoria(m))
+  if (m.medio_pago_nombre && m.tipo !== 'traslado') partes.push(m.medio_pago_nombre)
   if (pendiente) partes.push(esDeudaPropia(m) ? `le debes a ${m.a_quien}` : m.a_quien)
-  partes.push(formatearFechaCorta(m.fecha))
 
   return (
     <li

@@ -4024,3 +4024,73 @@ div.con-distintivo {
   gap: var(--space-3);
   min-width: 0;
 }
+
+/* ---------- movimientos agrupados por día (teléfono) ---------- */
+
+.grupos-dia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.grupo-dia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* El día va como rótulo de sección, fuera de la ficha: se lee de un vistazo
+   al bajar y no compite con los nombres de las filas. */
+.encabezado-dia {
+  margin: 0 var(--space-1);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--tenue);
+}
+
+/* ---------- pantallas vacías ---------- */
+
+.vacio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+}
+
+/* El dibujo en un círculo tintado del acento: es lo primero que se ve en
+   una pantalla vacía y dice de qué se trata antes de leer. */
+.vacio-icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+  color: var(--color-accent-700);
+}
+
+.vacio-titulo {
+  margin: 0;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 19px;
+}
+
+.vacio-texto {
+  margin: 0;
+  max-width: 34ch;
+  font-size: 14px;
+  color: var(--tenue);
+  line-height: 1.45;
+}
+
+.vacio-accion {
+  margin-top: var(--space-2);
+}

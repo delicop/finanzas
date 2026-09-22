@@ -38,6 +38,25 @@ export function formatearFechaCorta(iso) {
   return Number(anio) === new Date().getFullYear() ? base : `${base} ${anio}`
 }
 
+// El encabezado de un día en una lista: "Hoy", "Ayer", "Lunes 20 sep" si
+// fue esta semana, y si no, la fecha corta. La cuenta de días se hace con
+// fechas locales armadas a mano, por lo mismo que formatearFechaCorta.
+const DIAS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+export function nombreDelDia(iso, hoy = hoyISO()) {
+  if (!iso) return ''
+  const local = (f) => {
+    const [a, m, d] = f.split('-').map(Number)
+    return new Date(a, m - 1, d)
+  }
+  const fecha = local(iso)
+  const dias = Math.round((local(hoy) - fecha) / 86400000)
+  if (dias === 0) return 'Hoy'
+  if (dias === 1) return 'Ayer'
+  if (dias > 1 && dias < 7) return `${DIAS[fecha.getDay()]} ${formatearFechaCorta(iso)}`
+  return formatearFechaCorta(iso)
+}
+
 // Las marcas de tiempo del chat si vienen completas (timestamptz), asi que
 // aqui Date es seguro: la cadena trae su zona horaria.
 const horaCorta = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' })

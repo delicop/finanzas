@@ -5,6 +5,7 @@ import { useEsMovil } from '../lib/useEsMovil'
 import Modal from '../componentes/Modal'
 import Distintivo from '../componentes/Distintivo'
 import Icono from '../componentes/Icono'
+import Vacio from '../componentes/Vacio'
 
 export default function Categorias() {
   const [categorias, setCategorias] = useState([])
@@ -60,7 +61,18 @@ export default function Categorias() {
         {cargando ? (
           <p className="tenue">Cargando...</p>
         ) : categorias.length === 0 ? (
-          <p className="tenue">Aún no hay categorías. Crea la primera para empezar a registrar movimientos.</p>
+          <Vacio
+            icono="categorias"
+            titulo="Aún no hay categorías"
+            accion={
+              !soloLectura && (
+                <button onClick={() => setEditando({ id: null, nombre: '' })}>Crear la primera</button>
+              )
+            }
+          >
+            Son los grupos de tu plata: mercado, arriendo, sueldo. Crea al menos una para poder
+            registrar movimientos.
+          </Vacio>
         ) : esMovil ? (
           // En teléfono, una fila por categoría: el nombre a la izquierda y los
           // botones de ícono a la derecha. Antes era una tarjeta con "Editar" y

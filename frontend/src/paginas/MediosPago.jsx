@@ -5,6 +5,7 @@ import { useEsMovil } from '../lib/useEsMovil'
 import Modal from '../componentes/Modal'
 import Distintivo from '../componentes/Distintivo'
 import Icono from '../componentes/Icono'
+import Vacio from '../componentes/Vacio'
 
 export default function MediosPago() {
   const [medios, setMedios] = useState([])
@@ -60,7 +61,18 @@ export default function MediosPago() {
         {cargando ? (
           <p className="tenue">Cargando...</p>
         ) : medios.length === 0 ? (
-          <p className="tenue">Aún no hay medios de pago. Crea el primero (efectivo, transferencia, Nequi...).</p>
+          <Vacio
+            icono="medios"
+            titulo="Aún no hay medios de pago"
+            accion={
+              !soloLectura && (
+                <button onClick={() => setEditando({ id: null, nombre: '' })}>Crear el primero</button>
+              )
+            }
+          >
+            Es donde está la plata: efectivo, tu cuenta del banco, Nequi. Así sabes cuánto hay en
+            cada lado.
+          </Vacio>
         ) : esMovil ? (
           // En teléfono, una fila por medio: el nombre a la izquierda y los
           // botones de ícono a la derecha. Antes era una tarjeta con "Editar" y

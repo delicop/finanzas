@@ -16,6 +16,7 @@ import Modal from '../componentes/Modal'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import EtiquetaTipo from '../componentes/EtiquetaTipo'
 import Distintivo from '../componentes/Distintivo'
+import Vacio from '../componentes/Vacio'
 
 const DIAS_SEMANA = [
   [1, 'Lunes'],
@@ -143,10 +144,19 @@ export default function Recurrentes() {
         {cargando ? (
           <p className="tenue">Cargando...</p>
         ) : recurrentes.length === 0 ? (
-          <p className="tenue">
-            Aún no tienes nada que se repita. Crea el arriendo, el internet o el sueldo y
-            deja de anotarlos a mano cada mes.
-          </p>
+          <Vacio
+            icono="recurrentes"
+            titulo="Nada se repite todavía"
+            accion={
+              !soloLectura && (
+                <button onClick={() => setEditando({})} disabled={!listo}>
+                  Crear el primero
+                </button>
+              )
+            }
+          >
+            Crea el arriendo, el internet o el sueldo y deja de anotarlos a mano cada mes.
+          </Vacio>
         ) : esMovil ? (
           <ul className="lista-compacta lista-movs lista-recurrentes">
             {ordenados.map((r) => (

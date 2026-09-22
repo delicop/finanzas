@@ -10,6 +10,7 @@ import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import FechaCobro from '../componentes/FechaCobro'
 import ModalCategoria from '../componentes/ModalCategoria'
 import Distintivo from '../componentes/Distintivo'
+import Vacio from '../componentes/Vacio'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -124,9 +125,14 @@ export default function Dashboard() {
         </div>
 
         {medios.length === 0 ? (
-          <p className="tenue">
-            Todavía no tienes medios de pago. <Link to="/medios-pago">Crea el primero</Link>.
-          </p>
+          <Vacio
+            icono="medios"
+            titulo="Sin medios de pago"
+            className="tarjeta"
+            accion={<Link to="/medios-pago">Crear el primero</Link>}
+          >
+            Crea efectivo, tu cuenta o Nequi para ver aquí cuánto hay en cada uno.
+          </Vacio>
         ) : (
           /* Fichas y no una tabla, también en escritorio: aquí lo que importa
              es el saldo de cada medio como una cifra suelta, no comparar
@@ -185,9 +191,13 @@ export default function Dashboard() {
         <p className="subtitulo">Toca una para ver todos sus movimientos</p>
 
         {categorias.length === 0 ? (
-          <p className="tenue">
-            Todavía no tienes categorías. <Link to="/categorias">Crea la primera</Link>.
-          </p>
+          <Vacio
+            icono="categorias"
+            titulo="Sin categorías"
+            accion={<Link to="/categorias">Crear la primera</Link>}
+          >
+            Aquí vas a ver cuánto entra y sale de cada una.
+          </Vacio>
         ) : esMovil ? (
           <div className="lista-movil">
             {categorias.map((c) => (
