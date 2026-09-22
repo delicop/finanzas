@@ -376,10 +376,25 @@ a:hover {
 }
 
 .nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--color-text);
   font-size: 14px;
   padding: 2px 0;
   border-bottom: 1px solid transparent;
+}
+
+/* En escritorio el ícono acompaña al rótulo, no lo reemplaza: va tenue y se
+   enciende con la sección, igual que el texto. */
+.nav a .icono-svg {
+  color: var(--tenue);
+  flex-shrink: 0;
+}
+
+.nav a:hover .icono-svg,
+.nav a.activo .icono-svg {
+  color: currentColor;
 }
 
 .nav a:hover {
@@ -645,6 +660,15 @@ td.acciones button {
 .tipo-recibi {
   border-color: var(--color-accent);
   color: var(--color-accent-700);
+}
+
+/* La flecha del tipo va en el color del monto (clases .positivo, .negativo…)
+   y con trazo más grueso: a 13px el trazo normal se pierde. */
+.etiqueta .icono-tipo {
+  margin-left: -3px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  stroke-width: 2.6;
 }
 
 /* Lo que sale, en neutro: es la mayoría de los renglones y no necesita
@@ -1675,6 +1699,16 @@ button.menor-peligro:hover:not(:disabled) {
   line-height: 1;
   min-height: 0;
   box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* "Salir" lleva su puerta al lado del rótulo. */
+.boton-salir {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .boton-tema:hover:not(:disabled) {
@@ -1709,16 +1743,16 @@ button.menor-peligro:hover:not(:disabled) {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Versalitas pequeñas en vez de ícono + rótulo: en este sistema la tipografía
-   hace el trabajo que hacían los glifos, y la pestaña activa se marca con un
-   filete de oro arriba. */
+/* Ícono arriba y versalitas pequeñas abajo: el dibujo es lo que se reconoce
+   de un vistazo con el pulgar, el rótulo confirma. La pestaña activa se marca
+   con un filete de acento arriba y una pastilla suave detrás del ícono. */
 .barra-inferior a {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: var(--space-3) 2px;
+  gap: 3px;
+  padding: var(--space-2) 2px var(--space-3);
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1732,14 +1766,10 @@ button.menor-peligro:hover:not(:disabled) {
   min-width: 0;
 }
 
-.barra-inferior a span:not(.icono-tab),
-.barra-inferior a {
-  max-width: 100%;
-}
-
 /* El rótulo se recorta antes que romper la fila. El icono sigue entero, que
    es lo que de verdad se reconoce de un vistazo. */
-.barra-inferior a {
+.rotulo-tab {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1755,9 +1785,17 @@ button.menor-peligro:hover:not(:disabled) {
 }
 
 .icono-tab {
-  display: none;
-  font-size: 17px;
-  line-height: 1;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  padding: 3px 14px;
+  border-radius: var(--radius-pill);
+  color: var(--tenue);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.barra-inferior a.activo .icono-tab {
+  color: var(--color-accent-700);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 
 /* El contenido deja espacio para que la barra no tape el último elemento. */

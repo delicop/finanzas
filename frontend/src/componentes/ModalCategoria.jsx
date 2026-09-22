@@ -13,6 +13,7 @@ import {
 } from '../lib/formato'
 import { useAlGuardarMovimiento } from '../lib/eventos'
 import Modal from './Modal'
+import EtiquetaTipo from './EtiquetaTipo'
 
 // Cuántos se traen de una vez. Es para mirar, no para trabajar: para editar o
 // filtrar está la pantalla de Movimientos, a un clic.
@@ -138,7 +139,7 @@ function FilaDetalle({ m, categoriaID }) {
         <span className="lista-detalle-titulo">{titulo}</span>
         <div className="sub">
           <span>{formatearFecha(m.fecha)}</span>
-          <span className={`etiqueta tipo-${m.tipo}`}>{ETIQUETAS_TIPO[m.tipo]}</span>
+          <EtiquetaTipo m={m} />
           {m.tipo === 'traslado' ? (
             // La descripción ya puede ser otra cosa: la ruta va siempre, que
             // es lo que responde "¿de dónde salió?".

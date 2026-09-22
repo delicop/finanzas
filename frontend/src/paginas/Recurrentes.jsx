@@ -13,6 +13,7 @@ import { useEsMovil } from '../lib/useEsMovil'
 import InputMonto from '../componentes/InputMonto'
 import Modal from '../componentes/Modal'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
+import EtiquetaTipo from '../componentes/EtiquetaTipo'
 
 const DIAS_SEMANA = [
   [1, 'Lunes'],
@@ -255,7 +256,7 @@ function TarjetaRecurrente({ r, ...acciones }) {
   return (
     <article className={`tarjeta-mov ${r.activo ? '' : 'fila-pausada'}`}>
       <div className="tarjeta-mov-arriba">
-        <span className={`etiqueta tipo-${r.tipo}`}>{r.tipo === 'recibi' ? 'Recibí' : 'Pagué'}</span>
+        <EtiquetaTipo m={r} />
         <span className="tenue fecha">{describirFrecuencia(r)}</span>
       </div>
 

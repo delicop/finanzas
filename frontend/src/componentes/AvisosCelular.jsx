@@ -1,4 +1,5 @@
 import { useAvisosEnElCelular } from '../lib/push'
+import Icono from './Icono'
 
 // El interruptor de los avisos que llegan con la app cerrada.
 //
@@ -27,7 +28,7 @@ export default function AvisosCelular() {
           )
         }
       >
-        🔕
+        <Icono nombre="celularApagado" tamano={18} />
       </button>
     )
   }
@@ -47,7 +48,7 @@ export default function AvisosCelular() {
       }
       aria-label={encendido ? 'Apagar avisos en este dispositivo' : 'Recibir avisos en este dispositivo'}
     >
-      {ocupado ? '…' : encendido ? '📳' : '📴'}
+      {ocupado ? '…' : <Icono nombre={encendido ? 'celularEncendido' : 'celularApagado'} tamano={18} />}
     </button>
   )
 }

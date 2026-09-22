@@ -10,13 +10,14 @@ import AvisosCelular from './AvisosCelular'
 import InstalarApp, { AvisoSinConexion } from './InstalarApp'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
+import Icono from './Icono'
 
 const SECCIONES = [
-  { a: '/', etiqueta: 'Resumen', icono: '◉', exacta: true },
-  { a: '/movimientos', etiqueta: 'Movimientos', icono: '⇅' },
-  { a: '/recurrentes', etiqueta: 'Se repiten', icono: '↻' },
-  { a: '/categorias', etiqueta: 'Categorías', icono: '◫' },
-  { a: '/medios-pago', etiqueta: 'Medios', icono: '▤' },
+  { a: '/', etiqueta: 'Resumen', icono: 'resumen', exacta: true },
+  { a: '/movimientos', etiqueta: 'Movimientos', icono: 'movimientos' },
+  { a: '/recurrentes', etiqueta: 'Se repiten', icono: 'recurrentes' },
+  { a: '/categorias', etiqueta: 'Categorías', icono: 'categorias' },
+  { a: '/medios-pago', etiqueta: 'Medios', icono: 'medios' },
 ]
 
 // Las secciones del administrador. Son OTRA app: el dueño del servidor no
@@ -24,10 +25,10 @@ const SECCIONES = [
 // ya pagó. Ocultarlas a los demás es comodidad, no seguridad: quien escriba
 // /admin a mano llega a una pantalla que el backend deja vacía a punta de 403.
 const SECCIONES_ADMIN = [
-  { a: '/admin', etiqueta: 'Negocio', icono: '◈', exacta: true },
-  { a: '/admin/clientes', etiqueta: 'Clientes', icono: '☰' },
-  { a: '/admin/planes', etiqueta: 'Planes', icono: '▤' },
-  { a: '/admin/errores', etiqueta: 'Errores', icono: '⚠' },
+  { a: '/admin', etiqueta: 'Negocio', icono: 'negocio', exacta: true },
+  { a: '/admin/clientes', etiqueta: 'Clientes', icono: 'clientes' },
+  { a: '/admin/planes', etiqueta: 'Planes', icono: 'planes' },
+  { a: '/admin/errores', etiqueta: 'Errores', icono: 'errores' },
 ]
 
 export default function Layout({ children }) {
@@ -104,6 +105,7 @@ export default function Layout({ children }) {
                   end={s.exacta}
                   className={({ isActive }) => (isActive ? 'activo' : '')}
                 >
+                  <Icono nombre={s.icono} tamano={16} />
                   {s.etiqueta}
                 </NavLink>
               ))}
@@ -122,7 +124,7 @@ export default function Layout({ children }) {
             title={tema === 'claro' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
             aria-label={tema === 'claro' ? 'Cambiar a modo oscuro' : 'Cambiar a modo claro'}
           >
-            {tema === 'claro' ? '🌙' : '☀️'}
+            <Icono nombre={tema === 'claro' ? 'luna' : 'sol'} tamano={18} />
           </button>
 
           {/* Los avisos al celular van pegados a la campana: uno es "lo que
@@ -137,7 +139,7 @@ export default function Layout({ children }) {
               title="Avisos"
               aria-label={sinLeer > 0 ? `Avisos (${sinLeer} sin leer)` : 'Avisos'}
             >
-              🔔
+              <Icono nombre="campana" tamano={18} />
               {sinLeer > 0 && <span className="campana-punto">{sinLeer > 9 ? '9+' : sinLeer}</span>}
             </button>
           )}
@@ -148,11 +150,14 @@ export default function Layout({ children }) {
             title="Cambiar contraseña"
             aria-label="Cambiar contraseña"
           >
-            🔑
+            <Icono nombre="llave" tamano={18} />
           </button>
 
-          <button className="secundario" onClick={logout}>
-            Salir
+          <button className="secundario boton-salir" onClick={logout} title="Salir" aria-label="Salir">
+            <Icono nombre="salir" tamano={16} />
+            {/* En el teléfono la barra ya lleva cinco botones: ahí basta la
+                puerta, y el rótulo vuelve en escritorio. */}
+            {!esMovil && 'Salir'}
           </button>
         </div>
       </header>
@@ -189,10 +194,8 @@ export default function Layout({ children }) {
               end={s.exacta}
               className={({ isActive }) => (isActive ? 'activo' : '')}
             >
-              <span className="icono-tab" aria-hidden="true">
-                {s.icono}
-              </span>
-              {s.etiqueta}
+              <Icono nombre={s.icono} tamano={22} className="icono-tab" />
+              <span className="rotulo-tab">{s.etiqueta}</span>
             </NavLink>
           ))}
         </nav>

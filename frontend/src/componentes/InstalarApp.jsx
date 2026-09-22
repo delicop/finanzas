@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useInstalarApp } from '../lib/pwa'
 import Modal from './Modal'
+import Icono from './Icono'
 
 // El botón "Instalar" de la barra. Solo aparece cuando tiene sentido:
 //
@@ -23,7 +24,7 @@ export default function InstalarApp() {
         title="Instalar la app en este dispositivo"
         aria-label="Instalar la app en este dispositivo"
       >
-        📲
+        <Icono nombre="instalar" tamano={18} />
       </button>
 
       {explicando && (

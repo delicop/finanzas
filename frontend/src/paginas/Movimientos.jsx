@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom'
 import { categoriasApi, dashboardApi, mediosApi, movimientosApi } from '../lib/api'
 import {
   ETIQUETAS_ESTADO,
-  ETIQUETAS_TIPO,
   enlaceWhatsApp,
   esDeuda,
   esDeudaPropia,
@@ -23,6 +22,7 @@ import ModalCobro from '../componentes/ModalCobro'
 import ModalAbonos from '../componentes/ModalAbonos'
 import ModalExportar from '../componentes/ModalExportar'
 import FechaCobro from '../componentes/FechaCobro'
+import EtiquetaTipo from '../componentes/EtiquetaTipo'
 
 const POR_PAGINA = 50
 
@@ -610,7 +610,7 @@ function FilaMovimiento(props) {
     <tr>
       <td className="nowrap">{formatearFecha(m.fecha)}</td>
       <td>
-        <span className={`etiqueta tipo-${m.tipo}`}>{ETIQUETAS_TIPO[m.tipo]}</span>
+        <EtiquetaTipo m={m} />
       </td>
       <td>
         {nombreCategoria(m)}
@@ -640,7 +640,7 @@ function TarjetaMovimiento(props) {
   return (
     <article className="tarjeta-mov">
       <div className="tarjeta-mov-arriba">
-        <span className={`etiqueta tipo-${m.tipo}`}>{ETIQUETAS_TIPO[m.tipo]}</span>
+        <EtiquetaTipo m={m} />
         <span className="tenue fecha">{formatearFecha(m.fecha)}</span>
       </div>
 
