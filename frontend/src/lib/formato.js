@@ -25,6 +25,19 @@ export function formatearFecha(iso) {
   return `${dia}/${mes}/${anio}`
 }
 
+// La fecha en una lista, donde el espacio cuenta: "22 sep", y con el año solo
+// si no es el actual ("3 dic 2025"). Se arma a mano desde la cadena y no con
+// new Date(iso): "2026-09-22" se lee como medianoche UTC y en Colombia
+// quedaría en el día anterior.
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+export function formatearFechaCorta(iso) {
+  if (!iso) return ''
+  const [anio, mes, dia] = iso.split('-')
+  const base = `${Number(dia)} ${MESES_CORTOS[Number(mes) - 1]}`
+  return Number(anio) === new Date().getFullYear() ? base : `${base} ${anio}`
+}
+
 // Las marcas de tiempo del chat si vienen completas (timestamptz), asi que
 // aqui Date es seguro: la cadena trae su zona horaria.
 const horaCorta = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' })

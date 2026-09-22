@@ -3909,3 +3909,102 @@ div.con-distintivo {
   color: var(--rojo);
   border-color: var(--rojo);
 }
+
+/* ---------- movimientos en el teléfono: fila corta y detalle ---------- */
+
+/* La lista de movimientos es una sola ficha con filas, como categorías y
+   medios. La fila entera se toca para abrir el detalle. */
+.lista-movs {
+  padding: var(--space-3) var(--space-4);
+}
+
+.lista-movs .fila-compacta {
+  cursor: pointer;
+  padding: var(--space-3) 0;
+}
+
+.lista-movs .fila-compacta:first-child {
+  padding-top: var(--space-1);
+}
+
+.lista-movs .fila-compacta:last-child {
+  padding-bottom: var(--space-1);
+}
+
+.lista-movs .fila-compacta:active {
+  background: var(--hover);
+}
+
+.fila-compacta-monto {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.fila-compacta-monto .monto-valor {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fila-compacta-monto .estado {
+  font-size: 10px;
+  padding: 1px 7px;
+}
+
+.fila-compacta-nota {
+  font-size: 11px;
+}
+
+/* El detalle: tipo y monto grande arriba, los datos en pares y las acciones
+   abajo, con el mismo acomodo que tenían en la tarjeta. */
+.detalle-mov {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.detalle-mov-cabeza {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detalle-mov-monto .monto-valor {
+  font-family: var(--font-heading);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detalle-mov-datos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.detalle-mov-datos > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.detalle-mov-datos dt {
+  font-size: 12px;
+  color: var(--tenue);
+}
+
+.detalle-mov-datos dd {
+  margin: 0;
+  font-size: 15px;
+  text-align: right;
+  min-width: 0;
+}

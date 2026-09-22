@@ -8,6 +8,7 @@ import {
   esDeudaPropia,
   estiloMonto,
   formatearFecha,
+  formatearFechaCorta,
   formatearMonto,
   mensajeDeCobro,
   nombreCategoria,
@@ -23,6 +24,7 @@ import ModalAbonos from '../componentes/ModalAbonos'
 import ModalExportar from '../componentes/ModalExportar'
 import FechaCobro from '../componentes/FechaCobro'
 import EtiquetaTipo from '../componentes/EtiquetaTipo'
+import Modal from '../componentes/Modal'
 import Distintivo from '../componentes/Distintivo'
 
 const POR_PAGINA = 50
@@ -177,6 +179,12 @@ export default function Movimientos() {
 
   const totalPaginas = Math.max(1, Math.ceil(total / POR_PAGINA))
   const hayFiltros = filtrosActivos > 0
+
+  // El movimiento abierto en el detalle del teléfono. Se guarda el id y no
+  // el objeto: así, si un abono o un "ya me pagó" lo cambia, el detalle
+  // muestra lo nuevo, y si se elimina, se cierra solo.
+  const [viendoID, setViendoID] = useState(null)
+  const viendo = movimientos.find((m) => m.id === viendoID)
 
   const acciones = {
     onEditar: setEditando,
@@ -350,11 +358,11 @@ export default function Movimientos() {
         ) : (
           <>
             {esMovil ? (
-              <div className="lista-movil">
+              <ul className="lista-compacta tarjeta lista-movs">
                 {movimientos.map((m) => (
-                  <TarjetaMovimiento key={m.id} m={m} {...acciones} />
+                  <FilaCompactaMovimiento key={m.id} m={m} onAbrir={() => setViendoID(m.id)} />
                 ))}
-              </div>
+              </ul>
             ) : (
               <div className="tabla-scroll">
                 <table>
@@ -406,6 +414,14 @@ export default function Movimientos() {
           </>
         )}
       </section>
+
+      {viendo && (
+        <DetalleMovimientoModal
+          m={viendo}
+          onCerrar={() => setViendoID(null)}
+          {...acciones}
+        />
+      )}
 
       {editando && (
         <MovimientoForm
@@ -644,36 +660,115 @@ function FilaMovimiento(props) {
 
 /* ------------------------------- teléfono ------------------------------- */
 
-function TarjetaMovimiento(props) {
-  const { m } = props
+// Una fila por movimiento con lo esencial: qué fue, de qué categoría,
+// cuándo y cuánto. Antes cada movimiento era una tarjeta con todos sus
+// botones, y en la pantalla cabían dos. Lo demás (medio, deuda, abonos,
+// factura, editar, eliminar) está a un toque, en el detalle.
+function FilaCompactaMovimiento({ m, onAbrir }) {
+  const titulo = m.descripcion || nombreCategoria(m)
+  const pendiente = esDeuda(m) && m.estado !== 'pagado'
+
+  // Debajo del título: la categoría si el título es la descripción (si no,
+  // se repetiría), y en una deuda abierta, con quién. La fecha siempre.
+  const partes = []
+  if (m.descripcion) partes.push(nombreCategoria(m))
+  if (pendiente) partes.push(esDeudaPropia(m) ? `le debes a ${m.a_quien}` : m.a_quien)
+  partes.push(formatearFechaCorta(m.fecha))
+
   return (
-    <article className="tarjeta-mov">
-      <div className="tarjeta-mov-arriba">
-        <EtiquetaTipo m={m} />
-        <span className="tenue fecha">{formatearFecha(m.fecha)}</span>
+    <li
+      className="fila-compacta fila-clic"
+      onClick={onAbrir}
+      tabIndex={0}
+      role="button"
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onAbrir())}
+    >
+      <Distintivo nombre={m.categoria_nombre} grande />
+      <div className="fila-compacta-texto">
+        <strong>{titulo}</strong>
+        <span className="tenue">{partes.join(' · ')}</span>
       </div>
-
-      <p className="tarjeta-mov-desc">
-        {m.descripcion || <span className="tenue">Sin descripción</span>}
-      </p>
-
-      <div className="tarjeta-mov-meta">
-        <span className="tenue con-distintivo meta-cat">
-          <Distintivo nombre={m.categoria_nombre} />
-          <span>
-            {nombreCategoria(m)}
-            {m.medio_pago_nombre && <span className="sub-medio"> · {m.medio_pago_nombre}</span>}
-          </span>
-        </span>
+      <div className="fila-compacta-monto">
         <Monto m={m} />
+        {pendiente && (
+          <span className={`estado estado-${m.estado}`}>
+            {m.abonos > 0 ? `faltan ${formatearMonto(m.saldo)}` : ETIQUETAS_ESTADO[m.estado]}
+          </span>
+        )}
+        {m.factura && !pendiente && <span className="tenue fila-compacta-nota">con factura</span>}
       </div>
+    </li>
+  )
+}
 
-      <DetalleMovimiento m={m} />
+// El detalle completo de un movimiento, con todas sus acciones.
+//
+// Cualquier acción cierra el detalle antes de hacer lo suyo: editar, abonar
+// o saldar abren su propia ventana, y dos modales encima uno del otro en un
+// teléfono son un laberinto. Al terminar, la lista ya está al día.
+function DetalleMovimientoModal({ m, onCerrar, ...props }) {
+  const cerrarY =
+    (accion) =>
+    (...args) => {
+      onCerrar()
+      accion(...args)
+    }
 
-      <div className="tarjeta-mov-acciones">
-        <AccionesPrincipales {...props} />
-        <AccionesSecundarias {...props} />
+  const acciones = {
+    ...props,
+    onEditar: cerrarY(props.onEditar),
+    onEliminar: cerrarY(props.onEliminar),
+    onAbonar: cerrarY(props.onAbonar),
+    onVerFactura: cerrarY(props.onVerFactura),
+    onAlternarEstado: cerrarY(props.onAlternarEstado),
+  }
+
+  return (
+    <Modal titulo={m.descripcion || nombreCategoria(m)} onCerrar={onCerrar}>
+      <div className="detalle-mov">
+        <div className="detalle-mov-cabeza">
+          <EtiquetaTipo m={m} />
+          <span className="detalle-mov-monto">
+            <Monto m={m} />
+          </span>
+        </div>
+
+        <dl className="detalle-mov-datos">
+          <div>
+            <dt>Fecha</dt>
+            <dd>{formatearFecha(m.fecha)}</dd>
+          </div>
+          <div>
+            <dt>Categoría</dt>
+            <dd className="con-distintivo">
+              <Distintivo nombre={m.categoria_nombre} />
+              {nombreCategoria(m)}
+            </dd>
+          </div>
+          {m.medio_pago_nombre && m.tipo !== 'traslado' && (
+            <div>
+              <dt>Medio</dt>
+              <dd className="con-distintivo">
+                <Distintivo nombre={m.medio_pago_nombre} clase="medio" />
+                {m.medio_pago_nombre}
+              </dd>
+            </div>
+          )}
+          {m.descripcion && (
+            <div>
+              <dt>Descripción</dt>
+              <dd>{m.descripcion}</dd>
+            </div>
+          )}
+        </dl>
+
+        <DetalleMovimiento m={m} />
+
+        <div className="tarjeta-mov-acciones">
+          <AccionesPrincipales m={m} {...acciones} />
+          <AccionesSecundarias m={m} {...acciones} />
+        </div>
       </div>
-    </article>
+    </Modal>
   )
 }
