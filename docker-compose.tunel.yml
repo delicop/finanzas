@@ -1,0 +1,36 @@
+# Sacar la app a internet por un rato, sin abrir puertos del router.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tunel.yml up -d
+#   docker compose logs tunel | grep trycloudflare      # el enlace
+#
+# Cloudflare levanta un túnel de salida (la conexión la abre el contenedor, no
+# entra nadie desde afuera) y devuelve una dirección https://algo.trycloudflare.com
+# que apunta al frontend. Es temporal: cambia cada vez que se reinicia.
+#
+# Ojo: esa dirección la puede abrir cualquiera que la tenga. Lo que protege los
+# datos es el login. Para algo permanente van una cuenta de Cloudflare con
+# dominio propio o Tailscale (ver docs/despliegue.md).
+#
+# Para volver a lo normal:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tunel.yml down tunel
+#   docker compose up -d frontend
+
+services:
+  frontend:
+    environment:
+      # Vacío = la app llama a "/api" en la misma dirección desde la que se
+      # abrió, y el servidor de Vite lo reenvía al backend (ver vite.config.js).
+      # Así todo va por el dominio HTTPS del túnel: sin CORS y sin mezclar
+      # https con http, que el navegador bloquearía.
+      VITE_API_URL: ''
+      TUNEL: '1'
+
+  tunel:
+    image: cloudflare/cloudflared:latest
+    container_name: finanzas-tunel
+    restart: unless-stopped
+    # --no-autoupdate: que no se reinicie solo a mitad de una demostración.
+    command: tunnel --no-autoupdate --url http://frontend:5173
+    depends_on:
+      - frontend
