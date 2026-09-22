@@ -132,11 +132,7 @@ export default function Dashboard() {
              es el saldo de cada medio como una cifra suelta, no comparar
              columnas. La tabla obligaba a leer en cruz para responder "¿cuánto
              tengo en Nequi?". */
-          <div className="rejilla-medios">
-            {medios.map((m) => (
-              <TarjetaMedio key={m.medio_id ?? 'sin'} m={m} mayor={saldoMayor(medios)} />
-            ))}
-          </div>
+          <ListaMedios medios={medios} />
         )}
       </section>
 
@@ -363,6 +359,68 @@ function proporcion(parte, todo) {
   return Number(parte) / t
 }
 
+// Cuántos medios se ven antes de "Ver más". Tres caben en una pantalla de
+// teléfono sin tener que bajar para llegar al resto del resumen.
+const MEDIOS_A_LA_VISTA = 3
+
+// Las fichas de "¿Dónde está la plata?". Con dos o tres medios se ven todas;
+// con diez, la sección se comía media pantalla y empujaba las categorías
+// hasta el fondo. Así que se muestran los que más pesan y el resto se abre
+// con un toque.
+//
+// "Los que más pesan" es por el saldo sin signo: una tarjeta de crédito con
+// −2.000.000 importa tanto como una cuenta con 2.000.000, y esconderla por
+// ser negativa sería esconder justo la deuda. "Sin registrar" va siempre al
+// final: es el hueco que cuadra las cuentas, no un lugar donde tengas plata.
+function ListaMedios({ medios }) {
+  const [abierto, setAbierto] = useState(false)
+  const mayor = saldoMayor(medios)
+
+  const ordenados = [...medios].sort((a, b) => {
+    if (!a.medio_id !== !b.medio_id) return a.medio_id ? -1 : 1
+    return Math.abs(Number(b.saldo) || 0) - Math.abs(Number(a.saldo) || 0)
+  })
+
+  // Si solo sobraría uno, se muestra de una vez: un botón "Ver 1 más" ocupa
+  // casi lo mismo que la ficha que esconde.
+  const sobran = ordenados.length - MEDIOS_A_LA_VISTA
+  const recortar = sobran > 1 && !abierto
+  const visibles = recortar ? ordenados.slice(0, MEDIOS_A_LA_VISTA) : ordenados
+  const escondidos = ordenados.slice(MEDIOS_A_LA_VISTA)
+  const totalEscondido = escondidos.reduce((t, m) => t + (Number(m.saldo) || 0), 0)
+
+  return (
+    <>
+      <div className="rejilla-medios">
+        {visibles.map((m) => (
+          <TarjetaMedio key={m.medio_id ?? 'sin'} m={m} mayor={mayor} />
+        ))}
+      </div>
+
+      {sobran > 1 && (
+        <button
+          type="button"
+          className="secundario ver-mas-medios"
+          onClick={() => setAbierto((v) => !v)}
+          aria-expanded={abierto}
+        >
+          {abierto ? (
+            'Ver menos'
+          ) : (
+            <>
+              Ver {sobran} medios más
+              <span className="tenue"> · {formatearMonto(totalEscondido)}</span>
+            </>
+          )}
+          <span className={`flecha-ver-mas ${abierto ? 'arriba' : ''}`} aria-hidden="true">
+            ▾
+          </span>
+        </button>
+      )}
+    </>
+  )
+}
+
 // El saldo más grande de todos los medios, para que las barritas se comparen
 // entre sí y no cada una consigo misma.
 function saldoMayor(medios) {
@@ -391,7 +449,7 @@ function TarjetaMedio({ m, mayor }) {
 
   return (
     <article className={`tarjeta ficha-medio ${sinRegistrar ? 'sin-registrar' : ''}`}>
-      <span className="kicker con-distintivo">
+      <span className="nombre-medio con-distintivo">
         {!sinRegistrar && <Distintivo nombre={m.nombre} clase="medio" />}
         {sinRegistrar ? (
           m.nombre
