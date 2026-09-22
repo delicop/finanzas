@@ -14,6 +14,7 @@ Guía para quien mantiene la aplicación de finanzas.
 | [pruebas.md](pruebas.md) | Cómo correr los tests automáticos |
 | [despliegue.md](despliegue.md) | Puesta en marcha en la Raspberry Pi |
 | [hoja-de-ruta.md](hoja-de-ruta.md) | Lo que se le podría agregar, en orden de valor |
+| [auditoria-fable/](auditoria-fable/) | Auditoría de septiembre de 2026 y los prompts, uno por arreglo, para hacerlos con Opus |
 
 ## Arranque rápido
 
