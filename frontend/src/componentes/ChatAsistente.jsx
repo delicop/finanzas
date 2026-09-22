@@ -4,6 +4,8 @@ import { useAuth } from '../lib/AuthContext'
 import { descargarConversacion } from '../lib/descargarChat'
 import { hayDictado, useDictado } from '../lib/dictado'
 import { formatearMonto } from '../lib/formato'
+import { hayVoz, useVoz } from '../lib/voz'
+import Icono from './Icono'
 import { BotonAdjuntar, VistaAdjunto } from './AdjuntoFactura'
 import Burbuja from './BurbujaMensaje'
 import ConversacionesGuardadas from './ConversacionesGuardadas'
@@ -78,6 +80,11 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     setTexto(dicho.slice(0, MAX_CARACTERES))
     ajustarAltura()
   })
+
+  // Y al revés: cada respuesta se puede escuchar con el botón que lleva
+  // debajo. El altavoz de la cabecera es otra cosa: que se lean TODAS solas,
+  // sin tener que tocar nada. Viene apagado y se recuerda.
+  const voz = useVoz()
 
   useEffect(() => {
     // Mirando la cuenta de otro no hay nada que cargar: el backend responde
@@ -165,6 +172,8 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
     try {
       const datos = await agenteApi.enviar(pregunta)
       setMensajes((anteriores) => [...anteriores, datos.mensaje])
+      // Solo lo que acaba de llegar: al abrir el chat no se relee el hilo.
+      if (voz.auto) voz.leer(datos.mensaje.id, datos.mensaje.contenido)
       setRestantes(datos.restantes)
       if (datos.propuestas?.length) {
         setPropuestas((anteriores) => [...anteriores, ...datos.propuestas])
@@ -220,6 +229,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   // rápido y más barato) y la conversación queda guardada para consultarla.
   async function terminar() {
     setMenuAbierto(false)
+    voz.callar()
     try {
       const { guardada } = await agenteApi.terminar()
       setMensajes([])
@@ -253,6 +263,7 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
   async function borrarHistorial() {
     setMenuAbierto(false)
     if (!confirm('¿Borrar esta conversación y todas las guardadas? No se puede deshacer.')) return
+    voz.callar()
     try {
       await agenteApi.borrar()
       setMensajes([])
@@ -307,6 +318,25 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
           <span>{sinConfigurar ? 'Sin conectar' : enviando ? 'Consultando' : 'Consulta'}</span>
           <strong>Asistente</strong>
         </div>
+        {/* Que se lean TODAS solas, sin tocar el botón de cada una. Al lado
+            del menú y no dentro: se apaga a media conversación cuando alguien
+            se sienta al lado, y un ajuste escondido en ⋮ no se apaga a tiempo. */}
+        {hayVoz && !soloLectura && !sinConfigurar && !cargando && (
+          <button
+            type="button"
+            className={`wa-icono wa-voz ${voz.auto ? 'encendida' : ''} ${voz.leyendo ? 'hablando' : ''}`}
+            onClick={voz.alternarAuto}
+            aria-pressed={voz.auto}
+            aria-label={
+              voz.auto
+                ? 'Dejar de leer sola cada respuesta'
+                : 'Leer sola cada respuesta, sin tener que tocar Escuchar'
+            }
+            title={voz.auto ? 'Se leen solas: tocar para apagar' : 'Leerlas todas solas'}
+          >
+            <Icono nombre="altavoz" tamano={19} />
+          </button>
+        )}
         {!soloLectura && !sinConfigurar && !cargando && (
           <MenuChat
             abierto={menuAbierto}
@@ -372,7 +402,12 @@ export default function ChatAsistente({ onCerrar, onGuardado }) {
             )}
 
             {mensajes.map((m) => (
-              <Burbuja key={m.id} mensaje={m} />
+              <Burbuja
+                key={m.id}
+                mensaje={m}
+                onLeer={hayVoz ? () => voz.alternarLectura(m.id, m.contenido) : undefined}
+                leyendo={voz.leyendo === m.id}
+              />
             ))}
 
             {enviando && (

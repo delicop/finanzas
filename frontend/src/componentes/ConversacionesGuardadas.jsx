@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { agenteApi } from '../lib/api'
 import { descargarConversacion } from '../lib/descargarChat'
 import { formatearFechaHora } from '../lib/formato'
+import { hayVoz, useVoz } from '../lib/voz'
 import Burbuja from './BurbujaMensaje'
 
 // Las conversaciones que el usuario terminó. Se leen, se descargan y se
@@ -14,6 +15,10 @@ export default function ConversacionesGuardadas({ onVolver }) {
   const [lista, setLista] = useState(null)
   const [abierta, setAbierta] = useState(null)
   const [error, setError] = useState('')
+  // Una conversación guardada también se puede escuchar: es el mismo botón
+  // debajo de cada respuesta. Lo que no tiene es el modo automático — aquí no
+  // llega nada nuevo que leer.
+  const voz = useVoz()
 
   useEffect(() => {
     const control = new AbortController()
@@ -54,7 +59,11 @@ export default function ConversacionesGuardadas({ onVolver }) {
         <button
           type="button"
           className="wa-icono"
-          onClick={abierta ? () => setAbierta(null) : onVolver}
+          onClick={() => {
+            voz.callar()
+            if (abierta) setAbierta(null)
+            else onVolver()
+          }}
           aria-label={abierta ? 'Volver a la lista' : 'Volver al chat'}
         >
           ←
@@ -100,7 +109,12 @@ export default function ConversacionesGuardadas({ onVolver }) {
           <>
             <p className="wa-sistema">Conversación terminada. Solo se puede leer.</p>
             {abierta.hilo.map((m) => (
-              <Burbuja key={m.id} mensaje={m} />
+              <Burbuja
+                key={m.id}
+                mensaje={m}
+                onLeer={hayVoz ? () => voz.alternarLectura(m.id, m.contenido) : undefined}
+                leyendo={voz.leyendo === m.id}
+              />
             ))}
           </>
         ) : lista === null ? (

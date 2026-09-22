@@ -172,6 +172,26 @@ const TRAZOS = {
       <path d="M21 12H9" />
     </>
   ),
+
+  // Tutorial
+  ayuda: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 3.9" />
+      <path d="M12 17.2h.01" />
+    </>
+  ),
+  listo: <path d="m5 12.5 4.5 4.5L19 7.5" />,
+
+  // Leer la respuesta en voz alta, y pararla
+  altavoz: (
+    <>
+      <path d="M11 4.5 6.4 9H3v6h3.4l4.6 4.5z" />
+      <path d="M15 9.8a3.2 3.2 0 0 1 0 4.4" />
+      <path d="M17.7 7a7 7 0 0 1 0 10" />
+    </>
+  ),
+  parar: <rect x="6.5" y="6.5" width="11" height="11" rx="2.5" />,
 }
 
 export default function Icono({ nombre, tamano = 20, className = '' }) {

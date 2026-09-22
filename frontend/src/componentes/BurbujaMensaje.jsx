@@ -1,4 +1,5 @@
 import { formatearHora } from '../lib/formato'
+import Icono from './Icono'
 
 // Cómo se le nombran al usuario las herramientas que consultó el agente. El
 // backend manda el nombre técnico; aquí se traduce, y lo que no esté en la
@@ -14,7 +15,11 @@ const NOMBRES_HERRAMIENTAS = {
 
 // Un mensaje del chat, a la derecha si es tuyo y a la izquierda si es del
 // asistente. Lo usan el chat abierto y las conversaciones guardadas.
-export default function BurbujaMensaje({ mensaje }) {
+//
+//   onLeer   si llega, la respuesta muestra debajo el botón de escucharla.
+//            Sin él (o en un navegador sin voz) la burbuja es la de siempre.
+//   leyendo  si es ESTA la que está sonando, para pintar el botón de parar.
+export default function BurbujaMensaje({ mensaje, onLeer, leyendo = false }) {
   const esMio = mensaje.rol === 'usuario'
   const consultas = (mensaje.herramientas ?? []).filter((h) => !h.startsWith('proponer_'))
 
@@ -32,6 +37,21 @@ export default function BurbujaMensaje({ mensaje }) {
         <p className="wa-fuente">
           Consultó {consultas.map((h) => NOMBRES_HERRAMIENTAS[h] ?? h).join(' y ')}
         </p>
+      )}
+
+      {/* Escuchar la respuesta, debajo de ella y no en la cabecera: se pide
+          una por una, que es como se oye de verdad — la cifra que se quería,
+          no la conversación entera. */}
+      {!esMio && onLeer && (
+        <button
+          type="button"
+          className={`wa-leer ${leyendo ? 'leyendo' : ''}`}
+          onClick={onLeer}
+          aria-label={leyendo ? 'Dejar de leer esta respuesta' : 'Escuchar esta respuesta'}
+        >
+          <Icono nombre={leyendo ? 'parar' : 'altavoz'} tamano={15} />
+          {leyendo ? 'Parar' : 'Escuchar'}
+        </button>
       )}
 
       {mensaje.creado_en && (

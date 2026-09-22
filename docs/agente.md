@@ -322,6 +322,62 @@ convertirlo.
 Necesita HTTPS (o `localhost`) y permiso de micrófono. Si el permiso está
 negado, el chat lo dice.
 
+## Que te responda en voz alta
+
+Cada respuesta del asistente lleva debajo un **Escuchar** 🔈, como el altavoz
+de ChatGPT o Claude. Se toca y la lee; mientras suena, ese mismo botón dice
+**Parar**. Se pide respuesta por respuesta, que es como se oye de verdad: la
+cifra que se quería, no la conversación entera. Solo una a la vez — empezar
+otra corta la anterior. Las conversaciones guardadas también se pueden
+escuchar, con el mismo botón.
+
+El altavoz de la **cabecera** es otra cosa: que se lean TODAS solas, sin
+tocar nada, para oír el saldo con el teléfono en el bolsillo. **Viene
+apagado** y la decisión se recuerda en el navegador: una app de plata que se
+pone a hablar sola en una reunión es un problema, pero volver a apagarla
+todos los días también. Apagarlo calla lo que esté sonando, igual que
+terminar la conversación o borrar el historial.
+
+Es la otra mitad de la Web Speech API (`frontend/src/lib/voz.js`), y tampoco
+cuesta nada. A diferencia del dictado, aquí **no sale nada del dispositivo**:
+la voz la sintetiza el propio aparato. Se elige la voz en español más cercana
+que tenga instalada (Colombia, luego cualquiera de América, luego la que
+haya); si no tiene ninguna, se deja la de por defecto con `lang = 'es-CO'`.
+
+Firefox sí trae esta parte, así que funciona en un navegador más que el
+micrófono.
+
+Tres detalles que no son obvios y están resueltos en el código:
+
+- **El texto se prepara antes de decirlo** (`paraLeer`). Lo que importa son
+  los montos: `$45.000` leído tal cual suena "cuarenta y cinco punto cero
+  cero cero", así que se le quitan los puntos de los miles y se le agrega
+  "pesos". También se sueltan las `**negritas**`, los emojis y las viñetas, y
+  cada salto de línea pasa a ser una pausa.
+- **iPhone**: Safari solo deja hablar si la primera vez salió de un toque del
+  usuario. Con el botón de cada respuesta eso sobra —ese toque ya es el
+  permiso—, pero el modo automático lee algo que llega segundos después de
+  enviar. Por eso, al prender el altavoz de la cabecera se dice un silencio
+  (volumen 0) dentro de ese mismo toque: eso abre el permiso para las frases
+  de después.
+- **Chrome en computador** corta el audio cerca de los 15 segundos (un bug
+  viejo suyo). Mientras haya algo que decir se le hace `pause()` + `resume()`
+  cada 10 s, que es el remedio conocido; una respuesta larga del asistente
+  pasa de sobra ese tope.
+
+En automático solo se lee la respuesta que **acaba de llegar**: al abrir el
+chat no se relee el hilo entero.
+
+### Por qué no un TTS de servidor
+
+Una voz de servidor (OpenAI, ElevenLabs) suena mucho más natural, pero el
+proveedor del chat es una API compatible con la de OpenAI —hoy DeepSeek— que
+**no hace audio**: tocaría contratar otro servicio, pagar por respuesta,
+aguantar la latencia extra y hacer pasar el audio por nuestro servidor. Para
+lo que se necesita aquí —oír el saldo sin mirar la pantalla— no compensa. Si
+algún día compensa, el cambio es solo dentro de `voz.js`: quien lo llama solo
+dice `voz.hablar(texto)`.
+
 ## Terminar y guardar la conversación
 
 Un chat que nunca se limpia tiene dos problemas: el usuario tiene que leer todo
