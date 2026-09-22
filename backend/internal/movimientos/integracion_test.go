@@ -542,6 +542,91 @@ func TestTrasladoNoCambiaElBalance(t *testing.T) {
 	}
 }
 
+// De Casa a Trabajo, los dos en efectivo: la plata cambia de categoría, el
+// medio queda igual y el balance general no se mueve.
+func TestTrasladoEntreCategorias(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	trabajo, err := categorias.NewStore(e.pool).Crear(ctx, e.usuarioID, "Trabajo")
+	if err != nil {
+		t.Fatalf("creando categoría: %v", err)
+	}
+
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoRecibi, Monto: "500000", Fecha: "2026-09-01",
+		MedioPagoID: ptr(e.efectivo),
+	})
+	antes := e.resumen(t)
+
+	// Mas de lo que tiene la categoria de origen a proposito: las categorias
+	// pueden quedar en negativo, los medios no, y aqui el medio no cambia.
+	traslado := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoTraslado, Monto: "700000", Fecha: "2026-09-02",
+		MedioPagoID: ptr(e.efectivo), MedioCobroID: ptr(e.efectivo),
+		CategoriaDestinoID: ptr(trabajo.ID),
+	})
+	if traslado.CategoriaDestinoNombre == nil || *traslado.CategoriaDestinoNombre != "Trabajo" {
+		t.Errorf("categoria destino = %v, se esperaba Trabajo", traslado.CategoriaDestinoNombre)
+	}
+
+	despues := e.resumen(t)
+	if antes.Totales.Balance != despues.Totales.Balance {
+		t.Errorf("el traslado cambió el balance: %s -> %s", antes.Totales.Balance, despues.Totales.Balance)
+	}
+	if efectivo := medioLlamado(despues, "Efectivo"); efectivo == nil || efectivo.Saldo != "500000.00" {
+		t.Errorf("saldo en efectivo = %+v, se esperaba 500000.00", efectivo)
+	}
+
+	var negocio, destino *movimientos.ResumenCategoria
+	for i := range despues.Categorias {
+		switch despues.Categorias[i].CategoriaID {
+		case e.categoria:
+			negocio = &despues.Categorias[i]
+		case trabajo.ID:
+			destino = &despues.Categorias[i]
+		}
+	}
+	if negocio == nil || negocio.Balance != "-200000.00" || negocio.TrasladosSalieron != "700000.00" {
+		t.Errorf("origen = %+v, se esperaba balance -200000.00 y 700000.00 trasladados", negocio)
+	}
+	if destino == nil || destino.Balance != "700000.00" || destino.TrasladosEntraron != "700000.00" || destino.Movimientos != 1 {
+		t.Errorf("destino = %+v, se esperaba balance 700000.00 con un movimiento", destino)
+	}
+
+	// Filtrar por la categoria destino tambien trae el traslado.
+	lista, total, err := e.store.Listar(ctx, e.usuarioID, movimientos.Filtros{CategoriaID: trabajo.ID})
+	if err != nil {
+		t.Fatalf("Listar: %v", err)
+	}
+	if total != 1 || lista[0].ID != traslado.ID {
+		t.Errorf("filtrando por Trabajo salieron %d movimientos, se esperaba el traslado", total)
+	}
+}
+
+func TestTrasladoQueNoCambiaNadaSeRechaza(t *testing.T) {
+	base := movimientos.Entrada{
+		CategoriaID: 1, MedioPagoID: 5, MedioCobroID: 5,
+		Tipo: movimientos.TipoTraslado, Monto: "1000", Fecha: "2026-09-01",
+	}
+	if _, campos := movimientos.Validar(base); campos["medio_cobro_id"] == "" {
+		t.Error("se aceptó un traslado del mismo medio a la misma categoría")
+	}
+
+	misma := base
+	misma.CategoriaDestinoID = 1
+	if _, campos := movimientos.Validar(misma); campos["medio_cobro_id"] == "" {
+		t.Error("se aceptó un traslado a la misma categoría de origen")
+	}
+
+	otra := base
+	otra.CategoriaDestinoID = 2
+	datos, campos := movimientos.Validar(otra)
+	if len(campos) > 0 || datos.CategoriaDestinoID == nil || *datos.CategoriaDestinoID != 2 {
+		t.Errorf("un traslado a otra categoría no pasó: %v", campos)
+	}
+}
+
 func medioLlamado(r *movimientos.Resumen, nombre string) *movimientos.ResumenMedio {
 	for i := range r.Medios {
 		if r.Medios[i].Nombre == nombre {

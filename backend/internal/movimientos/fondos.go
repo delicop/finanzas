@@ -191,6 +191,12 @@ func verificarFondos(ctx context.Context, q consultor, usuarioID, excluirID int6
 	if !sacaPlata(d.Tipo) || d.MedioPagoID == nil {
 		return nil
 	}
+	// Un traslado que se queda en el mismo medio (de Casa a Trabajo, los dos
+	// en efectivo) sale y entra por ahi mismo: el medio no cambia. Si algo lo
+	// dejara en rojo, la guardia lo ve igual.
+	if d.Tipo == TipoTraslado && d.MedioCobroID != nil && *d.MedioCobroID == *d.MedioPagoID {
+		return nil
+	}
 
 	const consulta = `
 		WITH flujos AS (` + flujosSQL + `),

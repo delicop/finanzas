@@ -33,9 +33,16 @@ import (
 // "Recuperado" (lo que ya te devolvieron) y "abonado" (lo que ya pagaste de lo
 // tuyo) se reportan aparte, solo como informacion: no entran en la formula.
 //
-// LOS TRASLADOS NO APARECEN EN NINGUNA DE ESTAS CIFRAS. Pasar plata del
-// efectivo a Nequi no es ingreso ni gasto: la misma plata cambia de bolsillo.
-// Solo mueven los saldos por medio, y ahi se cancelan entre si.
+// LOS TRASLADOS NO APARECEN EN LOS TOTALES. Pasar plata del efectivo a Nequi
+// no es ingreso ni gasto: la misma plata cambia de bolsillo. Solo mueven los
+// saldos por medio, y ahi se cancelan entre si.
+//
+// Un traslado entre CATEGORIAS ("de Casa a Trabajo") si mueve el balance de
+// cada categoria: resta en la de origen y suma en la de destino. Sumadas todas
+// las categorias se cancelan igual, y el balance general queda como estaba:
+//
+//	balance categoria = recibido - pagado - por_cobrar + por_pagar
+//	                  + traslados_entraron - traslados_salieron
 
 type ResumenCategoria struct {
 	CategoriaID int64  `json:"categoria_id"`
@@ -50,7 +57,12 @@ type ResumenCategoria struct {
 	Recuperado string `json:"recuperado"`
 	// Abonado es lo que ya pagaste de tus deudas (informativo).
 	Abonado string `json:"abonado"`
+	// Lo que llego a esta categoria desde otra, y lo que salio de ella hacia
+	// otra, por traslados. Un traslado que no cambia de categoria no cuenta.
+	TrasladosEntraron string `json:"traslados_entraron"`
+	TrasladosSalieron string `json:"traslados_salieron"`
 	// Balance = recibido - pagado - por_cobrar + por_pagar
+	//         + traslados_entraron - traslados_salieron
 	Balance     string `json:"balance"`
 	Movimientos int    `json:"movimientos"`
 }
@@ -140,7 +152,7 @@ type Resumen struct {
 // debe" tiene que cambiar en un solo sitio. Si cada consulta llevara su propia
 // resta, el dashboard y los avisos podrian terminar diciendo cifras distintas.
 const saldosCTE = `
-	SELECT m.id, m.categoria_id, m.tipo, m.monto, m.fecha, m.cobrar_el, m.a_quien,
+	SELECT m.id, m.categoria_id, m.categoria_destino_id, m.tipo, m.monto, m.fecha, m.cobrar_el, m.a_quien,
 	       (m.monto - coalesce((
 	           SELECT sum(a.monto) FROM abonos a WHERE a.movimiento_id = m.id
 	       ), 0)) AS saldo
@@ -175,14 +187,23 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 		       coalesce(sum(s.saldo) FILTER (WHERE s.tipo = 'me_prestaron'), 0)::numeric(14,2)::text,
 		       coalesce(sum(s.monto - s.saldo) FILTER (WHERE s.tipo = 'preste'), 0)::numeric(14,2)::text,
 		       coalesce(sum(s.monto - s.saldo) FILTER (WHERE s.tipo = 'me_prestaron'), 0)::numeric(14,2)::text,
+		       coalesce(sum(s.monto) FILTER (WHERE s.categoria_destino_id = c.id), 0)::numeric(14,2)::text,
+		       coalesce(sum(s.monto) FILTER (WHERE s.categoria_destino_id <> c.id), 0)::numeric(14,2)::text,
 		       (coalesce(sum(s.monto) FILTER (WHERE s.tipo = 'recibi'), 0)
 		      - coalesce(sum(s.monto) FILTER (WHERE s.tipo = 'pague'),  0)
 		      - coalesce(sum(s.saldo) FILTER (WHERE s.tipo = 'preste'), 0)
 		      + coalesce(sum(s.saldo) FILTER (WHERE s.tipo = 'me_prestaron'), 0)
+		      + coalesce(sum(s.monto) FILTER (WHERE s.categoria_destino_id = c.id), 0)
+		      - coalesce(sum(s.monto) FILTER (WHERE s.categoria_destino_id <> c.id), 0)
 		       )::numeric(14,2)::text,
 		       count(s.id)
 		FROM categorias c
-		LEFT JOIN s ON s.categoria_id = c.id
+		-- Un traslado entre categorias se une a las DOS: a la de origen por
+		-- categoria_id y a la de destino por categoria_destino_id. Solo los
+		-- traslados tienen destino, y nunca es igual al origen (CHECK en la
+		-- base), asi que ninguna otra suma de arriba lo ve dos veces; los
+		-- traslados se distinguen por cual de las dos columnas es c.id.
+		LEFT JOIN s ON s.categoria_id = c.id OR s.categoria_destino_id = c.id
 		WHERE c.usuario_id = $1
 		GROUP BY c.id, c.nombre
 		ORDER BY lower(c.nombre)`
@@ -197,7 +218,7 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 		var rc ResumenCategoria
 		if err := filas.Scan(&rc.CategoriaID, &rc.Nombre, &rc.Recibido, &rc.Pagado,
 			&rc.PorCobrar, &rc.PorPagar, &rc.Recuperado, &rc.Abonado,
-			&rc.Balance, &rc.Movimientos); err != nil {
+			&rc.TrasladosEntraron, &rc.TrasladosSalieron, &rc.Balance, &rc.Movimientos); err != nil {
 			return nil, fmt.Errorf("leyendo resumen de categoria: %w", err)
 		}
 		resumen.Categorias = append(resumen.Categorias, rc)

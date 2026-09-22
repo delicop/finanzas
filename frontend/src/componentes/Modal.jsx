@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 
-export default function Modal({ titulo, onCerrar, children }) {
+// `ancho` es para lo que se lee como una lista (el detalle de una categoría):
+// en 480px una fila con fecha, descripción y monto no cabe.
+export default function Modal({ titulo, onCerrar, children, ancho = false }) {
   // Cerrar con Escape. El cleanup del useEffect quita el listener al
   // desmontar; sin eso se irian acumulando listeners cada vez que se abre.
   useEffect(() => {
@@ -14,7 +16,7 @@ export default function Modal({ titulo, onCerrar, children }) {
   return (
     <div className="modal-fondo" onClick={onCerrar}>
       {/* stopPropagation: un clic dentro del modal no debe cerrarlo */}
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+      <div className={`modal ${ancho ? 'modal-ancho' : ''}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="modal-encabezado">
           <h2>{titulo}</h2>
           <button className="icono" onClick={onCerrar} aria-label="Cerrar">

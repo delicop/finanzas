@@ -25,7 +25,9 @@ func (s *Store) Listar(ctx context.Context, usuarioID int64) ([]Categoria, error
 		SELECT c.id, c.nombre, c.creado_en, c.actualizado_en,
 		       count(m.id) AS movimientos
 		FROM categorias c
-		LEFT JOIN movimientos m ON m.categoria_id = c.id
+		-- Un traslado entre categorías también es de la categoría a la que
+		-- entra: sin eso, la pantalla ofrecería borrar una que no se puede.
+		LEFT JOIN movimientos m ON m.categoria_id = c.id OR m.categoria_destino_id = c.id
 		WHERE c.usuario_id = $1
 		GROUP BY c.id
 		ORDER BY lower(c.nombre)`

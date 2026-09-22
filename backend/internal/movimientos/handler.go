@@ -175,14 +175,18 @@ type Entrada struct {
 	// MedioPagoID es por donde se mueve la plata. En un traslado, el ORIGEN.
 	MedioPagoID int64 `json:"medio_pago_id"`
 	// MedioCobroID solo se usa en un traslado: el medio DESTINO.
-	MedioCobroID int64  `json:"medio_cobro_id"`
-	Tipo         string `json:"tipo"`
-	Monto        string `json:"monto"`
-	Fecha        string `json:"fecha"`
-	Descripcion  string `json:"descripcion"`
-	AQuien       string `json:"a_quien"`
-	Estado       string `json:"estado"`
-	CobrarEl     string `json:"cobrar_el"`
+	MedioCobroID int64 `json:"medio_cobro_id"`
+	// CategoriaDestinoID solo se usa en un traslado: la categoria a la que
+	// pasa la plata. 0 (o la misma de origen) = no cambia de categoria.
+	CategoriaDestinoID int64 `json:"categoria_destino_id"`
+
+	Tipo        string `json:"tipo"`
+	Monto       string `json:"monto"`
+	Fecha       string `json:"fecha"`
+	Descripcion string `json:"descripcion"`
+	AQuien      string `json:"a_quien"`
+	Estado      string `json:"estado"`
+	CobrarEl    string `json:"cobrar_el"`
 
 	// Cubrir llega cuando el medio no alcanzaba y el usuario ya dijo de donde
 	// salio el resto. Ver fondos.go.
@@ -243,8 +247,16 @@ func (h *Handler) Crear(w http.ResponseWriter, r *http.Request) {
 		httpx.ErrorCampos(w, map[string]string{"categoria_id": "La categoría no existe"})
 		return
 	}
+	if errors.Is(err, ErrCategoriaDestino) {
+		httpx.ErrorCampos(w, map[string]string{"categoria_destino_id": "La categoría no existe"})
+		return
+	}
 	if errors.Is(err, ErrMedioInvalido) {
 		httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
+		return
+	}
+	if errors.Is(err, ErrMismoMedio) {
+		httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": MismoOrigenMsg})
 		return
 	}
 	if errors.Is(err, ErrCobroAntes) {
@@ -278,8 +290,12 @@ func (h *Handler) Actualizar(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "Movimiento no encontrado")
 	case errors.Is(err, ErrCategoriaInvalida):
 		httpx.ErrorCampos(w, map[string]string{"categoria_id": "La categoría no existe"})
+	case errors.Is(err, ErrCategoriaDestino):
+		httpx.ErrorCampos(w, map[string]string{"categoria_destino_id": "La categoría no existe"})
 	case errors.Is(err, ErrMedioInvalido):
 		httpx.ErrorCampos(w, map[string]string{"medio_pago_id": "El medio de pago no existe"})
+	case errors.Is(err, ErrMismoMedio):
+		httpx.ErrorCampos(w, map[string]string{"medio_cobro_id": MismoOrigenMsg})
 	case errors.Is(err, ErrCobroAntes):
 		httpx.ErrorCampos(w, map[string]string{"cobrar_el": "No puede ser antes del día en que prestaste"})
 	case err != nil:
@@ -386,18 +402,28 @@ func Validar(req Entrada) (Datos, map[string]string) {
 
 	switch {
 	// ------------------------------------------------------------------
-	// Traslado: de un medio a otro. Ni a_quien ni estado ni fecha acordada.
+	// Traslado: de un medio a otro, de una categoria a otra, o las dos. Ni
+	// a_quien ni estado ni fecha acordada.
 	// ------------------------------------------------------------------
 	case req.Tipo == TipoTraslado:
+		// "A la misma categoria" se guarda como nil: asi hay una sola forma
+		// de decir que la plata no cambio de categoria.
+		cambiaCategoria := req.CategoriaDestinoID > 0 && req.CategoriaDestinoID != req.CategoriaID
+		if cambiaCategoria {
+			id := req.CategoriaDestinoID
+			datos.CategoriaDestinoID = &id
+		}
+
 		// El texto habla de "destino" y no de "medio de cobro" porque eso es
 		// lo que el usuario ve en el formulario; el nombre de la columna es
 		// cosa nuestra.
 		if req.MedioCobroID <= 0 {
 			v.Check(false, "medio_cobro_id", "Indica a qué medio pasó la plata")
-		} else if req.MedioCobroID == req.MedioPagoID {
-			// Un traslado de un medio a si mismo no mueve nada: es siempre un
-			// error de digitacion, y dejarlo pasar llena la lista de ruido.
-			v.Check(false, "medio_cobro_id", "El origen y el destino no pueden ser el mismo medio")
+		} else if req.MedioCobroID == req.MedioPagoID && !cambiaCategoria {
+			// Un traslado que no cambia ni de medio ni de categoria no mueve
+			// nada: es siempre un error de digitacion, y dejarlo pasar llena
+			// la lista de ruido.
+			v.Check(false, "medio_cobro_id", MismoOrigenMsg)
 		} else {
 			id := req.MedioCobroID
 			datos.MedioCobroID = &id

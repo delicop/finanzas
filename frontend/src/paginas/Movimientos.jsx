@@ -11,6 +11,8 @@ import {
   formatearFecha,
   formatearMonto,
   mensajeDeCobro,
+  nombreCategoria,
+  rutaTraslado,
 } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
 import { useAlGuardarMovimiento } from '../lib/eventos'
@@ -565,9 +567,7 @@ function DetalleMovimiento({ m }) {
   if (m.tipo === 'traslado') {
     return (
       <div className="sub">
-        <span className="traslado-ruta">
-          {m.medio_pago_nombre} → {m.medio_cobro_nombre}
-        </span>
+        <span className="traslado-ruta">{rutaTraslado(m)}</span>
         <span className="tenue">no cambia el total</span>
       </div>
     )
@@ -613,7 +613,7 @@ function FilaMovimiento(props) {
         <span className={`etiqueta tipo-${m.tipo}`}>{ETIQUETAS_TIPO[m.tipo]}</span>
       </td>
       <td>
-        {m.categoria_nombre}
+        {nombreCategoria(m)}
         {m.medio_pago_nombre && <div className="sub-medio">{m.medio_pago_nombre}</div>}
       </td>
       <td>
@@ -650,7 +650,7 @@ function TarjetaMovimiento(props) {
 
       <div className="tarjeta-mov-meta">
         <span className="tenue">
-          {m.categoria_nombre}
+          {nombreCategoria(m)}
           {m.medio_pago_nombre && <span className="sub-medio"> · {m.medio_pago_nombre}</span>}
         </span>
         <Monto m={m} />

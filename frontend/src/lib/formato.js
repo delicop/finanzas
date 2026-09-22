@@ -153,6 +153,27 @@ export function estiloMonto(movimiento) {
   }
 }
 
+// Por dónde se movió la plata de un traslado, dicho en una línea:
+//
+//   solo cambia el medio      -> "Efectivo → Nequi"
+//   solo cambia la categoría  -> "Casa → Trabajo · en Efectivo"
+//   cambian las dos           -> "Efectivo, Casa → Nequi, Trabajo"
+export function rutaTraslado(m) {
+  const destinoCat = m.categoria_destino_nombre
+  const mismoMedio = m.medio_pago_id != null && m.medio_pago_id === m.medio_cobro_id
+  if (!destinoCat) return `${m.medio_pago_nombre} → ${m.medio_cobro_nombre}`
+  if (mismoMedio) return `${m.categoria_nombre} → ${destinoCat} · en ${m.medio_pago_nombre}`
+  return `${m.medio_pago_nombre}, ${m.categoria_nombre} → ${m.medio_cobro_nombre}, ${destinoCat}`
+}
+
+// La categoría como se lee en una lista: en un traslado entre categorías,
+// las dos puntas.
+export function nombreCategoria(m) {
+  return m.categoria_destino_nombre
+    ? `${m.categoria_nombre} → ${m.categoria_destino_nombre}`
+    : m.categoria_nombre
+}
+
 // El mensaje de WhatsApp para recordar un cobro, ya listo para enviar.
 //
 // Se arma aquí y no en el servidor porque no se manda nada: se abre WhatsApp

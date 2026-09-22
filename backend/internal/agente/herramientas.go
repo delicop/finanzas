@@ -194,7 +194,13 @@ func (c *Catalogo) Esquemas() []Herramienta {
 					"type": "string",
 					"description": "SOLO para tipo traslado: el medio de pago al que ENTRA la plata. " +
 						"En un traslado, medio_pago es de dónde sale y medio_destino a dónde entra. " +
-						"Tienen que ser distintos",
+						"Puede ser el mismo medio solo si lo que cambia es la categoría (categoria_destino)",
+				},
+				"categoria_destino": map[string]any{
+					"type": "string",
+					"description": "SOLO para tipo traslado, opcional: la categoría a la que PASA la plata " +
+						"('pasé 100 mil de Casa a Trabajo'). En ese caso categoria es de dónde sale. Nombre exacto, " +
+						"copiado de listar_categorias. Si la plata se queda en la misma categoría, no lo mandes",
 				},
 				"a_quien": map[string]any{
 					"type": "string",
@@ -466,8 +472,10 @@ type movimientoParaModelo struct {
 	MedioPago   string `json:"medio_pago,omitempty"`
 	// MedioDestino solo aparece en los traslados: a donde entro la plata.
 	MedioDestino string `json:"medio_destino,omitempty"`
-	AQuien       string `json:"a_quien,omitempty"`
-	Estado       string `json:"estado,omitempty"`
+	// CategoriaDestino solo en un traslado entre categorias.
+	CategoriaDestino string `json:"categoria_destino,omitempty"`
+	AQuien           string `json:"a_quien,omitempty"`
+	Estado           string `json:"estado,omitempty"`
 	// Saldo es lo que FALTA de una deuda (monto menos abonos), y Abonado lo
 	// que ya se movio. Sin estos dos el modelo diria "te deben 500.000" de un
 	// prestamo del que ya devolvieron 400.
@@ -566,6 +574,7 @@ func (c *Catalogo) listarMovimientos(ctx context.Context, usuarioID int64, crudo
 		}
 		if m.Tipo == movimientos.TipoTraslado {
 			fila.MedioDestino = valor(m.MedioCobroNombre)
+			fila.CategoriaDestino = valor(m.CategoriaDestinoNombre)
 		}
 		if movimientos.EsDeuda(m.Tipo) {
 			fila.Saldo = m.Saldo
@@ -706,9 +715,11 @@ type argumentosMovimientoNuevo struct {
 	Categoria    string `json:"categoria"`
 	MedioPago    string `json:"medio_pago"`
 	MedioDestino string `json:"medio_destino"`
-	AQuien       string `json:"a_quien"`
-	Estado       string `json:"estado"`
-	CobrarEl     string `json:"cobrar_el"`
+	// CategoriaDestino solo en un traslado entre categorias.
+	CategoriaDestino string `json:"categoria_destino"`
+	AQuien           string `json:"a_quien"`
+	Estado           string `json:"estado"`
+	CobrarEl         string `json:"cobrar_el"`
 }
 
 // datosMovimiento es lo que pinta la tarjeta: los ids para que los selectores
@@ -725,9 +736,12 @@ type datosMovimiento struct {
 	// Solo en los traslados: a donde entra la plata.
 	MedioDestinoID int64  `json:"medio_destino_id,omitempty"`
 	MedioDestino   string `json:"medio_destino,omitempty"`
-	AQuien         string `json:"a_quien,omitempty"`
-	Estado         string `json:"estado,omitempty"`
-	CobrarEl       string `json:"cobrar_el,omitempty"`
+	// Solo en un traslado entre categorias: a cual pasa la plata.
+	CategoriaDestinoID int64  `json:"categoria_destino_id,omitempty"`
+	CategoriaDestino   string `json:"categoria_destino,omitempty"`
+	AQuien             string `json:"a_quien,omitempty"`
+	Estado             string `json:"estado,omitempty"`
+	CobrarEl           string `json:"cobrar_el,omitempty"`
 }
 
 func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crudos json.RawMessage) (Resultado, error) {
@@ -760,6 +774,22 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		return texto(aviso), nil
 	}
 
+	// La categoria destino es opcional: sin ella el traslado se queda en la
+	// misma categoria. Solo se resuelve si el modelo mando una.
+	var (
+		catDestinoID int64
+		catDestino   string
+	)
+	if strings.TrimSpace(args.CategoriaDestino) != "" {
+		catDestinoID, catDestino, aviso, err = c.resolverCategoria(ctx, usuarioID, args.CategoriaDestino)
+		if err != nil {
+			return Resultado{}, err
+		}
+		if aviso != "" {
+			return texto(aviso), nil
+		}
+	}
+
 	tipo := strings.TrimSpace(args.Tipo)
 
 	// Una deuda nueva nace pendiente, y decirlo aquí ahorra una ronda entera.
@@ -786,13 +816,15 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		CategoriaID:  categoriaID,
 		MedioPagoID:  medioID,
 		MedioCobroID: destinoID,
-		Tipo:         tipo,
-		Monto:        strings.TrimSpace(args.Monto),
-		Fecha:        strings.TrimSpace(args.Fecha),
-		Descripcion:  strings.TrimSpace(args.Descripcion),
-		AQuien:       strings.TrimSpace(args.AQuien),
-		Estado:       estado,
-		CobrarEl:     strings.TrimSpace(args.CobrarEl),
+		// Validar la ignora si no es un traslado o si es la misma de origen.
+		CategoriaDestinoID: catDestinoID,
+		Tipo:               tipo,
+		Monto:              strings.TrimSpace(args.Monto),
+		Fecha:              strings.TrimSpace(args.Fecha),
+		Descripcion:        strings.TrimSpace(args.Descripcion),
+		AQuien:             strings.TrimSpace(args.AQuien),
+		Estado:             estado,
+		CobrarEl:           strings.TrimSpace(args.CobrarEl),
 	}
 
 	datos, campos := movimientos.Validar(entrada)
@@ -816,6 +848,10 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		AQuien:         valor(datos.AQuien),
 		Estado:         valor(datos.Estado),
 		CobrarEl:       valor(datos.CobrarEl),
+	}
+	if datos.CategoriaDestinoID != nil {
+		propuesta.CategoriaDestinoID = catDestinoID
+		propuesta.CategoriaDestino = catDestino
 	}
 
 	instruccion := "NO está registrado todavía. Al usuario le apareció una tarjeta con estos datos " +
@@ -852,7 +888,7 @@ func (c *Catalogo) proponerMovimiento(ctx context.Context, usuarioID int64, crud
 		// El traslado es el único tipo que no cambia el balance, y eso
 		// sorprende si nadie lo dice.
 		instruccion += " Aclárale que un traslado no cambia cuánta plata tiene en total: " +
-			"solo la mueve de " + medio + " a " + destino + "."
+			"solo la mueve " + rutaTraslado(propuesta) + "."
 	}
 
 	confirmacion, err := aJSON(map[string]any{
@@ -988,8 +1024,12 @@ func (c *Catalogo) CrearMovimiento(ctx context.Context, usuarioID int64, entrada
 	switch {
 	case errors.Is(err, movimientos.ErrCategoriaInvalida):
 		return nil, map[string]string{"categoria_id": "La categoría no existe"}, nil
+	case errors.Is(err, movimientos.ErrCategoriaDestino):
+		return nil, map[string]string{"categoria_destino_id": "La categoría no existe"}, nil
 	case errors.Is(err, movimientos.ErrMedioInvalido):
 		return nil, map[string]string{"medio_pago_id": "El medio de pago no existe"}, nil
+	case errors.Is(err, movimientos.ErrMismoMedio):
+		return nil, map[string]string{"medio_cobro_id": movimientos.MismoOrigenMsg}, nil
 	case errors.Is(err, movimientos.ErrCobroAntes):
 		return nil, map[string]string{"cobrar_el": "No puede ser antes del día en que prestaste"}, nil
 	case err != nil:
@@ -1013,6 +1053,19 @@ func (c *Catalogo) MarcarPagado(ctx context.Context, usuarioID, movimientoID, me
 }
 
 // --------------------------------------------------------------------------
+
+// rutaTraslado dice por donde se movio la plata de un traslado propuesto:
+// "de Efectivo a Nequi", "de Casa a Trabajo (en Efectivo)" o las dos cosas.
+func rutaTraslado(p datosMovimiento) string {
+	switch {
+	case p.CategoriaDestino == "":
+		return "de " + p.MedioPago + " a " + p.MedioDestino
+	case p.MedioPagoID == p.MedioDestinoID:
+		return "de " + p.Categoria + " a " + p.CategoriaDestino + " (en " + p.MedioPago + ")"
+	default:
+		return "de " + p.MedioPago + " (" + p.Categoria + ") a " + p.MedioDestino + " (" + p.CategoriaDestino + ")"
+	}
+}
 
 // resolverCategoria traduce el nombre que escribio el modelo al id real. El
 // tercer valor es un aviso ya listo para devolverle: vacio si todo bien.

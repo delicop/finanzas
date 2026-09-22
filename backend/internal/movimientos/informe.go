@@ -179,7 +179,7 @@ func generarExcel(inf *Informe, destino *bytes.Buffer) error {
 			poner(1, fila, m.Fecha, 0)
 		}
 		poner(2, fila, nombresTipo[m.Tipo], 0)
-		poner(3, fila, m.CategoriaNombre, 0)
+		poner(3, fila, categoriaConDestino(m, " → "), 0)
 		// SetCellValue con un string guarda TEXTO, nunca una formula: una
 		// descripcion que empiece por "=" no se ejecuta al abrir el archivo.
 		poner(4, fila, m.Descripcion, 0)
@@ -354,7 +354,8 @@ func generarPDF(inf *Informe, destino *bytes.Buffer) error {
 		valores := []string{
 			fechaCorta(m.Fecha),
 			nombresTipo[m.Tipo],
-			m.CategoriaNombre,
+			// El PDF va en cp1252, que no tiene flecha: » si está.
+			categoriaConDestino(m, " » "),
 			descripcion,
 			texto(m.MedioPagoNombre),
 			dinero.Formatear(m.Monto),
@@ -370,4 +371,13 @@ func generarPDF(inf *Informe, destino *bytes.Buffer) error {
 		return fmt.Errorf("generando PDF: %w", err)
 	}
 	return nil
+}
+
+// categoriaConDestino es la categoria tal como se lee en el informe: en un
+// traslado entre categorias, las dos puntas ("Casa → Trabajo").
+func categoriaConDestino(m Movimiento, flecha string) string {
+	if m.CategoriaDestinoNombre != nil {
+		return m.CategoriaNombre + flecha + *m.CategoriaDestinoNombre
+	}
+	return m.CategoriaNombre
 }

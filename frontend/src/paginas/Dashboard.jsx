@@ -8,6 +8,7 @@ import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import FechaCobro from '../componentes/FechaCobro'
+import ModalCategoria from '../componentes/ModalCategoria'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -22,6 +23,9 @@ export default function Dashboard() {
   const [listaCategorias, setListaCategorias] = useState([])
   const [listaMedios, setListaMedios] = useState([])
   const [registrando, setRegistrando] = useState(false)
+  // La categoría cuyo detalle está abierto. Se guarda el id y no la fila:
+  // así, si las cifras se recargan con el modal abierto, se ve la fila nueva.
+  const [viendoCategoria, setViendoCategoria] = useState(null)
 
   function cargarResumen() {
     return dashboardApi
@@ -48,6 +52,12 @@ export default function Dashboard() {
   const { totales, categorias, medios, contrapartes } = resumen
 
   const listo = listaCategorias.length > 0 && listaMedios.length > 0
+
+  // La columna de traslados solo aparece si alguna categoría los tuvo.
+  const hayTraslados = categorias.some(
+    (c) => Number(c.traslados_entraron) > 0 || Number(c.traslados_salieron) > 0,
+  )
+  const categoriaAbierta = categorias.find((c) => c.categoria_id === viendoCategoria)
 
   return (
     <>
@@ -175,6 +185,7 @@ export default function Dashboard() {
 
       <section className="tarjeta">
         <h2>Por categoría</h2>
+        <p className="subtitulo">Toca una para ver todos sus movimientos</p>
 
         {categorias.length === 0 ? (
           <p className="tenue">
@@ -183,7 +194,7 @@ export default function Dashboard() {
         ) : esMovil ? (
           <div className="lista-movil">
             {categorias.map((c) => (
-              <TarjetaCategoria key={c.categoria_id} c={c} />
+              <TarjetaCategoria key={c.categoria_id} c={c} onAbrir={() => setViendoCategoria(c.categoria_id)} />
             ))}
           </div>
         ) : (
@@ -196,20 +207,34 @@ export default function Dashboard() {
                   <th className="num">Pagué</th>
                   <th className="num">Por cobrar</th>
                   <th className="num">Por pagar</th>
+                  {hayTraslados && <th className="num">Traslados</th>}
                   <th className="num">Balance</th>
                   <th className="num">Movs.</th>
                 </tr>
               </thead>
               <tbody>
                 {categorias.map((c) => (
-                  <tr key={c.categoria_id}>
+                  <tr
+                    key={c.categoria_id}
+                    className="fila-clic"
+                    onClick={() => setViendoCategoria(c.categoria_id)}
+                    // Con teclado también: Tab hasta la fila y Enter.
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && setViendoCategoria(c.categoria_id)}
+                    title={`Ver los movimientos de ${c.nombre}`}
+                  >
                     <td>
-                      <Link to={`/movimientos?categoria_id=${c.categoria_id}`}>{c.nombre}</Link>
+                      <span className="nombre-clic">{c.nombre}</span>
                     </td>
                     <td className="num positivo">{formatearMonto(c.recibido)}</td>
                     <td className="num negativo">{formatearMonto(c.pagado)}</td>
                     <td className="num advertencia">{formatearMonto(c.por_cobrar)}</td>
                     <td className="num negativo">{formatearMonto(c.por_pagar)}</td>
+                    {hayTraslados && (
+                      <td className="num">
+                        <Traslados c={c} />
+                      </td>
+                    )}
                     <td className={`num ${Number(c.balance) >= 0 ? 'positivo' : 'negativo'}`}>
                       {formatearMonto(c.balance)}
                     </td>
@@ -233,6 +258,10 @@ export default function Dashboard() {
             await cargarResumen()
           }}
         />
+      )}
+
+      {categoriaAbierta && (
+        <ModalCategoria categoria={categoriaAbierta} onCerrar={() => setViendoCategoria(null)} />
       )}
 
     </>
@@ -374,11 +403,31 @@ function TarjetaMedio({ m, mayor }) {
   )
 }
 
-function TarjetaCategoria({ c }) {
+// Lo que entró desde otras categorías y lo que salió hacia otras. Van las dos
+// cifras y no el neto: "+700.000 −200.000" dice de dónde vino el balance, y el
+// neto solo se puede leer como otro balance.
+function Traslados({ c }) {
+  const entro = Number(c.traslados_entraron) > 0
+  const salio = Number(c.traslados_salieron) > 0
+  if (!entro && !salio) return <span className="tenue">—</span>
   return (
-    <article className="tarjeta-cat">
+    <>
+      {entro && <div className="positivo">+ {formatearMonto(c.traslados_entraron)}</div>}
+      {salio && <div className="negativo">− {formatearMonto(c.traslados_salieron)}</div>}
+    </>
+  )
+}
+
+function TarjetaCategoria({ c, onAbrir }) {
+  return (
+    <article
+      className="tarjeta-cat fila-clic"
+      onClick={onAbrir}
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onAbrir()}
+    >
       <div className="tarjeta-cat-arriba">
-        <Link to={`/movimientos?categoria_id=${c.categoria_id}`}>{c.nombre}</Link>
+        <span className="nombre-clic">{c.nombre}</span>
         <strong className={Number(c.balance) >= 0 ? 'positivo' : 'negativo'}>
           {formatearMonto(c.balance)}
         </strong>

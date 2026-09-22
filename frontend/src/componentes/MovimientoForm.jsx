@@ -9,6 +9,7 @@ const VACIO = {
   categoria_id: '',
   medio_pago_id: '',
   medio_cobro_id: '',
+  categoria_destino_id: '',
   tipo: 'pague',
   monto: '',
   fecha: hoyISO(),
@@ -49,6 +50,7 @@ export default function MovimientoForm({
           categoria_id: movimiento.categoria_id,
           medio_pago_id: movimiento.medio_pago_id ?? '',
           medio_cobro_id: movimiento.medio_cobro_id ?? '',
+          categoria_destino_id: movimiento.categoria_destino_id ?? '',
           tipo: movimiento.tipo,
           monto: montoAEntrada(movimiento.monto),
           fecha: movimiento.fecha,
@@ -75,6 +77,8 @@ export default function MovimientoForm({
   const esDeuda = datos.tipo === 'preste' || datos.tipo === 'me_prestaron'
   const esPropia = datos.tipo === 'me_prestaron'
   const esTraslado = datos.tipo === 'traslado'
+  const cambiaCategoria =
+    !!datos.categoria_destino_id && String(datos.categoria_destino_id) !== String(datos.categoria_id)
 
   // Si ya hay abonos, el estado no se elige a mano: lo dicen los abonos. El
   // formulario ni siquiera lo ofrece, para no prometer algo que el backend
@@ -102,9 +106,10 @@ export default function MovimientoForm({
     }
 
     if (esTraslado) {
+      // Basta con que cambie algo: el medio, la categoría o las dos.
       if (!datos.medio_cobro_id) errores.medio_cobro_id = 'Indica a qué medio pasó la plata'
-      else if (String(datos.medio_cobro_id) === String(datos.medio_pago_id)) {
-        errores.medio_cobro_id = 'El origen y el destino no pueden ser el mismo medio'
+      else if (String(datos.medio_cobro_id) === String(datos.medio_pago_id) && !cambiaCategoria) {
+        errores.medio_cobro_id = 'El origen y el destino son iguales: cambia el medio, la categoría o las dos'
       }
     }
     return errores
@@ -131,6 +136,7 @@ export default function MovimientoForm({
         // El backend ignora los campos que no aplican al tipo, pero los
         // mandamos vacíos para dejar clara la intención.
         medio_cobro_id: esTraslado ? Number(datos.medio_cobro_id) : 0,
+        categoria_destino_id: esTraslado && cambiaCategoria ? Number(datos.categoria_destino_id) : 0,
         tipo: datos.tipo,
         // De "1.500.000,50" a "1500000.50": la API siempre recibe el número crudo.
         monto: entradaAMonto(datos.monto),
@@ -191,65 +197,128 @@ export default function MovimientoForm({
         </div>
         {campos.tipo && <span className="error-campo">{campos.tipo}</span>}
 
-        {esTraslado && (
-          <p className="ayuda-campo tenue">
-            Un traslado no cambia cuánta plata tienes: solo la mueve de un medio a otro.
-            No cuenta como ingreso ni como gasto.
-          </p>
-        )}
-
-        <label htmlFor="categoria">Categoría <span className="req">*</span></label>
-        <select
-          id="categoria"
-          value={datos.categoria_id}
-          onChange={(e) => cambiar('categoria_id', e.target.value)}
-        >
-          <option value="">Selecciona una categoría</option>
-          {categorias.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nombre}
-            </option>
-          ))}
-        </select>
-        {campos.categoria_id && <span className="error-campo">{campos.categoria_id}</span>}
-
-        <label htmlFor="medio">
-          {esTraslado ? '¿De dónde sale?' : '¿Cómo fue el pago?'} <span className="req">*</span>
-        </label>
-        <select
-          id="medio"
-          value={datos.medio_pago_id}
-          onChange={(e) => cambiar('medio_pago_id', e.target.value)}
-        >
-          <option value="">Selecciona un medio</option>
-          {medios.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.nombre}
-            </option>
-          ))}
-        </select>
-        {campos.medio_pago_id && <span className="error-campo">{campos.medio_pago_id}</span>}
-
-        {esTraslado && (
+        {esTraslado ? (
           <>
-            <label htmlFor="destino">¿A dónde entra? <span className="req">*</span></label>
+            <p className="ayuda-campo tenue">
+              Un traslado no cambia cuánta plata tienes: la mueve de un medio a otro, de una
+              categoría a otra (de Casa a Trabajo), o las dos. No cuenta como ingreso ni como gasto.
+            </p>
+
+            <fieldset className="bloque-traslado">
+              <legend>Sale de</legend>
+              <div className="dos-columnas">
+                <div>
+                  <label htmlFor="medio">Medio <span className="req">*</span></label>
+                  <select
+                    id="medio"
+                    value={datos.medio_pago_id}
+                    onChange={(e) => cambiar('medio_pago_id', e.target.value)}
+                  >
+                    <option value="">Selecciona un medio</option>
+                    {medios.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {campos.medio_pago_id && <span className="error-campo">{campos.medio_pago_id}</span>}
+                </div>
+                <div>
+                  <label htmlFor="categoria">Categoría <span className="req">*</span></label>
+                  <select
+                    id="categoria"
+                    value={datos.categoria_id}
+                    onChange={(e) => cambiar('categoria_id', e.target.value)}
+                  >
+                    <option value="">Selecciona una categoría</option>
+                    {categorias.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {campos.categoria_id && <span className="error-campo">{campos.categoria_id}</span>}
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset className="bloque-traslado">
+              <legend>Entra a</legend>
+              <div className="dos-columnas">
+                <div>
+                  <label htmlFor="destino">Medio <span className="req">*</span></label>
+                  <select
+                    id="destino"
+                    value={datos.medio_cobro_id}
+                    onChange={(e) => cambiar('medio_cobro_id', e.target.value)}
+                  >
+                    <option value="">Selecciona un medio</option>
+                    {/* El mismo medio sí se ofrece: sirve cuando lo que cambia
+                        es la categoría. Si tampoco cambia la categoría, la
+                        validación lo dice. */}
+                    {medios.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombre}
+                        {String(m.id) === String(datos.medio_pago_id) ? ' (el mismo)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {campos.medio_cobro_id && <span className="error-campo">{campos.medio_cobro_id}</span>}
+                </div>
+                <div>
+                  <label htmlFor="categoria-destino">Categoría</label>
+                  <select
+                    id="categoria-destino"
+                    value={cambiaCategoria ? datos.categoria_destino_id : ''}
+                    onChange={(e) => cambiar('categoria_destino_id', e.target.value)}
+                  >
+                    <option value="">La misma</option>
+                    {categorias
+                      .filter((c) => String(c.id) !== String(datos.categoria_id))
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre}
+                        </option>
+                      ))}
+                  </select>
+                  {campos.categoria_destino_id && (
+                    <span className="error-campo">{campos.categoria_destino_id}</span>
+                  )}
+                </div>
+              </div>
+            </fieldset>
+          </>
+        ) : (
+          <>
+            <label htmlFor="categoria">Categoría <span className="req">*</span></label>
             <select
-              id="destino"
-              value={datos.medio_cobro_id}
-              onChange={(e) => cambiar('medio_cobro_id', e.target.value)}
+              id="categoria"
+              value={datos.categoria_id}
+              onChange={(e) => cambiar('categoria_id', e.target.value)}
+            >
+              <option value="">Selecciona una categoría</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+            {campos.categoria_id && <span className="error-campo">{campos.categoria_id}</span>}
+
+            <label htmlFor="medio">¿Cómo fue el pago? <span className="req">*</span></label>
+            <select
+              id="medio"
+              value={datos.medio_pago_id}
+              onChange={(e) => cambiar('medio_pago_id', e.target.value)}
             >
               <option value="">Selecciona un medio</option>
-              {medios
-                // El origen no puede ser también el destino: ofrecerlo solo
-                // sirve para que alguien lo escoja y reciba un error.
-                .filter((m) => String(m.id) !== String(datos.medio_pago_id))
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre}
-                  </option>
-                ))}
+              {medios.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
             </select>
-            {campos.medio_cobro_id && <span className="error-campo">{campos.medio_cobro_id}</span>}
+            {campos.medio_pago_id && <span className="error-campo">{campos.medio_pago_id}</span>}
           </>
         )}
 

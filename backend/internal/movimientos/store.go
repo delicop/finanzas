@@ -34,6 +34,10 @@ type Datos struct {
 	// tipos va nil: por donde volvio un prestamo lo dice cada abono.
 	MedioCobroID *int64
 
+	// CategoriaDestinoID es la categoria a la que ENTRA un traslado entre
+	// categorias. nil si la plata se queda en la misma (CategoriaID).
+	CategoriaDestinoID *int64
+
 	// Cubrir dice de donde salio lo que faltaba cuando el medio no alcanza
 	// (ver fondos.go). nil si el cliente no lo sabe todavia.
 	Cubrir *Cubrir
@@ -65,7 +69,8 @@ type Filtros struct {
 // cuantos abonos hay y cuantas cuotas tiene el acuerdo. Las suma Postgres, no
 // Go, igual que todo el dinero de esta app.
 const columnas = `
-	m.id, m.categoria_id, c.nombre, m.medio_pago_id, mp.nombre,
+	m.id, m.categoria_id, c.nombre, m.categoria_destino_id, cd.nombre,
+	m.medio_pago_id, mp.nombre,
 	m.medio_cobro_id, mc.nombre, m.tipo, m.monto::text, m.fecha,
 	m.descripcion, m.a_quien, m.estado, m.cobrar_el,
 	m.factura_ruta, m.factura_nombre, m.factura_tipo,
@@ -97,12 +102,14 @@ const unionesDeuda = `
 // usan porque alli la categoria sale de una CTE, no de la tabla.
 const uniones = `
 	JOIN categorias c ON c.id = m.categoria_id
+	LEFT JOIN categorias cd ON cd.id = m.categoria_destino_id
 	LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
 	LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id` + unionesDeuda
 
 // unionesCTE son los mismos, pero con la categoria saliendo de la CTE `cat`.
 const unionesCTE = `
 	JOIN cat c ON c.id = m.categoria_id
+	LEFT JOIN categorias cd ON cd.id = m.categoria_destino_id
 	LEFT JOIN medios_pago mp ON mp.id = m.medio_pago_id
 	LEFT JOIN medios_pago mc ON mc.id = m.medio_cobro_id` + unionesDeuda
 
@@ -120,7 +127,12 @@ func filtrosSQL(usuarioID int64, f Filtros) (string, []any) {
 	}
 
 	if f.CategoriaID > 0 {
-		agregar("m.categoria_id = $%d", f.CategoriaID)
+		// Igual que con los medios: al mirar "lo de Trabajo" tambien tiene
+		// que salir lo que le entro desde Casa, no solo lo que salio de ella.
+		args = append(args, f.CategoriaID)
+		n := strconv.Itoa(len(args))
+		condiciones = append(condiciones,
+			"(m.categoria_id = $"+n+" OR m.categoria_destino_id = $"+n+")")
 	}
 	if f.MedioPagoID > 0 {
 		// En un traslado el medio filtrado puede ser el origen O el destino:
@@ -274,10 +286,13 @@ func (s *Store) insertar(ctx context.Context, tx *sql.Tx, usuarioID int64, d Dat
 			SELECT id FROM medios_pago WHERE id = $9 AND usuario_id = $1
 		), destino AS (
 			SELECT id FROM medios_pago WHERE id = $11 AND usuario_id = $1
+		), cat_destino AS (
+			SELECT id FROM categorias WHERE id = $12 AND usuario_id = $1
 		), ins AS (
 			INSERT INTO movimientos
-				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id, cobrar_el, medio_cobro_id)
-			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio), $10::date, (SELECT id FROM destino)
+				(usuario_id, categoria_id, tipo, monto, fecha, descripcion, a_quien, estado, medio_pago_id, cobrar_el, medio_cobro_id, categoria_destino_id)
+			SELECT $1, cat.id, $3, $4::numeric, $5::date, $6, $7, $8, (SELECT id FROM medio), $10::date, (SELECT id FROM destino),
+			       (SELECT id FROM cat_destino)
 			FROM cat
 			-- El medio es opcional, pero si viene uno TIENE que ser del usuario.
 			-- Sin este WHERE, un id ajeno o inexistente se guardaria como NULL
@@ -285,6 +300,7 @@ func (s *Store) insertar(ctx context.Context, tx *sql.Tx, usuarioID int64, d Dat
 			-- Lo mismo con el destino del traslado.
 			WHERE ($9::bigint  IS NULL OR EXISTS (SELECT 1 FROM medio))
 			  AND ($11::bigint IS NULL OR EXISTS (SELECT 1 FROM destino))
+			  AND ($12::bigint IS NULL OR EXISTS (SELECT 1 FROM cat_destino))
 			RETURNING *
 		), abono AS (
 			-- Una deuda que nace saldada ("le presté y ya me pagó") nace con
@@ -300,7 +316,8 @@ func (s *Store) insertar(ctx context.Context, tx *sql.Tx, usuarioID int64, d Dat
 		%s`, columnas, unionesCTE)
 
 	return escanear(tx.QueryRowContext(ctx, q,
-		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
+		usuarioID, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID,
+		d.CategoriaDestinoID))
 }
 
 // relerSiNacioSaldada vuelve a consultar cuando el INSERT creo tambien un
@@ -330,6 +347,17 @@ func (s *Store) porQueNoEntro(ctx context.Context, usuarioID int64, d Datos) err
 	}
 	if !categoriaOK {
 		return ErrCategoriaInvalida
+	}
+	if d.CategoriaDestinoID != nil {
+		err := s.db.QueryRowContext(ctx,
+			`SELECT exists(SELECT 1 FROM categorias WHERE id = $1 AND usuario_id = $2)`,
+			*d.CategoriaDestinoID, usuarioID).Scan(&categoriaOK)
+		if err != nil {
+			return fmt.Errorf("verificando categoria destino: %w", err)
+		}
+		if !categoriaOK {
+			return ErrCategoriaDestino
+		}
 	}
 	return ErrMedioInvalido
 }
@@ -363,6 +391,8 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			SELECT id FROM medios_pago WHERE id = $10 AND usuario_id = $1
 		), destino AS (
 			SELECT id FROM medios_pago WHERE id = $12 AND usuario_id = $1
+		), cat_destino AS (
+			SELECT id FROM categorias WHERE id = $13 AND usuario_id = $1
 		), ab AS (
 			SELECT coalesce(sum(monto), 0) AS abonado FROM abonos WHERE movimiento_id = $2
 		), upd AS (
@@ -386,11 +416,13 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 			    medio_pago_id  = (SELECT id FROM medio),
 			    cobrar_el      = $11::date,
 			    medio_cobro_id = (SELECT id FROM destino),
+			    categoria_destino_id = (SELECT id FROM cat_destino),
 			    actualizado_en = now()
 			FROM cat
 			WHERE m.id = $2 AND m.usuario_id = $1
 			  AND ($10::bigint IS NULL OR EXISTS (SELECT 1 FROM medio))
 			  AND ($12::bigint IS NULL OR EXISTS (SELECT 1 FROM destino))
+			  AND ($13::bigint IS NULL OR EXISTS (SELECT 1 FROM cat_destino))
 			RETURNING m.*
 		), abono AS (
 			-- Mismo caso que al crear: si la marcan saldada y no tenia ningun
@@ -408,7 +440,8 @@ func (s *Store) Actualizar(ctx context.Context, usuarioID, id int64, d Datos) (*
 	// relee con PorID, porque el SELECT de aqui no alcanza a ver el abono que
 	// la CTE de al lado pudo haber insertado.
 	_, err = escanear(tx.QueryRowContext(ctx, q,
-		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID))
+		usuarioID, id, d.CategoriaID, d.Tipo, d.Monto, d.Fecha, d.Descripcion, d.AQuien, d.Estado, d.MedioPagoID, d.CobrarEl, d.MedioCobroID,
+		d.CategoriaDestinoID))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// Sin filas puede ser: el movimiento no existe, la categoria no sirve
@@ -582,6 +615,8 @@ func escanear(fila escaneable) (*Movimiento, error) {
 	var (
 		m             Movimiento
 		fecha         time.Time
+		catDestID     sql.NullInt64
+		catDestNombre sql.NullString
 		medioID       sql.NullInt64
 		medioNombre   sql.NullString
 		cobroID       sql.NullInt64
@@ -595,7 +630,7 @@ func escanear(fila escaneable) (*Movimiento, error) {
 	)
 
 	err := fila.Scan(
-		&m.ID, &m.CategoriaID, &m.CategoriaNombre, &medioID, &medioNombre, &cobroID, &cobroNombre, &m.Tipo, &m.Monto, &fecha,
+		&m.ID, &m.CategoriaID, &m.CategoriaNombre, &catDestID, &catDestNombre, &medioID, &medioNombre, &cobroID, &cobroNombre, &m.Tipo, &m.Monto, &fecha,
 		&m.Descripcion, &aQuien, &estado, &cobrarEl,
 		&facturaRuta, &facturaNombre, &facturaTipo,
 		&m.CreadoEn, &m.ActualizadoEn,
@@ -609,6 +644,13 @@ func escanear(fila escaneable) (*Movimiento, error) {
 	}
 
 	m.Fecha = fecha.Format(FormatoFecha)
+
+	if catDestID.Valid {
+		m.CategoriaDestinoID = &catDestID.Int64
+		if catDestNombre.Valid {
+			m.CategoriaDestinoNombre = &catDestNombre.String
+		}
+	}
 
 	if medioID.Valid {
 		m.MedioPagoID = &medioID.Int64
@@ -658,7 +700,7 @@ func traducirCheck(err error, contexto string) error {
 		switch pgErr.ConstraintName {
 		case "movimientos_cobrar_el_despues_del_prestamo":
 			return ErrCobroAntes
-		case "movimientos_traslado_completo":
+		case "movimientos_traslado_completo", "movimientos_categoria_destino_valida":
 			return ErrMismoMedio
 		}
 	}

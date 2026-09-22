@@ -49,6 +49,7 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
   const [categoriaID, setCategoriaID] = useState(datos.categoria_id ?? 0)
   const [medioID, setMedioID] = useState(datos.medio_pago_id ?? 0)
   const [destinoID, setDestinoID] = useState(datos.medio_destino_id ?? 0)
+  const [catDestinoID, setCatDestinoID] = useState(datos.categoria_destino_id ?? 0)
   const [aQuien, setAQuien] = useState(datos.a_quien ?? '')
   const [estado, setEstado] = useState(datos.estado || 'pendiente')
   const [cobrarEl, setCobrarEl] = useState(datos.cobrar_el ?? '')
@@ -77,6 +78,8 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
       // El backend ignora los campos que no aplican al tipo, así que cambiar
       // de tipo en la tarjeta no obliga a limpiar nada.
       medio_cobro_id: esTraslado ? Number(destinoID) : 0,
+      // "La misma" es 0, y a la misma de origen el backend la trata igual.
+      categoria_destino_id: esTraslado ? Number(catDestinoID) : 0,
       tipo,
       monto: entradaAMonto(monto),
       fecha,
@@ -169,16 +172,39 @@ function MovimientoNuevo({ propuesta, categorias, medios, facturaInicial, onResu
                 onChange={(e) => setDestinoID(e.target.value)}
               >
                 <option value={0}>Selecciona</option>
-                {medios
-                  .filter((m) => String(m.id) !== String(medioID))
-                  .map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre}
-                    </option>
-                  ))}
+                {/* El mismo medio vale si lo que cambia es la categoría. */}
+                {medios.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                    {String(m.id) === String(medioID) ? ' (el mismo)' : ''}
+                  </option>
+                ))}
               </select>
               {campos.medio_cobro_id && (
                 <span className="error-campo">{campos.medio_cobro_id}</span>
+              )}
+            </div>
+          )}
+
+          {esTraslado && (
+            <div className="propuesta-campo">
+              <label htmlFor={`catdestino-${propuesta.id}`}>¿A qué categoría pasa?</label>
+              <select
+                id={`catdestino-${propuesta.id}`}
+                value={String(catDestinoID) === String(categoriaID) ? 0 : catDestinoID}
+                onChange={(e) => setCatDestinoID(e.target.value)}
+              >
+                <option value={0}>La misma</option>
+                {categorias
+                  .filter((c) => String(c.id) !== String(categoriaID))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre}
+                    </option>
+                  ))}
+              </select>
+              {campos.categoria_destino_id && (
+                <span className="error-campo">{campos.categoria_destino_id}</span>
               )}
             </div>
           )}

@@ -17,9 +17,10 @@ const (
 	TipoPreste      = "preste"       // salio plata y TE LA DEBEN
 	TipoMePrestaron = "me_prestaron" // entro plata y TU LA DEBES
 
-	// Pasar plata de un medio a otro. No es ni ingreso ni gasto: la misma
-	// plata cambia de bolsillo. Sale por medio_pago_id y entra por
-	// medio_cobro_id, y el balance general no se mueve.
+	// Pasar plata de un medio a otro, de una categoria a otra, o las dos. No
+	// es ni ingreso ni gasto: la misma plata cambia de bolsillo. Sale por
+	// medio_pago_id y entra por medio_cobro_id (que puede ser el mismo si lo
+	// que cambia es la categoria), y el balance general no se mueve.
 	TipoTraslado = "traslado"
 )
 
@@ -36,6 +37,11 @@ type Movimiento struct {
 	ID              int64  `json:"id"`
 	CategoriaID     int64  `json:"categoria_id"`
 	CategoriaNombre string `json:"categoria_nombre"`
+
+	// Solo para los traslados entre categorías: a qué categoría ENTRÓ la
+	// plata. En ese caso CategoriaID es de dónde salió. nil = la misma.
+	CategoriaDestinoID     *int64  `json:"categoria_destino_id"`
+	CategoriaDestinoNombre *string `json:"categoria_destino_nombre"`
 
 	// Medio de pago/recaudo: por donde entro o salio la plata. En un traslado
 	// es el ORIGEN.
@@ -97,6 +103,7 @@ var (
 	ErrMedioInvalido     = errors.New("el medio de pago no existe")
 	ErrCobroAntes        = errors.New("la fecha de cobro no puede ser anterior al prestamo")
 	ErrMismoMedio        = errors.New("el origen y el destino del traslado son el mismo medio")
+	ErrCategoriaDestino  = errors.New("la categoria destino no existe")
 	ErrAbonoDeMas        = errors.New("el abono es mayor que el saldo")
 	ErrSinSaldo          = errors.New("la deuda ya esta saldada")
 )
@@ -125,4 +132,5 @@ func EsEstadoValido(e string) bool {
 const (
 	TiposValidosMsg   = "Tipo inválido: usa recibi, pague, preste, me_prestaron o traslado"
 	EstadosValidosMsg = "Estado inválido: usa pagado, parcial o pendiente"
+	MismoOrigenMsg    = "El origen y el destino son iguales: cambia el medio, la categoría o las dos"
 )

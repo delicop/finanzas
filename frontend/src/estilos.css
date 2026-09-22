@@ -805,6 +805,25 @@ textarea {
   border-radius: var(--radius-md);
 }
 
+/* Las dos puntas de un traslado: de dónde sale y a dónde entra, cada una con
+   su medio y su categoría. Mismo marco que el del préstamo, para que se lea
+   como "esto va junto". */
+.bloque-traslado {
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-3) var(--space-3);
+  border: 1px dashed var(--color-divider);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.bloque-traslado legend {
+  padding: 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-accent-700);
+}
+
 /* --- el control segmentado ---
    Los "chips" de tipo y estado son en realidad un segmentado: opciones
    pegadas, separadas por un filete, y la elegida marcada con el oro. */
@@ -3540,4 +3559,92 @@ button.wa-icono:hover:not(:disabled) {
 .cubrir-faltante-texto {
   margin: var(--space-2) 0;
   font-size: 14px;
+}
+
+
+/* ===========================================================================
+   Detalle de una categoría (se abre desde el Resumen)
+   =========================================================================== */
+
+.modal.modal-ancho {
+  max-width: 720px;
+}
+
+/* Una fila o tarjeta que abre algo al tocarla. El nombre va del color de los
+   enlaces para que se note que se puede tocar, aunque sea toda la fila la que
+   responde. */
+.fila-clic {
+  cursor: pointer;
+}
+
+.fila-clic:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.nombre-clic {
+  color: var(--color-accent-700);
+}
+
+.fila-clic:hover .nombre-clic {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tarjeta-cat.fila-clic:hover {
+  border-color: var(--color-accent);
+}
+
+.detalle-cat-balance {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.detalle-cat-balance strong {
+  font-size: 24px;
+}
+
+.lista-detalle {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 55vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-divider);
+}
+
+.lista-detalle-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.lista-detalle-fila:last-child {
+  border-bottom: none;
+}
+
+.lista-detalle-texto {
+  min-width: 0;
+}
+
+.lista-detalle-titulo {
+  overflow-wrap: anywhere;
+}
+
+.lista-detalle-fila .monto-valor {
+  font-size: 15px;
+}
+
+.detalle-cat-pie {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 13px;
 }
