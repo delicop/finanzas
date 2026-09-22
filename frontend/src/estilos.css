@@ -4094,3 +4094,329 @@ div.con-distintivo {
 .vacio-accion {
   margin-top: var(--space-2);
 }
+
+/* ---------- tutorial y primeros pasos ----------
+   La guía para quien entra por primera vez (componentes/Tutorial.jsx) y la
+   lista que lo acompaña en el Resumen (componentes/PrimerosPasos.jsx). */
+
+.tutorial-puntos {
+  display: flex;
+  gap: 6px;
+}
+
+/* Los puntos son barritas que se llenan: dicen cuánto falta sin números. */
+.tutorial-punto {
+  flex: 1;
+  height: 4px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-200);
+  box-shadow: none;
+}
+
+.tutorial-punto.hecho,
+.tutorial-punto.activo {
+  background: var(--color-accent);
+}
+
+.tutorial-punto:hover:not(:disabled) {
+  filter: none;
+  transform: none;
+}
+
+.tutorial-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tutorial-texto {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.tutorial-consejo {
+  margin: 0;
+  font-size: 14px;
+  color: var(--tenue);
+}
+
+.tutorial-ir {
+  align-self: flex-start;
+}
+
+.tutorial-acciones {
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* El diagrama: dos cajas que se juntan en el movimiento, y el movimiento que
+   baja al resumen. */
+.tutorial-diagrama {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.diagrama-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.diagrama-fila .diagrama-caja {
+  flex: 1;
+  min-width: 0;
+}
+
+.diagrama-caja {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-size: 14px;
+  min-width: 60%;
+}
+
+.diagrama-caja.destacada {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  background: var(--color-accent-100);
+}
+
+.diagrama-icono {
+  color: var(--color-accent-700);
+}
+
+.diagrama-pregunta {
+  font-size: 13px;
+  color: var(--tenue);
+}
+
+.diagrama-ejemplo {
+  font-size: 12px;
+  color: var(--color-accent-700);
+}
+
+.diagrama-mas,
+.diagrama-flecha {
+  font-size: 18px;
+  line-height: 1;
+  color: var(--color-neutral-500);
+}
+
+.tutorial-ejemplos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tutorial-ejemplos-rotulo {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--tenue);
+}
+
+.tutorial-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tutorial-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-100);
+  color: var(--color-accent-800);
+  font-size: 14px;
+}
+
+.tutorial-tipos,
+.tutorial-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.tutorial-tipos li,
+.tutorial-lista li {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tutorial-lista li > .icono-svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-accent-700);
+}
+
+.tutorial-tipo-icono {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-100);
+}
+
+.tutorial-ejemplo {
+  display: block;
+  font-size: 13px;
+  color: var(--tenue);
+}
+
+/* Primeros pasos: una ficha con barra de avance y los tres pasos. */
+.primeros-pasos-encabezado {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.primeros-pasos-encabezado h2 {
+  margin: 0;
+}
+
+.primeros-pasos-encabezado button.enlace {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  white-space: nowrap;
+}
+
+.primeros-pasos-barra {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-neutral-200);
+  overflow: hidden;
+}
+
+.primeros-pasos-barra span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.primeros-pasos-lista {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.primeros-pasos-lista li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+/* El siguiente paso se levanta: es lo único que hay que hacer ahora. */
+.primeros-pasos-lista li.siguiente {
+  background: var(--color-accent-100);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+}
+
+.primeros-pasos-lista li.hecho strong {
+  color: var(--tenue);
+  text-decoration: line-through;
+}
+
+.primeros-pasos-numero {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-neutral-300);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.primeros-pasos-lista li.siguiente .primeros-pasos-numero {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--sobre-acento);
+}
+
+.primeros-pasos-lista li.hecho .primeros-pasos-numero {
+  background: var(--verde);
+  border-color: var(--verde);
+  color: var(--verde-texto);
+}
+
+.primeros-pasos-texto {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.primeros-pasos-texto .tenue {
+  font-size: 14px;
+}
+
+/* El enlace del paso siguiente se ve como botón: es la acción, no una cita. */
+.primeros-pasos-accion a {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--sobre-acento);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.primeros-pasos-accion a:hover {
+  text-decoration: none;
+  filter: brightness(1.05);
+}
+
+@media (max-width: 720px) {
+  .primeros-pasos-accion {
+    width: 100%;
+    padding-left: calc(28px + var(--space-3));
+  }
+}
+
+.titulo-con-ayuda {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}

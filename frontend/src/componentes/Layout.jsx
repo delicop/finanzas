@@ -10,6 +10,8 @@ import AvisosCelular from './AvisosCelular'
 import InstalarApp, { AvisoSinConexion } from './InstalarApp'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
+import Tutorial, { marcarTutorialVisto, tutorialVisto } from './Tutorial'
+import { useAlAbrirTutorial } from '../lib/eventos'
 import Icono from './Icono'
 
 const SECCIONES = [
@@ -39,6 +41,21 @@ export default function Layout({ children }) {
   const [cambiandoPassword, setCambiandoPassword] = useState(false)
   const [viendoAvisos, setViendoAvisos] = useState(false)
   const [sinLeer, setSinLeer] = useState(0)
+
+  // La guía solo es para quien lleva finanzas propias: el admin sin observar
+  // no tiene categorías ni medios, y observando no puede crear nada.
+  const conGuia = !esAdmin && !verComo
+  // La primera vez que alguien entra, la guía se abre sola. Después, con el
+  // botón de ayuda o desde los primeros pasos del Resumen.
+  const [viendoTutorial, setViendoTutorial] = useState(
+    () => conGuia && !tutorialVisto(usuario.id),
+  )
+  useAlAbrirTutorial(() => setViendoTutorial(true))
+
+  function cerrarTutorial() {
+    marcarTutorialVisto(usuario.id)
+    setViendoTutorial(false)
+  }
 
   // El contador de la campana. Se consulta al entrar y cada cinco minutos:
   // los avisos los genera una tarea del servidor cada varias horas, así que
@@ -117,6 +134,20 @@ export default function Layout({ children }) {
           <span className="usuario">{usuario.nombre || usuario.email}</span>
 
           <InstalarApp />
+
+          {/* En el teléfono la barra ya no tiene espacio (con instalar y avisos
+              al celular tapaba la marca): ahí el botón va junto al título del
+              Resumen. */}
+          {conGuia && !esMovil && (
+            <button
+              className="boton-tema"
+              onClick={() => setViendoTutorial(true)}
+              title="Cómo funciona"
+              aria-label="Cómo funciona"
+            >
+              <Icono nombre="ayuda" tamano={18} />
+            </button>
+          )}
 
           <button
             className="boton-tema"
@@ -204,6 +235,8 @@ export default function Layout({ children }) {
       {/* El asistente no es una sección: es una burbuja encima de todas.
           Solo si el plan lo incluye (conIA ya es falso mirando otra cuenta). */}
       {conIA && <BurbujaAsistente />}
+
+      {viendoTutorial && conGuia && <Tutorial conIA={conIA} onCerrar={cerrarTutorial} />}
 
       {cambiandoPassword && <ModalPassword onCerrar={() => setCambiandoPassword(false)} />}
 

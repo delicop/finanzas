@@ -3,14 +3,16 @@ import { Link } from 'react-router-dom'
 import { categoriasApi, dashboardApi, mediosApi } from '../lib/api'
 import { formatearMonto } from '../lib/formato'
 import { useEsMovil } from '../lib/useEsMovil'
-import { useAlGuardarMovimiento } from '../lib/eventos'
+import { abrirTutorial, useAlGuardarMovimiento } from '../lib/eventos'
 import { useAuth } from '../lib/AuthContext'
 import MovimientoForm from '../componentes/MovimientoForm'
 import RecurrentesPendientes from '../componentes/RecurrentesPendientes'
 import FechaCobro from '../componentes/FechaCobro'
 import ModalCategoria from '../componentes/ModalCategoria'
+import PrimerosPasos from '../componentes/PrimerosPasos'
 import Distintivo from '../componentes/Distintivo'
 import Vacio from '../componentes/Vacio'
+import Icono from '../componentes/Icono'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -25,6 +27,9 @@ export default function Dashboard() {
   const [listaCategorias, setListaCategorias] = useState([])
   const [listaMedios, setListaMedios] = useState([])
   const [registrando, setRegistrando] = useState(false)
+  // Hasta que lleguen las dos listas no se sabe qué pasos van hechos: sin
+  // esto, los primeros pasos aparecerían un instante en "0 de 3".
+  const [listasCargadas, setListasCargadas] = useState(false)
   // La categoría cuyo detalle está abierto. Se guarda el id y no la fila:
   // así, si las cifras se recargan con el modal abierto, se ve la fila nueva.
   const [viendoCategoria, setViendoCategoria] = useState(null)
@@ -37,14 +42,30 @@ export default function Dashboard() {
       .finally(() => setCargando(false))
   }
 
+  // Las listas traen cuántos movimientos tiene cada categoría, y de ahí sale
+  // si el primer movimiento ya está anotado: por eso se recargan también al
+  // guardar uno.
+  function cargarListas() {
+    return Promise.all([
+      categoriasApi.listar().then(setListaCategorias),
+      mediosApi.listar().then(setListaMedios),
+    ])
+      .then(() => setListasCargadas(true))
+      // Si una falla, los primeros pasos no se muestran: mejor nada que una
+      // lista que dice "te falta crear categorías" a quien ya tiene diez.
+      .catch(() => {})
+  }
+
   // Si el asistente guarda algo con el resumen abierto debajo, las cifras se
   // actualizan solas.
-  useAlGuardarMovimiento(cargarResumen)
+  useAlGuardarMovimiento(() => {
+    cargarResumen()
+    cargarListas()
+  })
 
   useEffect(() => {
     cargarResumen()
-    categoriasApi.listar().then(setListaCategorias).catch(() => {})
-    mediosApi.listar().then(setListaMedios).catch(() => {})
+    cargarListas()
   }, [])
 
   if (cargando) return <p className="tenue">Cargando resumen...</p>
@@ -66,7 +87,20 @@ export default function Dashboard() {
       <div className="encabezado-pagina">
         <div>
           <span className="kicker">{mesEnPalabras()}</span>
-          <h1>Resumen</h1>
+          <div className="titulo-con-ayuda">
+            <h1>Resumen</h1>
+            {/* En el teléfono la guía vive aquí y no en la barra: ver Layout. */}
+            {esMovil && !soloLectura && (
+              <button
+                className="boton-tema"
+                onClick={abrirTutorial}
+                title="Cómo funciona"
+                aria-label="Cómo funciona"
+              >
+                <Icono nombre="ayuda" tamano={18} />
+              </button>
+            )}
+          </div>
         </div>
         {/* Registro rápido con el formulario. El asistente no va aquí: es la
             burbuja flotante, que está en todas las pantallas. */}
@@ -77,7 +111,17 @@ export default function Dashboard() {
         )}
       </div>
 
-      {!listo && !cargando && (
+      {/* Quien arranca ve la lista de lo que falta, con el botón del
+          siguiente paso. Se va sola cuando ya anotó su primer movimiento. */}
+      {!soloLectura && listasCargadas && (
+        <PrimerosPasos
+          categorias={listaCategorias}
+          medios={listaMedios}
+          onRegistrar={() => setRegistrando(true)}
+        />
+      )}
+
+      {soloLectura && !listo && !cargando && (
         <div className="alerta aviso">
           Para registrar movimientos necesitas al menos una{' '}
           <Link to="/categorias">categoría</Link> y un{' '}
@@ -265,7 +309,7 @@ export default function Dashboard() {
           onCerrar={() => setRegistrando(false)}
           onGuardado={async () => {
             setRegistrando(false)
-            await cargarResumen()
+            await Promise.all([cargarResumen(), cargarListas()])
           }}
         />
       )}

@@ -25,3 +25,23 @@ export function useAlGuardarMovimiento(alGuardar) {
     return () => window.removeEventListener(EVENTO, escuchar)
   }, [])
 }
+
+// Otro aviso: "abre la guía". El tutorial vive en el Layout (se abre solo la
+// primera vez y con el botón de ayuda de la barra), pero la lista de primeros
+// pasos del Resumen también lo ofrece, y no tiene cómo llegar hasta allá.
+const ABRIR_TUTORIAL = 'finanzas:abrir-tutorial'
+
+export function abrirTutorial() {
+  window.dispatchEvent(new Event(ABRIR_TUTORIAL))
+}
+
+export function useAlAbrirTutorial(alAbrir) {
+  const ultima = useRef(alAbrir)
+  ultima.current = alAbrir
+
+  useEffect(() => {
+    const escuchar = () => ultima.current()
+    window.addEventListener(ABRIR_TUTORIAL, escuchar)
+    return () => window.removeEventListener(ABRIR_TUTORIAL, escuchar)
+  }, [])
+}
