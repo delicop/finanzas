@@ -68,14 +68,14 @@ function barraAbajo(x, y, ancho, alto, radio = 4) {
 function porDia(cierres) {
   const mapa = new Map()
   for (const c of cierres) {
-    const dia = mapa.get(c.fecha) ?? { fecha: c.fecha, ventas: 0, gastos: 0, descuadre: 0, tiendas: [] }
+    const dia = mapa.get(c.fecha) ?? { fecha: c.fecha, ventas: 0, salidas: 0, descuadre: 0, tiendas: [] }
     dia.ventas += num(c.venta_tienda)
-    dia.gastos += num(c.totales.salidas)
+    dia.salidas += num(c.totales.salidas)
     dia.descuadre += num(c.totales.queda_diferencia)
     dia.tiendas.push({
       nombre: c.tienda_nombre,
       ventas: num(c.venta_tienda),
-      gastos: num(c.totales.salidas),
+      salidas: num(c.totales.salidas),
       descuadre: num(c.totales.queda_diferencia),
     })
     mapa.set(c.fecha, dia)
@@ -86,9 +86,9 @@ function porDia(cierres) {
 function porTienda(cierres) {
   const mapa = new Map()
   for (const c of cierres) {
-    const t = mapa.get(c.tienda_id) ?? { id: c.tienda_id, nombre: c.tienda_nombre, ventas: 0, gastos: 0, hojas: 0 }
+    const t = mapa.get(c.tienda_id) ?? { id: c.tienda_id, nombre: c.tienda_nombre, ventas: 0, salidas: 0, hojas: 0 }
     t.ventas += num(c.venta_tienda)
-    t.gastos += num(c.totales.salidas)
+    t.salidas += num(c.totales.salidas)
     t.hojas += 1
     mapa.set(c.tienda_id, t)
   }
@@ -196,7 +196,7 @@ function Leyenda({ vista, tiendas }) {
         <i className="muestra-grafica ventas" /> Ventas
       </span>
       <span>
-        <i className="muestra-grafica gastos" /> Gastos
+        <i className="muestra-grafica gastos" /> Salió
       </span>
     </div>
   )
@@ -259,12 +259,12 @@ function DiaADia({ dias, globoProps }) {
   const ancho = Math.max(3, Math.min(14, (paso - 8) / 2))
 
   return (
-    <svg viewBox="0 0 820 300" role="img" aria-label="Ventas y gastos de cada día">
+    <svg viewBox="0 0 820 300" role="img" aria-label="Ventas y lo que salió de cada día">
       <EjeY escalado={esc} />
       {dias.map((d, i) => {
         const centro = CAJA.izq + i * paso + paso / 2
         const altoV = (d.ventas / esc.tope) * CAJA.alto
-        const altoG = (d.gastos / esc.tope) * CAJA.alto
+        const altoG = (d.salidas / esc.tope) * CAJA.alto
         return (
           <g key={d.fecha}>
             {/* 2px de aire entre las dos: pegadas se leen como una sola. */}
@@ -282,9 +282,9 @@ function DiaADia({ dias, globoProps }) {
                   <br />
                   Ventas {formatearMonto(d.ventas)}
                   <br />
-                  Gastos {formatearMonto(d.gastos)}
+                  Salió {formatearMonto(d.salidas)}
                   <br />
-                  Quedó {formatearMonto(d.ventas - d.gastos)}
+                  Debería quedar {formatearMonto(d.ventas - d.salidas)}
                 </>,
               )}
             />
@@ -401,7 +401,7 @@ function LocalContraLocal({ tiendas, globoProps }) {
   }
 
   return (
-    <svg viewBox={`0 0 820 ${alto}`} role="img" aria-label="Ventas y gastos de cada local">
+    <svg viewBox={`0 0 820 ${alto}`} role="img" aria-label="Ventas y lo que salió de cada local">
       {tiendas.map((t, i) => {
         const y = 28 + i * 74
         return (
@@ -410,7 +410,7 @@ function LocalContraLocal({ tiendas, globoProps }) {
               {t.nombre}
             </text>
             {barra(t.ventas, y, 'ventas')}
-            {barra(t.gastos, y + 18, 'gastos')}
+            {barra(t.salidas, y + 18, 'gastos')}
             <rect
               x={izq}
               y={y - 8}
@@ -423,9 +423,9 @@ function LocalContraLocal({ tiendas, globoProps }) {
                   <br />
                   Ventas {formatearMonto(t.ventas)}
                   <br />
-                  Gastos {formatearMonto(t.gastos)}
+                  Salió {formatearMonto(t.salidas)}
                   <br />
-                  Quedó {formatearMonto(t.ventas - t.gastos)} · {t.hojas} cierre
+                  Debería quedar {formatearMonto(t.ventas - t.salidas)} · {t.hojas} cierre
                   {t.hojas === 1 ? '' : 's'}
                 </>,
               )}

@@ -88,7 +88,7 @@ export default function Tiendas() {
             />
             <Metrica titulo="Ventas" monto={ventas} signo="+" clase="positivo" />
             <Metrica
-              titulo="Gastos"
+              titulo="Salió"
               monto={salidas}
               signo="−"
               clase="negativo"
@@ -192,7 +192,7 @@ function DetalleTienda({ tienda, onCerrar, onVerCierres }) {
           clase={Number(tienda.queda) >= 0 ? 'positivo' : 'negativo'}
         />
         <Metrica titulo="Ventas" monto={tienda.ventas} signo="+" clase="positivo" />
-        <Metrica titulo="Gastos" monto={tienda.salidas} signo="−" clase="negativo" />
+        <Metrica titulo="Salió" monto={tienda.salidas} signo="−" clase="negativo" />
       </div>
 
       <div className="encabezado-seccion">

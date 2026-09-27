@@ -210,8 +210,9 @@ export default function Cierres() {
                       <th>Tienda</th>
                       <th>Responsable</th>
                       <th className="num">Ventas</th>
-                      <th className="num">Gastos</th>
-                      <th className="num">Quedó</th>
+                      <th className="num">Salió</th>
+                      <th className="num">Debería quedar</th>
+                      <th className="num">Hay</th>
                       <th className="num">Diferencia</th>
                       <th className="acciones"></th>
                     </tr>
@@ -241,6 +242,7 @@ export default function Cierres() {
                           <td className="num fig">{formatearMonto(c.venta_tienda)}</td>
                           <td className="num fig tenue">{formatearMonto(c.totales.salidas)}</td>
                           <td className="num fig">{formatearMonto(c.totales.deberia_quedar)}</td>
+                          <td className="num fig">{formatearMonto(c.totales.metodos_pago)}</td>
                           <td className={`num fig ${descuadre ? 'negativo' : 'tenue'}`}>
                             {formatearMonto(c.totales.queda_diferencia)}
                           </td>
