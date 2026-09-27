@@ -72,9 +72,11 @@ function recorrerZonas(e) {
 }
 
 // Un tope redondo para el eje: con 6.420.000 el eje llega a 7.000.000 y no a
-// una cifra que nadie reconoce.
+// una cifra que nadie reconoce. Nunca por debajo de mil pesos: un rango todo en
+// cero pintaba un eje de "$ 0" a "$ 1", y con montos de un dígito salían
+// rótulos como "$ 0,5".
 function escala(max) {
-  if (max <= 0) return { tope: 1, pasos: [0, 1] }
+  max = Math.max(max, 1000)
   const magnitud = Math.pow(10, Math.floor(Math.log10(max)))
   const tope = Math.ceil(max / (magnitud / 2)) * (magnitud / 2)
   return { tope, pasos: [0, tope / 2, tope] }
@@ -365,17 +367,23 @@ function EjeDias({ dias, paso, caja = CAJA, desplazado = 0 }) {
 /* ------------------------------ A: día a día --------------------------- */
 
 function DiaADia({ dias, globoProps }) {
-  const esc = escala(Math.max(...dias.map((d) => d.ventas), 0))
+  // El tope cubre las dos series: un día que salió más de lo que entró es
+  // justo el que uno quiere ver, y con el tope de las ventas se salía del lienzo.
+  const esc = escala(Math.max(...dias.flatMap((d) => [d.ventas, d.salidas]), 0))
   const paso = CAJA.ancho / Math.max(dias.length, 1)
   const ancho = Math.max(3, Math.min(14, (paso - 8) / 2))
+  // Por si algún día se agrega una serie y el tope se desincroniza: mejor una
+  // barra recortada al tope, que el eje sigue diciendo dónde está, que una que
+  // se monta sobre el título.
+  const alto = (v) => Math.min((v / esc.tope) * CAJA.alto, CAJA.alto)
 
   return (
     <svg viewBox="0 0 820 300" role="group" aria-label="Ventas y lo que salió de cada día">
       <EjeY escalado={esc} />
       {dias.map((d, i) => {
         const centro = CAJA.izq + i * paso + paso / 2
-        const altoV = (d.ventas / esc.tope) * CAJA.alto
-        const altoG = (d.salidas / esc.tope) * CAJA.alto
+        const altoV = alto(d.ventas)
+        const altoG = alto(d.salidas)
         return (
           <g key={d.fecha}>
             {/* 2px de aire entre las dos: pegadas se leen como una sola. */}
@@ -481,14 +489,16 @@ function PorLocal({ dias, tiendas, globoProps }) {
 /* -------------------------- E: local contra local ---------------------- */
 
 function LocalContraLocal({ tiendas, globoProps }) {
+  // A la derecha de der quedan 160 de aire para el rótulo: "−$ 999.999.999.999,99"
+  // mide unos 125 a este tamaño de letra, más los 10 de separación.
   const izq = 118
-  const der = 690
+  const der = 660
   const ancho = der - izq
-  const esc = escala(Math.max(...tiendas.map((t) => t.ventas), 0))
+  const esc = escala(Math.max(...tiendas.flatMap((t) => [t.ventas, t.salidas]), 0))
   const alto = 40 + tiendas.length * 74
 
   const barra = (valor, arriba, clase) => {
-    const largo = Math.max((valor / esc.tope) * ancho, 2)
+    const largo = Math.min(Math.max((valor / esc.tope) * ancho, 2), ancho)
     const r = Math.min(4, largo)
     return (
       <>
@@ -517,7 +527,7 @@ function LocalContraLocal({ tiendas, globoProps }) {
             <Zona
               x={izq}
               y={y - 8}
-              width={ancho + 100}
+              width={ancho + 140}
               height={48}
               primera={i === 0}
               globoProps={globoProps}
