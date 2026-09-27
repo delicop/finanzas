@@ -107,11 +107,18 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
   const [archivo, setArchivo] = useState(null)
   const [quitarFoto, setQuitarFoto] = useState(false)
 
+  // Si algo se tocó desde que se abrió la hoja. No compara estado por
+  // estado: basta con marcarla la primera vez que se escribe algo, para
+  // preguntar antes de perderla al salir sin guardar.
+  const [sucio, setSucio] = useState(false)
+
   function cambiarMonto(clave, valor) {
+    setSucio(true)
     setMontos((m) => ({ ...m, [clave]: valor }))
   }
 
   function cambiarLinea(grupo, indice, campo, valor) {
+    setSucio(true)
     setListas((l) => ({
       ...l,
       [grupo]: l[grupo].map((fila, i) => (i === indice ? { ...fila, [campo]: valor } : fila)),
@@ -119,10 +126,12 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
   }
 
   function agregarFila(grupo) {
+    setSucio(true)
     setListas((l) => ({ ...l, [grupo]: [...l[grupo], { ...FILA_VACIA }] }))
   }
 
   function quitarFila(grupo, indice) {
+    setSucio(true)
     setListas((l) => {
       const quedan = l[grupo].filter((_, i) => i !== indice)
       return { ...l, [grupo]: quedan.length ? quedan : [{ ...FILA_VACIA }] }
@@ -246,6 +255,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
     <Modal
       titulo={esNuevo ? 'Nuevo cierre de caja' : `${cierre.tienda_nombre} · ${cierre.fecha}`}
       onCerrar={onCerrar}
+      alIntentarCerrar={() => !sucio || confirm('¿Cerrar sin guardar el cierre? Se pierde lo que llevas escrito.')}
       ancho
     >
       <form onSubmit={onSubmit} noValidate className="hoja-cierre">
@@ -281,7 +291,10 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
               type="date"
               value={fecha}
               max={hoyISO()}
-              onChange={(e) => setFecha(e.target.value)}
+              onChange={(e) => {
+                setSucio(true)
+                setFecha(e.target.value)
+              }}
             />
             {campos.fecha && <span className="error-campo">{campos.fecha}</span>}
           </div>
@@ -290,7 +303,10 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             <input
               id="responsable"
               value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
+              onChange={(e) => {
+                setSucio(true)
+                setResponsable(e.target.value)
+              }}
               placeholder="Quién cerró la caja"
               maxLength={120}
             />
@@ -431,6 +447,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
           type="file"
           accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
           onChange={(e) => {
+            setSucio(true)
             setArchivo(e.target.files?.[0] ?? null)
             setQuitarFoto(false)
           }}
@@ -461,7 +478,10 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
           id="novedades"
           rows={3}
           value={novedades}
-          onChange={(e) => setNovedades(e.target.value)}
+          onChange={(e) => {
+            setSucio(true)
+            setNovedades(e.target.value)
+          }}
           maxLength={2000}
           placeholder="Lo que haya que dejar anotado del día: el saldo en Nequi, un faltante, un turno raro..."
         />

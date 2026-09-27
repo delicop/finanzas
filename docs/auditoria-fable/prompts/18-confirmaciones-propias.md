@@ -18,4 +18,12 @@ Qué hacer:
    (botón rojo).
 4. `ConfirmarBorrado` se queda como está: pedir el correo es a propósito.
 
+Nota (de `auditoria-tiendas`, prompt 09): esa auditoría sumó `confirm()`
+nativos que no estaban contados arriba. Inclúyelos en el reemplazo:
+[`Cierres.jsx`](../../../frontend/src/paginas/Cierres.jsx#L77)
+(eliminar un cierre), [`Categorias.jsx`](../../../frontend/src/paginas/Categorias.jsx#L40)
+(eliminar una tienda) y [`CierreForm.jsx`](../../../frontend/src/componentes/CierreForm.jsx)
+(salir de la hoja del cierre sin guardar, vía `alIntentarCerrar` del `Modal`).
+Con este ya son tres.
+
 Commit: "Las confirmaciones se ven como el resto de la app, también en el teléfono".
