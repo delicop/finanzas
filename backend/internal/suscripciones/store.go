@@ -41,13 +41,14 @@ const cubierto = `EXISTS (SELECT 1 FROM pagos g
 /* ----------------------------- planes ----------------------------------- */
 
 const columnasPlan = `p.id, p.nombre, p.precio_mensual::text,
-	coalesce(p.precio_anual::text, ''), p.incluye_ia, p.activo, p.creado_en,
+	coalesce(p.precio_anual::text, ''), p.incluye_ia, p.incluye_tiendas,
+	p.activo, p.creado_en,
 	(SELECT count(*) FROM usuarios u WHERE u.plan_id = p.id)`
 
 func escanearPlan(fila interface{ Scan(...any) error }) (*Plan, error) {
 	var p Plan
 	err := fila.Scan(&p.ID, &p.Nombre, &p.PrecioMensual, &p.PrecioAnual,
-		&p.IncluyeIA, &p.Activo, &p.CreadoEn, &p.Clientes)
+		&p.IncluyeIA, &p.IncluyeTiendas, &p.Activo, &p.CreadoEn, &p.Clientes)
 	if err != nil {
 		return nil, err
 	}
@@ -81,23 +82,26 @@ func (s *Store) ListarPlanes(ctx context.Context) ([]Plan, error) {
 
 // DatosPlan son los campos editables de un plan, ya validados.
 type DatosPlan struct {
-	Nombre        string
-	PrecioMensual string
-	PrecioAnual   string // vacio = sin opcion anual
-	IncluyeIA     bool
-	Activo        bool
+	Nombre         string
+	PrecioMensual  string
+	PrecioAnual    string // vacio = sin opcion anual
+	IncluyeIA      bool
+	IncluyeTiendas bool
+	Activo         bool
 }
 
 func (s *Store) CrearPlan(ctx context.Context, d DatosPlan) (*Plan, error) {
 	q := `
 		WITH p AS (
-			INSERT INTO planes (nombre, precio_mensual, precio_anual, incluye_ia)
-			VALUES ($1, $2::numeric, nullif($3, '')::numeric, $4)
+			INSERT INTO planes (nombre, precio_mensual, precio_anual, incluye_ia,
+			                    incluye_tiendas)
+			VALUES ($1, $2::numeric, nullif($3, '')::numeric, $4, $5)
 			RETURNING *
 		)
 		SELECT ` + columnasPlan + ` FROM p`
 
-	p, err := escanearPlan(s.db.QueryRowContext(ctx, q, d.Nombre, d.PrecioMensual, d.PrecioAnual, d.IncluyeIA))
+	p, err := escanearPlan(s.db.QueryRowContext(ctx, q, d.Nombre, d.PrecioMensual,
+		d.PrecioAnual, d.IncluyeIA, d.IncluyeTiendas))
 	if err != nil {
 		if esViolacionUnica(err) {
 			return nil, ErrNombreDuplicado
@@ -113,7 +117,10 @@ func (s *Store) CrearPlan(ctx context.Context, d DatosPlan) (*Plan, error) {
 // ya cobrado: los pagos guardan su propia copia del monto y del nombre del plan.
 //
 // Quitar la IA corta el asistente a todos los clientes del plan desde ya: se
-// revisa en cada mensaje, no al iniciar sesion.
+// revisa en cada mensaje, no al iniciar sesion. Lo mismo con las tiendas: al
+// quitarlas, la seccion desaparece del menu y la API responde 403. Las tiendas
+// que ya creo el cliente no se borran; vuelven a aparecer si se le devuelve el
+// plan.
 //
 // Quitar el precio anual se rechaza si alguien lo esta pagando por año: ese
 // cliente quedaria con un ciclo que su plan ya no ofrece y sin precio que
@@ -124,7 +131,8 @@ func (s *Store) ActualizarPlan(ctx context.Context, id int64, d DatosPlan) (*Pla
 			UPDATE planes
 			SET nombre = $2, precio_mensual = $3::numeric,
 			    precio_anual = nullif($4, '')::numeric,
-			    incluye_ia = $5, activo = $6, actualizado_en = now()
+			    incluye_ia = $5, incluye_tiendas = $6, activo = $7,
+			    actualizado_en = now()
 			WHERE id = $1
 			  AND ($4 <> '' OR NOT EXISTS (
 			        SELECT 1 FROM usuarios WHERE plan_id = $1 AND ciclo_pago = 'anual'))
@@ -133,7 +141,7 @@ func (s *Store) ActualizarPlan(ctx context.Context, id int64, d DatosPlan) (*Pla
 		SELECT ` + columnasPlan + ` FROM p`
 
 	p, err := escanearPlan(s.db.QueryRowContext(ctx, q, id, d.Nombre, d.PrecioMensual,
-		d.PrecioAnual, d.IncluyeIA, d.Activo))
+		d.PrecioAnual, d.IncluyeIA, d.IncluyeTiendas, d.Activo))
 
 	if errors.Is(err, sql.ErrNoRows) {
 		// Sin filas: o el plan no existe, o lo freno la regla de los anuales.

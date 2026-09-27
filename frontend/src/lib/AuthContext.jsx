@@ -67,6 +67,10 @@ export function AuthProvider({ children }) {
       // Si el plan de la cuenta incluye el asistente. Solo decide qué se
       // dibuja: quien lo impide de verdad es el backend, en cada mensaje.
       conIA: usuario?.ia === true && verComo === null,
+      // Si el plan incluye la sección de tiendas. Mientras se observa a un
+      // cliente manda el plan de ÉL, que es de quien son las tiendas que se
+      // verían: el backend ya responde por esa cuenta, no por la del admin.
+      conTiendas: verComo ? verComo.plan_tiendas === true : usuario?.tiendas === true,
       observar,
       dejarDeObservar,
     }),

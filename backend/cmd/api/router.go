@@ -2,7 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"errors"
+	"mime/multipart"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +24,7 @@ import (
 	"finanzas/internal/recurrentes"
 	"finanzas/internal/registro"
 	"finanzas/internal/suscripciones"
+	"finanzas/internal/tiendas"
 )
 
 // nuevoRouter arma todas las rutas y middlewares de la API.
@@ -107,7 +111,13 @@ func nuevoRouter(d dependencias) http.Handler {
 	// MISMO store que el formulario: no tienen una puerta propia a la tabla
 	// del dinero.
 	recurrentesHandler := recurrentes.NewHandler(d.recurrentes, movimientosStore)
-	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, d.almacen)
+	tiendasStore := tiendas.NewStore(pool)
+	// Al borrar una cuenta hay que sacar del disco tambien las fotos de sus
+	// cierres: el CASCADE se lleva las filas, pero ninguna llave foranea llega
+	// al disco. La consulta la hace tiendas sobre sus propias tablas; aqui,
+	// que es el unico sitio que conoce a los dos paquetes, se conectan.
+	adminHandler := admin.NewHandler(admin.NewStore(pool), authStore, mediosStore, d.almacen,
+		tiendasStore.FotosDe)
 	// El chat con el asistente. Se arma solo si hay llave del modelo: sin
 	// ella la ruta no se monta y la app funciona exactamente igual, sin chat.
 	// Mismo criterio que el token de mantenimiento.
@@ -125,6 +135,12 @@ func nuevoRouter(d dependencias) http.Handler {
 		// El permiso es el plan del cliente: sin IA en el plan, no hay chat.
 		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario, authStore.TieneIA)
 	}
+
+	// Las tiendas son una seccion que se vende: el handler recibe el permiso
+	// (el plan del cliente) igual que el del asistente, y sin el no deja pasar
+	// a nadie.
+	tiendasHandler := tiendas.NewHandler(tiendasStore, authStore.TieneTiendas,
+		fotosDeCierres{d.almacen})
 
 	avisosHandler := avisos.NewHandler(d.avisos)
 
@@ -168,6 +184,12 @@ func nuevoRouter(d dependencias) http.Handler {
 			priv.Mount("/medios-pago", mediosHandler.Rutas())
 			priv.Mount("/movimientos", movimientosHandler.Rutas())
 			priv.Mount("/recurrentes", recurrentesHandler.Rutas())
+			// Existe para todos, pero solo responde a quien tenga las tiendas
+			// en su plan: lo revisa el propio handler en cada peticion.
+			priv.Mount("/tiendas", tiendasHandler.Rutas())
+			// Los cierres de todas las tiendas juntos, que es como se leen
+			// en la app. Crear uno sigue yendo por su tienda.
+			priv.Mount("/cierres", tiendasHandler.RutasTodosLosCierres())
 			priv.Get("/dashboard", movimientosHandler.Dashboard)
 
 			// Las notificaciones al celular. Sin llaves VAPID la ruta no
@@ -216,4 +238,39 @@ func nuevoRouter(d dependencias) http.Handler {
 	})
 
 	return r
+}
+
+// fotosDeCierres conecta el almacen de las facturas con las fotos de los
+// cierres: son el mismo problema y comparten carpeta, pero cada paquete habla
+// de lo suyo. La traduccion vive aqui, que es el unico sitio que conoce a los
+// dos, y no dentro de ninguno de ellos.
+//
+// Tambien traduce los errores: el cliente de un cierre no tiene por que leer
+// que "la factura" es muy grande.
+type fotosDeCierres struct{ almacen *movimientos.AlmacenFacturas }
+
+func (f fotosDeCierres) Guardar(archivo multipart.File, encabezado *multipart.FileHeader) (tiendas.ArchivoSubido, error) {
+	if f.almacen == nil {
+		return tiendas.ArchivoSubido{}, errors.New("no hay almacen de archivos configurado")
+	}
+	guardado, err := f.almacen.Guardar(archivo, encabezado)
+	switch {
+	case errors.Is(err, movimientos.ErrFacturaMuyGrande):
+		return tiendas.ArchivoSubido{}, tiendas.ErrFotoMuyGrande
+	case errors.Is(err, movimientos.ErrFacturaTipo):
+		return tiendas.ArchivoSubido{}, tiendas.ErrFotoTipo
+	case errors.Is(err, movimientos.ErrFacturaVacia):
+		return tiendas.ArchivoSubido{}, tiendas.ErrFotoVacia
+	case err != nil:
+		return tiendas.ArchivoSubido{}, err
+	}
+	return tiendas.ArchivoSubido{Ruta: guardado.Ruta, Nombre: guardado.Nombre, Tipo: guardado.Tipo}, nil
+}
+
+func (f fotosDeCierres) Abrir(rutaRelativa string) (*os.File, error) {
+	return f.almacen.Abrir(rutaRelativa)
+}
+
+func (f fotosDeCierres) Eliminar(rutaRelativa string) error {
+	return f.almacen.Eliminar(rutaRelativa)
 }

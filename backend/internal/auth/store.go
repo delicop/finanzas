@@ -147,19 +147,37 @@ func (s *Store) ActualizarPassword(ctx context.Context, id int64, passwordHash s
 // Vive aqui y no en suscripciones porque la usan dos paquetes que ya dependen
 // de auth (el propio /me y el agente): un solo sitio donde cambiar la regla.
 func (s *Store) TieneIA(ctx context.Context, usuarioID int64) (bool, error) {
-	const q = `
-		SELECT coalesce(p.incluye_ia, false)
+	return s.planIncluye(ctx, usuarioID, "incluye_ia")
+}
+
+// TieneTiendas dice si el plan del usuario incluye la seccion de tiendas.
+//
+// Misma regla y mismo motivo que TieneIA: es algo que se vende, no algo que
+// traiga toda cuenta, y sin plan no hay nada.
+func (s *Store) TieneTiendas(ctx context.Context, usuarioID int64) (bool, error) {
+	return s.planIncluye(ctx, usuarioID, "incluye_tiendas")
+}
+
+// planIncluye responde por una de las casillas del plan del usuario.
+//
+// La columna la pone este paquete y nunca viene de afuera: son los nombres
+// fijos de arriba, no un dato de nadie. Por eso se puede interpolar; como
+// parametro, Postgres la leeria como el texto "incluye_ia" y siempre diria
+// que si.
+func (s *Store) planIncluye(ctx context.Context, usuarioID int64, columna string) (bool, error) {
+	q := fmt.Sprintf(`
+		SELECT coalesce(p.%s, false)
 		FROM usuarios u
 		LEFT JOIN planes p ON p.id = u.plan_id
-		WHERE u.id = $1`
+		WHERE u.id = $1`, columna)
 
-	var ia bool
-	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&ia)
+	var incluida bool
+	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&incluida)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("consultando si el plan incluye IA: %w", err)
+		return false, fmt.Errorf("consultando si el plan incluye %s: %w", columna, err)
 	}
-	return ia, nil
+	return incluida, nil
 }

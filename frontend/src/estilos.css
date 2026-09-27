@@ -3437,6 +3437,394 @@ button.boton-factura {
   background: var(--color-neutral-500);
 }
 
+/* ---------- las tiendas ---------- */
+
+/* Misma rejilla que los medios del resumen: cada tienda es un sitio, no un
+   renglon de tabla, y son pocas. Con auto-fit, en el telefono cae a una sola
+   columna sin necesidad de otra regla. */
+/* auto-fill con tope: con dos tiendas las fichas quedan del tamaño de una
+   ficha y no estiradas a media pantalla cada una, que es lo que pasa con
+   auto-fit + 1fr. */
+.rejilla-tiendas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 300px));
+  gap: var(--space-2);
+}
+
+/* La ficha: el cuerpo (que filtra) a la izquierda y los botones a la derecha. */
+.ficha-tienda {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* El cuerpo es un <button> porque hace algo (filtra la lista), pero no se ve
+   como boton: hereda la tarjeta y solo se subraya al pasar por encima. */
+.ficha-tienda-cuerpo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  min-height: 0;
+  background: none;
+  border: 0;
+  /* Sin la sombra del boton: dentro de la tarjeta dibujaba una caja alrededor
+     del texto, como si fuera otra ficha dentro de la ficha. */
+  box-shadow: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+/* Tampoco se levanta ni se aclara al pasar por encima: lo que responde es la
+   tarjeta entera, no un boton dentro de ella. */
+.ficha-tienda-cuerpo:hover:not(:disabled) {
+  background: none;
+  color: inherit;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
+.ficha-tienda:hover {
+  border-color: var(--color-accent-300);
+}
+
+.ficha-tienda-cuerpo:hover .nombre-tienda {
+  color: var(--color-accent-700);
+}
+
+/* La elegida es la que esta filtrando la lista de abajo: sin una marca clara,
+   se lee como si la lista fueran todos los movimientos. */
+.ficha-tienda.elegida {
+  border-color: var(--color-accent-500);
+}
+
+.nombre-tienda {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.saldo-tienda {
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.detalle-tienda {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* El filete de la ficha: el fondo es la venta y lo pintado, el gasto. Verde y
+   rojo son los mismos colores del dinero en toda la app, así que no hay una
+   clave de color nueva que aprender. */
+.barra-tienda {
+  display: block;
+  height: 5px;
+  margin: 4px 0 2px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--verde) 26%, transparent);
+  overflow: hidden;
+}
+
+.barra-tienda > i {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--rojo);
+}
+
+/* El saldo de la ficha lleva el color del dinero, igual que en el resumen. */
+.ficha-tienda .saldo-tienda.positivo {
+  color: var(--verde);
+}
+
+/* ---------- las gráficas de los cierres ---------- */
+
+/* Los colores de las series. Son los mismos del dinero en la app; en oscuro
+   bajan un paso porque los claros se despegan del fondo y dos series dejan de
+   distinguirse para quien no ve bien los colores. Comprobados para daltonismo
+   en los dos temas. */
+:root {
+  --serie-ventas: var(--verde);
+  --serie-gastos: var(--rojo);
+  --serie-tercera: var(--color-accent-600);
+  --serie-cuarta: var(--color-neutral-600);
+}
+
+[data-tema='oscuro'] {
+  --serie-ventas: #1f9c79;
+  --serie-gastos: #ff4451;
+  --serie-tercera: #8073e6;
+  --serie-cuarta: var(--color-neutral-400);
+}
+
+.tabs-grafica {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--space-2) 0;
+}
+
+.tabs-grafica button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.tabs-grafica button.activo {
+  background: var(--color-accent);
+  color: var(--sobre-acento);
+  border-color: transparent;
+}
+
+/* La gráfica se estira al ancho que haya, pero no se encoge tanto que las
+   barras de un mes se vuelvan rayas: debajo de eso, se desplaza. */
+.lienzo-grafica {
+  overflow-x: auto;
+}
+
+.lienzo-grafica svg {
+  display: block;
+  width: 100%;
+  min-width: 520px;
+  height: auto;
+}
+
+/* Las guías y los rótulos van recesivos: la tinta fuerte es para los datos. */
+.eje-guia {
+  stroke: var(--color-divider);
+  stroke-width: 1;
+}
+
+.eje-cero {
+  stroke: var(--color-neutral-300);
+  stroke-width: 1.5;
+}
+
+.eje-rotulo {
+  fill: var(--color-neutral-600);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nombre-barra {
+  fill: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.valor-barra {
+  fill: var(--color-neutral-700);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.valor-barra.fuerte {
+  font-weight: 600;
+}
+
+.marca.ventas {
+  fill: var(--serie-ventas);
+}
+.marca.gastos {
+  fill: var(--serie-gastos);
+}
+.marca.tercera {
+  fill: var(--serie-tercera);
+}
+
+.linea-serie {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* El aro del color de la tarjeta donde dos líneas se cruzan: sin él, en el
+   cruce no se sabe cuál va por encima. */
+.punto-serie {
+  stroke: var(--color-surface);
+  stroke-width: 2;
+}
+
+.serie-0 .linea-serie {
+  stroke: var(--serie-ventas);
+}
+.serie-0 .punto-serie {
+  fill: var(--serie-ventas);
+}
+.serie-1 .linea-serie {
+  stroke: var(--serie-tercera);
+}
+.serie-1 .punto-serie {
+  fill: var(--serie-tercera);
+}
+.serie-2 .linea-serie {
+  stroke: var(--serie-gastos);
+}
+.serie-2 .punto-serie {
+  fill: var(--serie-gastos);
+}
+.serie-3 .linea-serie {
+  stroke: var(--serie-cuarta);
+}
+.serie-3 .punto-serie {
+  fill: var(--serie-cuarta);
+}
+
+/* La zona sensible es del ancho de la columna: acertarle a una barra de 9px
+   con el dedo es imposible. */
+.zona {
+  fill: transparent;
+}
+
+.leyenda-grafica {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: 12px;
+  color: var(--color-neutral-700);
+}
+
+.leyenda-grafica span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.muestra-grafica {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.muestra-grafica.linea {
+  height: 3px;
+  border-radius: 2px;
+}
+
+.muestra-grafica.ventas,
+.muestra-grafica.serie-0 {
+  background: var(--serie-ventas);
+}
+.muestra-grafica.gastos,
+.muestra-grafica.serie-2 {
+  background: var(--serie-gastos);
+}
+.muestra-grafica.tercera,
+.muestra-grafica.serie-1 {
+  background: var(--serie-tercera);
+}
+.muestra-grafica.serie-3 {
+  background: var(--serie-cuarta);
+}
+
+/* El globo del cursor. Va fijo a la pantalla: dentro del SVG tendría que
+   pelear con el recorte del lienzo. */
+.globo-grafica {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  transform: translateY(-100%);
+  max-width: 240px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: var(--color-text);
+  color: var(--color-surface);
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: var(--shadow-md);
+}
+
+/* ---------- la hoja del cierre de caja ---------- */
+
+/* La hoja es larga: en el telefono se lee de arriba abajo y en escritorio los
+   bloques se acomodan en dos columnas, como en el papel. */
+.hoja-cierre .bloque-cierre {
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.hoja-cierre .bloque-cierre legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-neutral-700);
+}
+
+/* Una casilla por renglon: el rotulo a la izquierda y el valor a la derecha,
+   que es como se lee el papel. */
+.fila-cierre {
+  display: grid;
+  grid-template-columns: 1fr minmax(120px, 190px);
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 6px;
+}
+
+.fila-cierre label {
+  margin: 0;
+}
+
+.fila-cierre input {
+  text-align: right;
+}
+
+/* Las calculadas no se escriben: van sin caja, para que se note que salen de
+   las de arriba y no hay nada que llenar ahi. */
+.fila-cierre.calculada {
+  padding: 4px 0;
+  border-top: 1px dashed var(--color-divider);
+}
+
+.fila-cierre.calculada > span:last-child {
+  text-align: right;
+}
+
+/* Los renglones de las listas: descripcion, valor y el boton de quitar. */
+.fila-lista-cierre {
+  display: grid;
+  grid-template-columns: 1fr minmax(110px, 170px) auto;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: 6px;
+}
+
+.fila-lista-cierre input {
+  margin: 0;
+}
+
+/* Un renglón con monto y sin nombre: no se suma ni se guarda, y por eso se
+   marca. El aviso ocupa el ancho de la fila para no meterse como una cuarta
+   columna de la rejilla. */
+.fila-lista-cierre input.campo-a-medias {
+  border-color: var(--rojo);
+}
+
+.fila-lista-cierre .error-campo {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.pie-lista-cierre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 /* ---------- las piezas sueltas del asistente ---------- */
 
 /* Los botones de ícono de la cabecera (volver, menú). */

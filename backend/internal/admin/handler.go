@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -22,15 +23,30 @@ type BorradorArchivos interface {
 	Eliminar(rutaRelativa string) error
 }
 
+// FotosDeCierres devuelve las rutas de las fotos de los cierres de un usuario.
+// En la app es tiendas.Store.FotosDe.
+//
+// Es una funcion y no el store de tiendas, igual que el permiso que recibe el
+// handler de tiendas, para que aqui no haya un SELECT sobre las tablas de otro
+// paquete: admin no sabe que es un cierre, solo que hay mas archivos que
+// borrar. nil = este servidor no tiene tiendas y no hay fotos que buscar.
+type FotosDeCierres func(ctx context.Context, usuarioID int64) ([]string, error)
+
 type Handler struct {
 	store    *Store
 	auth     *auth.Store
 	medios   *medios.Store
 	archivos BorradorArchivos
+	// fotosDeCierres se le pasa al store al borrar una cuenta: lo conecta el
+	// router, que es el unico sitio que conoce a los dos paquetes.
+	fotosDeCierres FotosDeCierres
 }
 
-func NewHandler(store *Store, authStore *auth.Store, mediosStore *medios.Store, archivos BorradorArchivos) *Handler {
-	return &Handler{store: store, auth: authStore, medios: mediosStore, archivos: archivos}
+func NewHandler(store *Store, authStore *auth.Store, mediosStore *medios.Store, archivos BorradorArchivos, fotosDeCierres FotosDeCierres) *Handler {
+	return &Handler{
+		store: store, auth: authStore, medios: mediosStore,
+		archivos: archivos, fotosDeCierres: fotosDeCierres,
+	}
 }
 
 // Rutas devuelve el sub-router de /api/admin/usuarios.
@@ -371,7 +387,7 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rutas, err := h.store.Eliminar(r.Context(), id)
+	rutas, err := h.store.Eliminar(r.Context(), id, h.fotosDeCierres)
 	switch {
 	case errors.Is(err, ErrNoEncontrado):
 		httpx.Error(w, http.StatusNotFound, "Usuario no encontrado")
@@ -389,14 +405,14 @@ func (h *Handler) Eliminar(w http.ResponseWriter, r *http.Request) {
 	// 404 confuso. Se deja en el log, que es donde se revisa el disco.
 	for _, ruta := range rutas {
 		if err := h.archivos.Eliminar(ruta); err != nil {
-			slog.Error("no se pudo borrar la factura de un usuario eliminado",
+			slog.Error("no se pudo borrar un archivo de un usuario eliminado",
 				"ruta", ruta, "usuario_id", id, "error", err)
 		}
 	}
 
 	slog.Warn("cuenta eliminada",
 		"usuario_id", id, "email", usuario.Email,
-		"movimientos", usuario.Movimientos, "facturas", len(rutas),
+		"movimientos", usuario.Movimientos, "archivos", len(rutas),
 		"eliminada_por", yo)
 
 	w.WriteHeader(http.StatusNoContent)

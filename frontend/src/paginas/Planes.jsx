@@ -50,6 +50,7 @@ export default function Planes() {
         precio_mensual: plan.precio_mensual,
         precio_anual: plan.precio_anual,
         incluye_ia: plan.incluye_ia,
+        incluye_tiendas: plan.incluye_tiendas,
         activo: !plan.activo,
       })
       await recargar()
@@ -58,7 +59,15 @@ export default function Planes() {
     }
   }
 
-  const nuevo = { id: null, nombre: '', precio_mensual: '', precio_anual: '', incluye_ia: false, activo: true }
+  const nuevo = {
+    id: null,
+    nombre: '',
+    precio_mensual: '',
+    precio_anual: '',
+    incluye_ia: false,
+    incluye_tiendas: false,
+    activo: true,
+  }
 
   return (
     <>
@@ -179,10 +188,17 @@ export default function Planes() {
 }
 
 function EtiquetaIA({ plan }) {
-  return plan.incluye_ia ? (
-    <span className="etiqueta etiqueta-ia">✦ Con IA</span>
-  ) : (
-    <span className="etiqueta etiqueta-sin-ia">Sin IA</span>
+  return (
+    <>
+      {plan.incluye_ia ? (
+        <span className="etiqueta etiqueta-ia">✦ Con IA</span>
+      ) : (
+        <span className="etiqueta etiqueta-sin-ia">Sin IA</span>
+      )}
+      {/* Las tiendas solo se anuncian cuando las hay: un "Sin tiendas" al lado
+          de cada plan sería ruido en la lista. */}
+      {plan.incluye_tiendas && <span className="etiqueta etiqueta-ia">Tiendas</span>}
+    </>
   )
 }
 
@@ -233,6 +249,7 @@ function FormularioPlan({ plan, onCerrar, onGuardado }) {
     plan.precio_anual ? montoAEntrada(plan.precio_anual) : '',
   )
   const [incluyeIA, setIncluyeIA] = useState(Boolean(plan.incluye_ia))
+  const [incluyeTiendas, setIncluyeTiendas] = useState(Boolean(plan.incluye_tiendas))
   const [campos, setCampos] = useState({})
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
@@ -262,6 +279,7 @@ function FormularioPlan({ plan, onCerrar, onGuardado }) {
         precio_mensual: mensualCrudo,
         precio_anual: anualCrudo,
         incluye_ia: incluyeIA,
+        incluye_tiendas: incluyeTiendas,
       }
       if (esNuevo) await negocioApi.crearPlan(datos)
       else await negocioApi.actualizarPlan(plan.id, { ...datos, activo: plan.activo })
@@ -350,6 +368,22 @@ function FormularioPlan({ plan, onCerrar, onGuardado }) {
             <span className="tenue ayuda-campo">
               Los clientes de este plan pueden chatear con el asistente. Cada mensaje tiene un
               costo para ti.
+            </span>
+          </span>
+        </label>
+
+        <label className="interruptor">
+          <input
+            type="checkbox"
+            checked={incluyeTiendas}
+            onChange={(e) => setIncluyeTiendas(e.target.checked)}
+          />
+          <span className="interruptor-pista" aria-hidden="true" />
+          <span>
+            <strong>Incluye las tiendas</strong>
+            <span className="tenue ayuda-campo">
+              Los clientes de este plan ven la sección Tiendas y pueden registrar sus locales. Al
+              quitarla, la sección desaparece pero sus tiendas quedan guardadas.
             </span>
           </span>
         </label>

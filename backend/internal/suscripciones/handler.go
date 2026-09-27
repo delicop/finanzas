@@ -58,7 +58,9 @@ type planRequest struct {
 	// Vacio o ausente = el plan no se vende por año.
 	PrecioAnual string `json:"precio_anual"`
 	IncluyeIA   bool   `json:"incluye_ia"`
-	Activo      *bool  `json:"activo"`
+	// Si los clientes del plan tienen la seccion de tiendas.
+	IncluyeTiendas bool  `json:"incluye_tiendas"`
+	Activo         *bool `json:"activo"`
 }
 
 // valida deja los datos listos para guardar, o los errores por campo.
@@ -66,8 +68,9 @@ func (req *planRequest) valida() (DatosPlan, map[string]string) {
 	v := httpx.NuevoValidador()
 
 	d := DatosPlan{
-		Nombre:    strings.TrimSpace(req.Nombre),
-		IncluyeIA: req.IncluyeIA,
+		Nombre:         strings.TrimSpace(req.Nombre),
+		IncluyeIA:      req.IncluyeIA,
+		IncluyeTiendas: req.IncluyeTiendas,
 		// PUT: si no mandan "activo", el plan sigue activo. Desactivarlo es
 		// explicito, nunca un efecto secundario de editarle el nombre.
 		Activo: req.Activo == nil || *req.Activo,

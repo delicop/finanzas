@@ -47,6 +47,21 @@ const TRAZOS = {
   ),
 
   // Administración
+  tiendas: (
+    <>
+      <path d="M3 9h18l-1.4-4.2a1 1 0 0 0-.95-.68H5.35a1 1 0 0 0-.95.68z" />
+      <path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9" />
+      <path d="M9 20v-6h6v6" />
+    </>
+  ),
+  cierres: (
+    <>
+      <path d="M6 2h9l4 4v16H6z" />
+      <path d="M15 2v4h4" />
+      <path d="M9 12h7" />
+      <path d="M9 16h7" />
+    </>
+  ),
   negocio: (
     <>
       <path d="M3 3v18h18" />

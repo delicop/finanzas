@@ -96,6 +96,20 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | POST   | `/api/medios-pago`               | Crear                                         |
 | PUT    | `/api/medios-pago/{id}`          | Renombrar                                     |
 | DELETE | `/api/medios-pago/{id}`          | Eliminar (409 si está en uso)                 |
+| GET    | `/api/tiendas`                   | Los locales del cliente (403 si su plan no las incluye) |
+| POST   | `/api/tiendas`                   | Crear                                         |
+| PUT    | `/api/tiendas/{id}`              | Renombrar                                     |
+| DELETE | `/api/tiendas/{id}`              | Eliminar (409 si ya tiene cierres)            |
+| GET    | `/api/tiendas/{id}/cierres`      | Los cierres de caja de esa tienda             |
+| POST   | `/api/tiendas/{id}/cierres`      | Nuevo cierre (uno por día y tienda)           |
+| GET    | `/api/tiendas/{id}/cierres/{cierreID}` | La hoja completa, con sus líneas        |
+| PUT    | `/api/tiendas/{id}/cierres/{cierreID}` | Reemplazar la hoja entera               |
+| DELETE | `/api/tiendas/{id}/cierres/{cierreID}` | Eliminar el cierre                      |
+| POST   | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Adjuntar la foto de la hoja (multipart, campo `foto`) |
+| GET    | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Ver/descargar la foto              |
+| DELETE | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Quitar la foto                     |
+| GET    | `/api/cierres`                   | Los cierres de TODAS las tiendas (filtros: `tienda_id`, `desde`, `hasta`) |
+| GET    | `/api/cierres/exportar`          | Los mismos, en Excel                      |
 | GET    | `/api/movimientos`               | Lista paginada con filtros                    |
 | POST   | `/api/movimientos`               | Crear                                         |
 | GET    | `/api/movimientos/{id}`          | Detalle                                       |

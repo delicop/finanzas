@@ -27,9 +27,11 @@ type Plan struct {
 	// Vacio = el plan no se vende por año.
 	PrecioAnual string `json:"precio_anual"`
 	// Si los clientes del plan pueden usar el asistente con IA.
-	IncluyeIA bool      `json:"incluye_ia"`
-	Activo    bool      `json:"activo"`
-	CreadoEn  time.Time `json:"creado_en"`
+	IncluyeIA bool `json:"incluye_ia"`
+	// Si los clientes del plan tienen la seccion de tiendas.
+	IncluyeTiendas bool      `json:"incluye_tiendas"`
+	Activo         bool      `json:"activo"`
+	CreadoEn       time.Time `json:"creado_en"`
 	// Cuantos clientes lo tienen. Es lo primero que se mira antes de cambiarle
 	// el precio a un plan o de intentar borrarlo.
 	Clientes int `json:"clientes"`

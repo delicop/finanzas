@@ -68,6 +68,9 @@ type usuarioJSON struct {
 	// Si su plan incluye el asistente. Es para que la app no muestre un botón
 	// que no sirve; quien de verdad lo impide es el backend, en cada mensaje.
 	IA bool `json:"ia"`
+	// Si su plan incluye la sección de tiendas. Igual que IA: esto solo
+	// decide qué se dibuja, la puerta la cuida el backend en cada petición.
+	Tiendas bool `json:"tiendas"`
 }
 
 // fichaDe arma lo que el frontend sabe de su usuario.
@@ -76,7 +79,12 @@ func (h *Handler) fichaDe(ctx context.Context, u *Usuario) (usuarioJSON, error) 
 	if err != nil {
 		return usuarioJSON{}, err
 	}
-	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol, IA: ia}, nil
+	tiendas, err := h.store.TieneTiendas(ctx, u.ID)
+	if err != nil {
+		return usuarioJSON{}, err
+	}
+	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol,
+		IA: ia, Tiendas: tiendas}, nil
 }
 
 // POST /api/auth/login

@@ -141,6 +141,30 @@ export async function exportarMovimientos(filtros, formato) {
   return respuesta.blob()
 }
 
+// exportarCierres baja el Excel de los cierres con los mismos filtros de la
+// lista: se exporta lo que se está viendo. Mismo camino que los movimientos.
+export async function exportarCierres(filtros) {
+  let respuesta
+  try {
+    respuesta = await fetch(`${BASE_URL}/api/cierres/exportar${queryString(filtros)}`, {
+      headers: cabeceras(true),
+    })
+  } catch {
+    throw new ApiError('No se pudo conectar con el servidor', 0)
+  }
+
+  if (!respuesta.ok) {
+    if (respuesta.status === 401) tokenStorage.clear()
+    const datos = await respuesta.json().catch(() => null)
+    throw new ApiError(
+      datos?.error ?? 'No se pudo generar el archivo',
+      respuesta.status,
+      datos?.campos,
+    )
+  }
+  return respuesta.blob()
+}
+
 function queryString(params) {
   const q = new URLSearchParams()
   for (const [clave, valor] of Object.entries(params ?? {})) {
@@ -174,6 +198,56 @@ export const mediosApi = {
   actualizar: (id, nombre) =>
     apiFetch(`/api/medios-pago/${id}`, { metodo: 'PUT', body: { nombre } }),
   eliminar: (id) => apiFetch(`/api/medios-pago/${id}`, { metodo: 'DELETE' }),
+}
+
+// Las tiendas solo existen para los planes que las incluyen. Si el plan no las
+// trae, estas rutas responden 403 y la app ni siquiera pinta la sección.
+export const tiendasApi = {
+  listar: () => apiFetch('/api/tiendas'),
+  crear: (nombre) => apiFetch('/api/tiendas', { metodo: 'POST', body: { nombre } }),
+  actualizar: (id, nombre) => apiFetch(`/api/tiendas/${id}`, { metodo: 'PUT', body: { nombre } }),
+  eliminar: (id) => apiFetch(`/api/tiendas/${id}`, { metodo: 'DELETE' }),
+}
+
+// Los cierres de caja cuelgan de su tienda: una hoja siempre es de un local.
+export const cierresApi = {
+  listar: (tiendaID) => apiFetch(`/api/tiendas/${tiendaID}/cierres`),
+  // Los de todas las tiendas juntos, que es como se leen en la sección.
+  // Los filtros son los mismos que acepta el servidor: tienda y rango.
+  todos: (filtros) => apiFetch(`/api/cierres${queryString(filtros)}`),
+  ver: (tiendaID, id) => apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}`),
+  crear: (tiendaID, datos) =>
+    apiFetch(`/api/tiendas/${tiendaID}/cierres`, { metodo: 'POST', body: datos }),
+  actualizar: (tiendaID, id, datos) =>
+    apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}`, { metodo: 'PUT', body: datos }),
+  eliminar: (tiendaID, id) =>
+    apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}`, { metodo: 'DELETE' }),
+
+  // La foto de la hoja firmada. Va en multipart, en su propia petición.
+  subirFoto: (tiendaID, id, archivo) => {
+    const form = new FormData()
+    form.append('foto', archivo)
+    return apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}/foto`, { metodo: 'POST', body: form })
+  },
+  quitarFoto: (tiendaID, id) =>
+    apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}/foto`, { metodo: 'DELETE' }),
+}
+
+// La foto tampoco se puede poner en un <img src="...">: ese request lo hace el
+// navegador solo y no lleva el header Authorization. Mismo camino que las
+// facturas — quien la use debe llamar URL.revokeObjectURL al terminar.
+export async function descargarFotoCierre(tiendaID, cierreID) {
+  const respuesta = await fetch(`${BASE_URL}/api/tiendas/${tiendaID}/cierres/${cierreID}/foto`, {
+    headers: cabeceras(true),
+  })
+
+  if (!respuesta.ok) {
+    if (respuesta.status === 401) tokenStorage.clear()
+    throw new ApiError('No se pudo cargar la foto', respuesta.status)
+  }
+
+  const blob = await respuesta.blob()
+  return { url: URL.createObjectURL(blob), tipo: blob.type }
 }
 
 export const movimientosApi = {

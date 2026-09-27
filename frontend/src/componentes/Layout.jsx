@@ -22,6 +22,15 @@ const SECCIONES = [
   { a: '/medios-pago', etiqueta: 'Medios', icono: 'medios' },
 ]
 
+// Las dos secciones del plan con tiendas: el resumen de los locales y los
+// cierres de caja. No van en la lista de arriba porque no las tiene todo el
+// mundo; van al final, después de lo que sí tiene cualquiera, para que
+// activarlas no le mueva el menú de sitio a nadie.
+const SECCIONES_TIENDAS = [
+  { a: '/tiendas', etiqueta: 'Tiendas', icono: 'tiendas' },
+  { a: '/cierres', etiqueta: 'Cierres', icono: 'cierres' },
+]
+
 // Las secciones del administrador. Son OTRA app: el dueño del servidor no
 // lleva gastos personales, lleva el negocio — a quién le cobra, cuánto y quién
 // ya pagó. Ocultarlas a los demás es comodidad, no seguridad: quien escriba
@@ -34,7 +43,7 @@ const SECCIONES_ADMIN = [
 ]
 
 export default function Layout({ children }) {
-  const { usuario, logout, esAdmin, verComo, dejarDeObservar, conIA } = useAuth()
+  const { usuario, logout, esAdmin, verComo, dejarDeObservar, conIA, conTiendas } = useAuth()
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
   const enLinea = useEnLinea()
@@ -90,15 +99,20 @@ export default function Layout({ children }) {
   // El menú tiene que decir lo mismo que las rutas (ver App.jsx): un admin no
   // tiene finanzas propias, así que solo ve el panel. Mientras observa a otro
   // sí aparecen las secciones de dinero, porque son las de esa persona.
+  //
+  // Las de dinero son las de todos; las del plan se suman encima. Una sección
+  // en el menú que no lleva a ningún lado es peor que no tenerla.
+  const suyas = conTiendas ? [...SECCIONES, ...SECCIONES_TIENDAS] : SECCIONES
+
   const secciones = esAdmin
     ? verComo
       ? // Observando: las secciones de dinero son las del cliente observado, y
         // "Negocio" es la salida de vuelta al panel. La burbuja del asistente
         // no aparece: el chat de una persona no es un dato que el panel
         // revise, y el backend responde 403 si se intenta.
-        [...SECCIONES, SECCIONES_ADMIN[0]]
+        [...suyas, SECCIONES_ADMIN[0]]
       : SECCIONES_ADMIN
-    : SECCIONES
+    : suyas
 
   const hayMenu = secciones.length > 1
 

@@ -8,13 +8,15 @@ import Categorias from './paginas/Categorias'
 import MediosPago from './paginas/MediosPago'
 import Movimientos from './paginas/Movimientos'
 import Recurrentes from './paginas/Recurrentes'
+import Tiendas from './paginas/Tiendas'
+import Cierres from './paginas/Cierres'
 import Negocio from './paginas/Negocio'
 import Clientes from './paginas/Clientes'
 import Planes from './paginas/Planes'
 import Errores from './paginas/Errores'
 
 function Ruteo() {
-  const { usuario, cargando, esAdmin, verComo } = useAuth()
+  const { usuario, cargando, esAdmin, verComo, conTiendas } = useAuth()
 
   // Sin esto se ve un parpadeo del login mientras /me responde.
   if (cargando) return <div className="pantalla-centrada tenue">Cargando...</div>
@@ -43,6 +45,13 @@ function Ruteo() {
             <Route path="/recurrentes" element={<Recurrentes />} />
             <Route path="/categorias" element={<Categorias />} />
             <Route path="/medios-pago" element={<MediosPago />} />
+            {/* Solo para quien la tiene en el plan. No se esconde: la ruta no
+                existe, así que si le quitan las tiendas mientras está parado
+                ahí, el comodín lo devuelve al resumen en vez de dejarlo
+                mirando una pantalla con 403. */}
+            {conTiendas && <Route path="/tiendas" element={<Tiendas />} />}
+            {/* Una tienda por dentro: sus cierres de caja. */}
+            {conTiendas && <Route path="/cierres" element={<Cierres />} />}
           </>
         )}
         {/* El panel. Solo existe para un admin: para el resto cae en el

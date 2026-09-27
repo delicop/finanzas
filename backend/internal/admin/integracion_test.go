@@ -17,6 +17,7 @@ import (
 	"finanzas/internal/categorias"
 	"finanzas/internal/db"
 	"finanzas/internal/medios"
+	"finanzas/internal/tiendas"
 )
 
 // Contra un Postgres de verdad: lo que se prueba son las cifras de uso, y
@@ -82,6 +83,10 @@ func nuevoEntorno(t *testing.T) *entorno {
 var contador atomic.Int64
 
 func crearUsuario(t *testing.T, pool *sql.DB, nombre string) int64 {
+	return crearUsuarioConRol(t, pool, nombre, auth.RolUsuario)
+}
+
+func crearUsuarioConRol(t *testing.T, pool *sql.DB, nombre, rol string) int64 {
 	t.Helper()
 	ctx := context.Background()
 
@@ -91,7 +96,7 @@ func crearUsuario(t *testing.T, pool *sql.DB, nombre string) int64 {
 	}
 
 	email := fmt.Sprintf("%s-%d-%d@prueba.local", strings.ToLower(nombre), time.Now().UnixNano(), contador.Add(1))
-	usuario, err := auth.NewStore(pool).Crear(ctx, email, nombre, auth.RolUsuario, hash)
+	usuario, err := auth.NewStore(pool).Crear(ctx, email, nombre, rol, hash)
 	if err != nil {
 		t.Fatalf("creando usuario: %v", err)
 	}
@@ -117,10 +122,14 @@ func (e *entorno) movimientoHaceDias(t *testing.T, dias int) {
 	t.Helper()
 
 	cuando := time.Now().AddDate(0, 0, -dias)
+	// El mismo valor va dos veces, con su propio tipo cada una. Con un solo
+	// $4 usado como $4::date y como timestamp, Postgres deduce que el
+	// parametro es DATE y guarda creado_en a la medianoche UTC: de noche eso
+	// cae en el dia anterior y la prueba falla sola despues de las 7 p.m.
 	_, err := e.pool.ExecContext(context.Background(), `
 		INSERT INTO movimientos (usuario_id, categoria_id, medio_pago_id, tipo, monto, fecha, descripcion, creado_en)
-		VALUES ($1, $2, $3, 'pague', 1000, $4::date, 'prueba', $4)`,
-		e.ana, e.categoria, e.efectivo, cuando)
+		VALUES ($1, $2, $3, 'pague', 1000, $4::date, 'prueba', $5::timestamptz)`,
+		e.ana, e.categoria, e.efectivo, cuando, cuando)
 	if err != nil {
 		t.Fatalf("insertando movimiento: %v", err)
 	}
@@ -259,5 +268,54 @@ func TestLaFichaSueltaTraeLasMismasCifrasQueLaLista(t *testing.T) {
 	}
 	if suelta.UltimoAcceso == nil || !suelta.UltimoAcceso.Equal(*deLaLista.UltimoAcceso) {
 		t.Errorf("ultimo_acceso: la lista dice %v y la ficha %v", deLaLista.UltimoAcceso, suelta.UltimoAcceso)
+	}
+}
+
+// Las fotos de las hojas firmadas se van con la cuenta. El CASCADE se lleva
+// los cierres de la base, pero al disco no llega ninguna llave foranea: si el
+// borrado no devuelve esas rutas, los archivos quedan ocupando la tarjeta de
+// la Raspberry sin que nadie pueda volver a relacionarlos con nada.
+func TestBorrarLaCuentaDevuelveLasFotosDeSusCierres(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+	store := tiendas.NewStore(e.pool)
+
+	// Tiene que quedar un administrador activo: sin el, el borrado devuelve
+	// ErrUltimoAdmin, se deshace entero y esta prueba no probaria nada.
+	crearUsuarioConRol(t, e.pool, "Jefe", auth.RolAdmin)
+
+	tienda, err := store.Crear(ctx, e.ana, "Centro")
+	if err != nil {
+		t.Fatalf("creando la tienda: %v", err)
+	}
+	cierre, err := store.CrearCierre(ctx, e.ana, tienda.ID, tiendas.DatosCierre{
+		Fecha: "2026-03-10", Responsable: "Ana",
+		QRBanco: "0", QRTienda: "0",
+		DatafonoReporte: "0", DatafonoTienda: "0",
+		EfectivoBillete: "50000", EfectivoMoneda: "0", EfectivoTienda: "50000",
+		VentaTienda: "50000",
+	})
+	if err != nil {
+		t.Fatalf("creando el cierre: %v", err)
+	}
+	// La foto se pega por SQL: lo que se prueba es el borrado, no la subida.
+	if _, err := e.pool.ExecContext(ctx,
+		"UPDATE cierres SET foto_ruta = $1 WHERE id = $2", "2026/03/hoja.jpg", cierre.ID); err != nil {
+		t.Fatalf("pegando la foto al cierre: %v", err)
+	}
+
+	rutas, err := e.store.Eliminar(ctx, e.ana, store.FotosDe)
+	if err != nil {
+		t.Fatalf("eliminando la cuenta: %v", err)
+	}
+
+	encontrada := false
+	for _, r := range rutas {
+		if r == "2026/03/hoja.jpg" {
+			encontrada = true
+		}
+	}
+	if !encontrada {
+		t.Errorf("las rutas a borrar del disco son %v: falta la foto del cierre", rutas)
 	}
 }

@@ -49,6 +49,9 @@ type UsuarioAdmin struct {
 	Ciclo string `json:"ciclo"`
 	// Si su plan incluye el asistente.
 	PlanIA bool `json:"plan_ia"`
+	// Si su plan incluye la seccion de tiendas. Lo usa el panel para saber
+	// que secciones tiene esa cuenta mientras se la observa.
+	PlanTiendas bool `json:"plan_tiendas"`
 
 	// --- Si de verdad lo usan -------------------------------------------
 	//
@@ -101,6 +104,7 @@ var columnasUsuario = fmt.Sprintf(`
 		coalesce((CASE WHEN u.ciclo_pago = 'anual' THEN p.precio_anual
 		               ELSE p.precio_mensual END)::text, ''),
 		u.ciclo_pago, coalesce(p.incluye_ia, false),
+		coalesce(p.incluye_tiendas, false),
 		u.ultimo_acceso,
 		-- La ultima señal de vida: la mas reciente entre abrir la app y las
 		-- tres cosas que escribe una persona usandola. greatest() ignora los
@@ -142,7 +146,7 @@ func escanearUsuario(f fila) (*UsuarioAdmin, error) {
 	var u UsuarioAdmin
 	err := f.Scan(&u.ID, &u.Email, &u.Nombre, &u.Rol, &u.Activo,
 		&u.CreadoEn, &u.Movimientos, &u.Categorias,
-		&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA,
+		&u.PlanID, &u.PlanNombre, &u.PlanPrecio, &u.Ciclo, &u.PlanIA, &u.PlanTiendas,
 		&u.UltimoAcceso, &u.UltimaActividad, &u.DiasActivos)
 	if err != nil {
 		return nil, err
@@ -255,7 +259,13 @@ func (s *Store) PorID(ctx context.Context, id int64) (*UsuarioAdmin, error) {
 	return u, nil
 }
 
-func (s *Store) Eliminar(ctx context.Context, id int64) ([]string, error) {
+// Eliminar borra la cuenta y devuelve las rutas de TODOS los archivos que eran
+// suyos, para que el handler los saque del disco despues del commit.
+//
+// fotosDeCierres se recibe como parametro (ver el tipo) y se llama aqui, junto
+// a la consulta de las facturas y antes del DELETE: despues, el CASCADE ya se
+// habria llevado los cierres y no quedaria de donde leer las rutas.
+func (s *Store) Eliminar(ctx context.Context, id int64, fotosDeCierres FotosDeCierres) ([]string, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("abriendo transaccion: %w", err)
@@ -291,6 +301,18 @@ func (s *Store) Eliminar(ctx context.Context, id int64) ([]string, error) {
 		return nil, fmt.Errorf("recorriendo facturas: %w", err)
 	}
 	filas.Close()
+
+	// Las fotos de las hojas firmadas viven en las tablas de otro paquete,
+	// asi que la consulta la hace el. No corre DENTRO de esta tx (ninguna
+	// consulta de otro paquete puede), pero si en su sitio: antes del DELETE,
+	// que es lo que garantiza que las filas todavia esten para leerlas.
+	if fotosDeCierres != nil {
+		fotos, err := fotosDeCierres(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("listando las fotos de los cierres del usuario: %w", err)
+		}
+		rutas = append(rutas, fotos...)
+	}
 
 	var borrado int64
 	err = tx.QueryRowContext(ctx, `DELETE FROM usuarios WHERE id = $1 RETURNING id`, id).Scan(&borrado)
