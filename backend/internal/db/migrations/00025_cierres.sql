@@ -72,7 +72,9 @@ CREATE TABLE cierres (
 CREATE UNIQUE INDEX cierres_tienda_fecha_key ON cierres (tienda_id, fecha);
 
 -- La pantalla siempre pregunta "los cierres de ESTA tienda, del mas nuevo al
--- mas viejo".
+-- mas viejo". La migracion 28 lo quita despues: un btree se recorre en los
+-- dos sentidos, asi que el UNIQUE de arriba ya sirve para ese orden. Sigue
+-- aqui para que una base nueva pase por los mismos pasos que una vieja.
 CREATE INDEX cierres_tienda_fecha_idx ON cierres (tienda_id, fecha DESC);
 
 -- Las listas de la hoja: pagos por Nequi, compras, gastos, descuentos y vales.
