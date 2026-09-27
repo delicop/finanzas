@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { formatearFechaCorta, formatearMonto } from '../lib/formato'
 
 // Las gráficas de la sección Cierres.
@@ -11,6 +11,14 @@ import { formatearFechaCorta, formatearMonto } from '../lib/formato'
 // rojo lo que sale) y en oscuro cambian a un paso más apagado: los tonos
 // claros se despegan del fondo y dejan de distinguirse entre sí para quien no
 // ve bien los colores. Están comprobados para daltonismo en los dos temas.
+
+// Una línea que dice qué muestra cada gráfica, debajo de ella.
+const PIES = {
+  dia: 'Lo que se vendió y lo que salió de la caja cada día.',
+  local: 'Las ventas de cada local, día por día.',
+  comparar: 'Lo que vendió y lo que salió en cada local, en todo el rango.',
+  descuadre: 'Cuánto sobró o faltó al contar la caja cada día.',
+}
 
 const VISTAS = [
   { clave: 'dia', etiqueta: 'Día a día' },
@@ -26,6 +34,42 @@ CAJA.alto = CAJA.fondo - CAJA.arriba
 CAJA.ancho = CAJA.der - CAJA.izq
 
 const num = (v) => Number(v) || 0
+
+// Lo que dice una columna: un título y unas líneas. De aquí salen las dos
+// versiones, el globo para el que mira y la frase para el lector de pantalla,
+// así que no pueden decir cosas distintas.
+const enTexto = (dato) => [dato.titulo, ...dato.lineas].join('. ')
+
+// La zona sensible de una columna o de un local. Con el ratón abre el globo;
+// con el teclado se llega con Tab a la primera y las flechas recorren las
+// demás: un año de días serían 365 paradas de Tab antes de llegar a la tabla.
+function Zona({ dato, primera, globoProps, ...caja }) {
+  return (
+    <rect
+      {...caja}
+      className="zona"
+      role="img"
+      aria-label={enTexto(dato)}
+      tabIndex={primera ? 0 : -1}
+      {...globoProps(dato)}
+    />
+  )
+}
+
+function recorrerZonas(e) {
+  const siguiente = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+  if (!siguiente && e.key !== 'Home' && e.key !== 'End') return
+  const zonas = [...e.currentTarget.ownerSVGElement.querySelectorAll('.zona')]
+  const i = zonas.indexOf(e.currentTarget)
+  const destino =
+    e.key === 'Home'
+      ? 0
+      : e.key === 'End'
+        ? zonas.length - 1
+        : Math.min(Math.max(i + siguiente, 0), zonas.length - 1)
+  e.preventDefault()
+  zonas[destino].focus()
+}
 
 // Un tope redondo para el eje: con 6.420.000 el eje llega a 7.000.000 y no a
 // una cifra que nadie reconoce.
@@ -97,6 +141,7 @@ function porTienda(cierres) {
 
 export default function GraficasCierres({ cierres }) {
   const [vista, setVista] = useState('dia')
+  const base = useId()
   // El globo del cursor: uno solo para las cuatro gráficas.
   const [globo, setGlobo] = useState(null)
 
@@ -111,19 +156,66 @@ export default function GraficasCierres({ cierres }) {
   const vistaActual = vistas.some((v) => v.clave === vista) ? vista : 'dia'
   const actual = vistas.find((v) => v.clave === vistaActual)
 
-  const mostrar = (e, contenido) => {
+  // El globo se queda donde entró el cursor: seguirlo en cada movimiento era
+  // volver a dibujar las cuatro gráficas por cada píxel. Desde el teclado no
+  // hay cursor, así que se pone encima de la columna enfocada.
+  const mostrar = (e, dato) => {
+    let x = e.clientX
+    let y = e.clientY
+    if (typeof x !== 'number' || (x === 0 && y === 0)) {
+      const caja = e.currentTarget.getBoundingClientRect()
+      x = caja.left + caja.width / 2
+      y = caja.top
+    }
     setGlobo({
-      contenido,
-      x: Math.min(e.clientX + 14, window.innerWidth - 250),
-      y: Math.max(e.clientY - 12, 60),
+      dato,
+      x: Math.min(x + 14, window.innerWidth - 250),
+      y: Math.max(y - 12, 60),
     })
   }
   const esconder = () => setGlobo(null)
-  const globoProps = (contenido) => ({
-    onMouseEnter: (e) => mostrar(e, contenido),
-    onMouseMove: (e) => mostrar(e, contenido),
+  const globoProps = (dato) => ({
+    onMouseEnter: (e) => mostrar(e, dato),
     onMouseLeave: esconder,
+    onFocus: (e) => mostrar(e, dato),
+    onBlur: esconder,
+    // En el teléfono no hay "salir con el ratón": el toque abre y tocar
+    // afuera cierra (abajo).
+    onClick: (e) => mostrar(e, dato),
+    onKeyDown: recorrerZonas,
   })
+
+  // Ahora que el globo se abre sin ratón, también se cierra sin él: Escape,
+  // o tocar cualquier cosa que no sea una columna.
+  const hayGlobo = globo !== null
+  useEffect(() => {
+    if (!hayGlobo) return
+    const conTecla = (e) => e.key === 'Escape' && setGlobo(null)
+    const conToque = (e) => !e.target.closest?.('.zona') && setGlobo(null)
+    document.addEventListener('keydown', conTecla)
+    document.addEventListener('pointerdown', conToque)
+    return () => {
+      document.removeEventListener('keydown', conTecla)
+      document.removeEventListener('pointerdown', conToque)
+    }
+  }, [hayGlobo])
+
+  // Las pestañas se recorren con las flechas, como promete el role="tablist".
+  const idPestana = (clave) => `${base}-pestana-${clave}`
+  const idPanel = `${base}-panel`
+  const moverPestana = (e) => {
+    const i = vistas.findIndex((v) => v.clave === vistaActual)
+    const destino = {
+      ArrowRight: (i + 1) % vistas.length,
+      ArrowLeft: (i - 1 + vistas.length) % vistas.length,
+      Home: 0,
+      End: vistas.length - 1,
+    }[e.key]
+    if (destino === undefined) return
+    e.preventDefault()
+    setVista(vistas[destino].clave)
+    document.getElementById(idPestana(vistas[destino].clave))?.focus()
+  }
 
   return (
     <section className="tarjeta">
@@ -132,13 +224,16 @@ export default function GraficasCierres({ cierres }) {
         <span className="tenue">Con lo que estás viendo</span>
       </div>
 
-      <div className="tabs-grafica" role="tablist">
+      <div className="tabs-grafica" role="tablist" aria-label="Gráficas" onKeyDown={moverPestana}>
         {vistas.map((v) => (
           <button
             key={v.clave}
+            id={idPestana(v.clave)}
             type="button"
             role="tab"
             aria-selected={vistaActual === v.clave}
+            aria-controls={idPanel}
+            tabIndex={vistaActual === v.clave ? 0 : -1}
             className={`secundario ${vistaActual === v.clave ? 'activo' : ''}`}
             onClick={() => setVista(v.clave)}
           >
@@ -147,18 +242,34 @@ export default function GraficasCierres({ cierres }) {
         ))}
       </div>
 
-      <div className="lienzo-grafica">
-        {vistaActual === 'dia' && <DiaADia dias={dias} globoProps={globoProps} />}
-        {vistaActual === 'local' && <PorLocal dias={dias} tiendas={tiendas} globoProps={globoProps} />}
-        {vistaActual === 'comparar' && <LocalContraLocal tiendas={tiendas} globoProps={globoProps} />}
-        {vistaActual === 'descuadre' && <Descuadres dias={dias} globoProps={globoProps} />}
+      <div id={idPanel} role="tabpanel" aria-labelledby={idPestana(vistaActual)}>
+        {/* La gráfica es para ver la forma; para leer las cifras una por una
+            está la tabla de abajo, y la figura lo dice. */}
+        <figure className="figura-grafica">
+          <div className="lienzo-grafica">
+            {vistaActual === 'dia' && <DiaADia dias={dias} globoProps={globoProps} />}
+            {vistaActual === 'local' && <PorLocal dias={dias} tiendas={tiendas} globoProps={globoProps} />}
+            {vistaActual === 'comparar' && <LocalContraLocal tiendas={tiendas} globoProps={globoProps} />}
+            {vistaActual === 'descuadre' && <Descuadres dias={dias} globoProps={globoProps} />}
+          </div>
+          <Leyenda vista={vistaActual} tiendas={tiendas} />
+          <figcaption className="tenue">
+            {PIES[vistaActual]} Las mismas cifras, cierre por cierre, están en la tabla de abajo.
+          </figcaption>
+        </figure>
       </div>
 
-      <Leyenda vista={vistaActual} tiendas={tiendas} />
-
+      {/* Fuera del árbol de accesibilidad: el lector ya leyó la misma frase en
+          la columna enfocada, y oírla dos veces no ayuda. */}
       {globo && (
-        <div className="globo-grafica" style={{ left: globo.x, top: globo.y }} role="status">
-          {globo.contenido}
+        <div className="globo-grafica" style={{ left: globo.x, top: globo.y }} aria-hidden="true">
+          <strong>{globo.dato.titulo}</strong>
+          {globo.dato.lineas.map((linea, i) => (
+            <span key={i}>
+              <br />
+              {linea}
+            </span>
+          ))}
         </div>
       )}
     </section>
@@ -208,7 +319,7 @@ function EjeY({ escalado, caja = CAJA }) {
   return escalado.pasos.map((valor) => {
     const y = caja.fondo - (valor / escalado.tope) * caja.alto
     return (
-      <g key={valor}>
+      <g key={valor} aria-hidden="true">
         <line
           x1={caja.izq}
           y1={y}
@@ -228,7 +339,7 @@ function EjeY({ escalado, caja = CAJA }) {
 function EjeDias({ dias, paso, caja = CAJA, desplazado = 0 }) {
   const salto = Math.ceil(dias.length / 16)
   return (
-    <>
+    <g aria-hidden="true">
       {dias.map((d, i) =>
         i % salto === 0 ? (
           <text
@@ -247,7 +358,7 @@ function EjeDias({ dias, paso, caja = CAJA, desplazado = 0 }) {
           {formatearFechaCorta(dias[0].fecha)} — {formatearFechaCorta(dias[dias.length - 1].fecha)}
         </text>
       )}
-    </>
+    </g>
   )
 }
 
@@ -259,7 +370,7 @@ function DiaADia({ dias, globoProps }) {
   const ancho = Math.max(3, Math.min(14, (paso - 8) / 2))
 
   return (
-    <svg viewBox="0 0 820 300" role="img" aria-label="Ventas y lo que salió de cada día">
+    <svg viewBox="0 0 820 300" role="group" aria-label="Ventas y lo que salió de cada día">
       <EjeY escalado={esc} />
       {dias.map((d, i) => {
         const centro = CAJA.izq + i * paso + paso / 2
@@ -270,23 +381,21 @@ function DiaADia({ dias, globoProps }) {
             {/* 2px de aire entre las dos: pegadas se leen como una sola. */}
             <path d={barraArriba(centro - ancho - 1, CAJA.fondo - altoV, ancho, altoV)} className="marca ventas" />
             <path d={barraArriba(centro + 1, CAJA.fondo - altoG, ancho, altoG)} className="marca gastos" />
-            <rect
+            <Zona
               x={CAJA.izq + i * paso}
               y={CAJA.arriba}
               width={paso}
               height={CAJA.alto}
-              className="zona"
-              {...globoProps(
-                <>
-                  <strong>{formatearFechaCorta(d.fecha)}</strong>
-                  <br />
-                  Ventas {formatearMonto(d.ventas)}
-                  <br />
-                  Salió {formatearMonto(d.salidas)}
-                  <br />
-                  Debería quedar {formatearMonto(d.ventas - d.salidas)}
-                </>,
-              )}
+              primera={i === 0}
+              globoProps={globoProps}
+              dato={{
+                titulo: formatearFechaCorta(d.fecha),
+                lineas: [
+                  `Ventas ${formatearMonto(d.ventas)}`,
+                  `Salió ${formatearMonto(d.salidas)}`,
+                  `Debería quedar ${formatearMonto(d.ventas - d.salidas)}`,
+                ],
+              }}
             />
           </g>
         )
@@ -316,7 +425,7 @@ function PorLocal({ dias, tiendas, globoProps }) {
   const enY = (v) => CAJA.fondo - (v / esc.tope) * CAJA.alto
 
   return (
-    <svg viewBox="0 0 820 300" role="img" aria-label="Ventas de cada local, día por día">
+    <svg viewBox="0 0 820 300" role="group" aria-label="Ventas de cada local, día por día">
       <EjeY escalado={esc} />
       {series.map((s, indice) => {
         const tramos = []
@@ -350,24 +459,18 @@ function PorLocal({ dias, tiendas, globoProps }) {
       })}
 
       {dias.map((d, i) => (
-        <rect
+        <Zona
           key={d.fecha}
           x={CAJA.izq + i * paso}
           y={CAJA.arriba}
           width={paso}
           height={CAJA.alto}
-          className="zona"
-          {...globoProps(
-            <>
-              <strong>{formatearFechaCorta(d.fecha)}</strong>
-              {d.tiendas.map((t) => (
-                <span key={t.nombre}>
-                  <br />
-                  {t.nombre} {formatearMonto(t.ventas)}
-                </span>
-              ))}
-            </>,
-          )}
+          primera={i === 0}
+          globoProps={globoProps}
+          dato={{
+            titulo: formatearFechaCorta(d.fecha),
+            lineas: d.tiendas.map((t) => `${t.nombre} ${formatearMonto(t.ventas)}`),
+          }}
         />
       ))}
       <EjeDias dias={dias} paso={paso} />
@@ -393,7 +496,7 @@ function LocalContraLocal({ tiendas, globoProps }) {
           className={`marca ${clase}`}
           d={`M${izq} ${arriba} L${izq + largo - r} ${arriba} Q${izq + largo} ${arriba} ${izq + largo} ${arriba + r} L${izq + largo} ${arriba + 14 - r} Q${izq + largo} ${arriba + 14} ${izq + largo - r} ${arriba + 14} L${izq} ${arriba + 14} Z`}
         />
-        <text x={izq + largo + 10} y={arriba + 11} className="valor-barra">
+        <text x={izq + largo + 10} y={arriba + 11} className="valor-barra" aria-hidden="true">
           {formatearMonto(valor)}
         </text>
       </>
@@ -401,34 +504,31 @@ function LocalContraLocal({ tiendas, globoProps }) {
   }
 
   return (
-    <svg viewBox={`0 0 820 ${alto}`} role="img" aria-label="Ventas y lo que salió de cada local">
+    <svg viewBox={`0 0 820 ${alto}`} role="group" aria-label="Ventas y lo que salió de cada local">
       {tiendas.map((t, i) => {
         const y = 28 + i * 74
         return (
           <g key={t.id}>
-            <text x={izq - 12} y={y + 14} textAnchor="end" className="nombre-barra">
+            <text x={izq - 12} y={y + 14} textAnchor="end" className="nombre-barra" aria-hidden="true">
               {t.nombre}
             </text>
             {barra(t.ventas, y, 'ventas')}
             {barra(t.salidas, y + 18, 'gastos')}
-            <rect
+            <Zona
               x={izq}
               y={y - 8}
               width={ancho + 100}
               height={48}
-              className="zona"
-              {...globoProps(
-                <>
-                  <strong>{t.nombre}</strong>
-                  <br />
-                  Ventas {formatearMonto(t.ventas)}
-                  <br />
-                  Salió {formatearMonto(t.salidas)}
-                  <br />
-                  Debería quedar {formatearMonto(t.ventas - t.salidas)} · {t.hojas} cierre
-                  {t.hojas === 1 ? '' : 's'}
-                </>,
-              )}
+              primera={i === 0}
+              globoProps={globoProps}
+              dato={{
+                titulo: t.nombre,
+                lineas: [
+                  `Ventas ${formatearMonto(t.ventas)}`,
+                  `Salió ${formatearMonto(t.salidas)}`,
+                  `Debería quedar ${formatearMonto(t.ventas - t.salidas)} · ${t.hojas} cierre${t.hojas === 1 ? '' : 's'}`,
+                ],
+              }}
             />
           </g>
         )
@@ -451,7 +551,7 @@ function Descuadres({ dias, globoProps }) {
   const ancho = Math.max(3, Math.min(22, paso - 10))
 
   return (
-    <svg viewBox="0 0 820 260" role="img" aria-label="Diferencia de cada cierre">
+    <svg viewBox="0 0 820 260" role="group" aria-label="Diferencia de cada cierre">
       {/* Aquí el cero va en la mitad: el dato tiene dos lados (sobró o faltó)
           y esa línea es justo la que hay que mirar. */}
       {[
@@ -459,7 +559,7 @@ function Descuadres({ dias, globoProps }) {
         [0, medio],
         [-tope, caja.fondo],
       ].map(([valor, y]) => (
-        <g key={valor}>
+        <g key={valor} aria-hidden="true">
           <line x1={caja.izq} y1={y} x2={caja.der} y2={y} className={valor === 0 ? 'eje-cero' : 'eje-guia'} />
           <text x={caja.izq - 10} y={y + 4} textAnchor="end" className="eje-rotulo">
             {ejeCorto(valor)}
@@ -489,37 +589,29 @@ function Descuadres({ dias, globoProps }) {
                 y={d.descuadre > 0 ? medio - alto - 8 : medio + alto + 16}
                 textAnchor="middle"
                 className="valor-barra fuerte"
+                aria-hidden="true"
               >
                 {formatearMonto(d.descuadre)}
               </text>
             )}
-            <rect
+            <Zona
               x={caja.izq + i * paso}
               y={caja.arriba}
               width={paso}
               height={caja.alto}
-              className="zona"
-              {...globoProps(
-                <>
-                  <strong>{formatearFechaCorta(d.fecha)}</strong>
-                  <br />
-                  {cuadra ? (
-                    'Cuadró exacto'
-                  ) : (
-                    <>
-                      {d.descuadre < 0 ? 'Faltaron ' : 'Sobraron '}
-                      {formatearMonto(Math.abs(d.descuadre))}
-                    </>
-                  )}
-                  {d.tiendas.length > 1 &&
-                    d.tiendas.map((t) => (
-                      <span key={t.nombre}>
-                        <br />
-                        {t.nombre} {formatearMonto(t.descuadre)}
-                      </span>
-                    ))}
-                </>,
-              )}
+              primera={i === 0}
+              globoProps={globoProps}
+              dato={{
+                titulo: formatearFechaCorta(d.fecha),
+                lineas: [
+                  cuadra
+                    ? 'Cuadró exacto'
+                    : `${d.descuadre < 0 ? 'Faltaron' : 'Sobraron'} ${formatearMonto(Math.abs(d.descuadre))}`,
+                  ...(d.tiendas.length > 1
+                    ? d.tiendas.map((t) => `${t.nombre} ${formatearMonto(t.descuadre)}`)
+                    : []),
+                ],
+              }}
             />
           </g>
         )

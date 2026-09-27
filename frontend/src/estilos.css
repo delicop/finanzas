@@ -3683,6 +3683,22 @@ button.boton-factura {
   fill: transparent;
 }
 
+/* Con el teclado se ve qué columna está leyendo: un velo suave detrás, porque
+   el contorno no lo pintan todos los navegadores sobre un SVG. */
+.zona:focus-visible {
+  fill: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  outline: none;
+}
+
+.figura-grafica {
+  margin: 0;
+}
+
+.figura-grafica figcaption {
+  margin-top: var(--space-1);
+  font-size: 12px;
+}
+
 .leyenda-grafica {
   display: flex;
   flex-wrap: wrap;
