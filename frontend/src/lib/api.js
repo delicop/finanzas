@@ -214,7 +214,7 @@ export const mediosApi = {
 // Las tiendas solo existen para los planes que las incluyen. Si el plan no las
 // trae, estas rutas responden 403 y la app ni siquiera pinta la sección.
 export const tiendasApi = {
-  listar: () => apiFetch('/api/tiendas'),
+  listar: (senal) => apiFetch('/api/tiendas', { senal }),
   crear: (nombre) => apiFetch('/api/tiendas', { metodo: 'POST', body: { nombre } }),
   actualizar: (id, nombre) => apiFetch(`/api/tiendas/${id}`, { metodo: 'PUT', body: { nombre } }),
   eliminar: (id) => apiFetch(`/api/tiendas/${id}`, { metodo: 'DELETE' }),
@@ -224,8 +224,8 @@ export const tiendasApi = {
 export const cierresApi = {
   listar: (tiendaID) => apiFetch(`/api/tiendas/${tiendaID}/cierres`),
   // Los de todas las tiendas juntos, que es como se leen en la sección.
-  // Los filtros son los mismos que acepta el servidor: tienda y rango.
-  todos: (filtros) => apiFetch(`/api/cierres${queryString(filtros)}`),
+  // Los filtros son los mismos que acepta el servidor: tienda, rango y limite.
+  todos: (filtros, senal) => apiFetch(`/api/cierres${queryString(filtros)}`, { senal }),
   ver: (tiendaID, id) => apiFetch(`/api/tiendas/${tiendaID}/cierres/${id}`),
   crear: (tiendaID, datos) =>
     apiFetch(`/api/tiendas/${tiendaID}/cierres`, { metodo: 'POST', body: datos }),

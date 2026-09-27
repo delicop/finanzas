@@ -39,6 +39,8 @@ func (h *Handler) ExportarCierres(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Sin limiteDeQuery a proposito: el Excel exporta el rango completo, no
+	// una pagina. filtros.Limite queda en cero (sin tope).
 
 	lista, err := h.store.ListarTodosLosCierres(r.Context(), usuarioID, filtros)
 	if err != nil {

@@ -175,8 +175,8 @@ function DetalleTienda({ tienda, onCerrar, onVerCierres }) {
 
   useEffect(() => {
     cierresApi
-      .todos({ tienda_id: tienda.id })
-      .then((lista) => setUltimos(lista.slice(0, 5)))
+      .todos({ tienda_id: tienda.id, limite: 5 })
+      .then(setUltimos)
       // Un fallo aquí no puede tapar las cifras que ya están en pantalla.
       .catch(() => {})
       .finally(() => setCargando(false))

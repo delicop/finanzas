@@ -43,24 +43,48 @@ export default function Cierres() {
     setParams(nuevos, { replace: true })
   }
 
-  async function recargar() {
-    setError('')
-    setAviso('')
+  async function cargarTiendas(senal) {
     try {
-      const [hojas, lista] = await Promise.all([cierresApi.todos(filtros), tiendasApi.listar()])
-      setCierres(hojas)
-      setTiendas(lista)
+      setTiendas(await tiendasApi.listar(senal))
     } catch (err) {
+      if (err.name === 'AbortError') return
       setError(err.message)
-    } finally {
-      setCargando(false)
     }
   }
 
+  async function recargarCierres(senal) {
+    setError('')
+    setAviso('')
+    setCargando(true)
+    try {
+      setCierres(await cierresApi.todos(filtros, senal))
+    } catch (err) {
+      if (err.name === 'AbortError') return
+      setError(err.message)
+    } finally {
+      if (!senal?.aborted) setCargando(false)
+    }
+  }
+
+  // Guardar o borrar una hoja sí cambia las tiendas: el conteo de cierres de
+  // cada ficha se recalcula. Mover un filtro, no.
+  async function recargar() {
+    await Promise.all([recargarCierres(), cargarTiendas()])
+  }
+
+  // Las tiendas se piden una sola vez al entrar: no dependen del filtro.
   useEffect(() => {
-    recargar()
+    const control = new AbortController()
+    cargarTiendas(control.signal)
+    return () => control.abort()
+  }, [])
+
+  useEffect(() => {
+    const control = new AbortController()
+    recargarCierres(control.signal)
     // El filtro lo aplica el servidor: es el que sabe cuáles son las hojas de
     // esta cuenta, y así el Excel exporta exactamente lo que se ve.
+    return () => control.abort()
   }, [filtros.tienda_id, filtros.desde, filtros.hasta])
 
   async function abrir(cierre) {

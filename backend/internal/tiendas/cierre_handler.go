@@ -45,6 +45,10 @@ func (h *Handler) RutasTodosLosCierres() chi.Router {
 	return r
 }
 
+// limiteMaximoCierres topa cuanto se puede pedir de un tiron en /api/cierres,
+// para que nadie pida el historico completo por accidente (o a proposito).
+const limiteMaximoCierres = 100
+
 func (h *Handler) TodosLosCierres(w http.ResponseWriter, r *http.Request) {
 	usuarioID, ok := httpx.UsuarioID(r.Context())
 	if !ok {
@@ -53,6 +57,10 @@ func (h *Handler) TodosLosCierres(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filtros, ok := filtrosDeQuery(w, r)
+	if !ok {
+		return
+	}
+	filtros.Limite, ok = limiteDeQuery(w, r)
 	if !ok {
 		return
 	}
@@ -96,6 +104,25 @@ func filtrosDeQuery(w http.ResponseWriter, r *http.Request) (FiltrosCierres, boo
 		return FiltrosCierres{}, false
 	}
 	return f, true
+}
+
+// limiteDeQuery lee ?limite=, con un tope para que nadie pida un millon de
+// filas. Sin el parametro, cero: sin limite. Quien no la llame (Exportar,
+// que necesita todo) deja el filtro en cero.
+func limiteDeQuery(w http.ResponseWriter, r *http.Request) (int, bool) {
+	valor := strings.TrimSpace(r.URL.Query().Get("limite"))
+	if valor == "" {
+		return 0, true
+	}
+	n, err := strconv.Atoi(valor)
+	if err != nil || n < 0 {
+		httpx.Error(w, http.StatusBadRequest, "El límite no es válido")
+		return 0, false
+	}
+	if n > limiteMaximoCierres {
+		n = limiteMaximoCierres
+	}
+	return n, true
 }
 
 // cierreRequest es la hoja como la manda el formulario. Todo el dinero llega

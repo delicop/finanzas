@@ -153,6 +153,9 @@ type FiltrosCierres struct {
 	TiendaID int64
 	Desde    string // AAAA-MM-DD
 	Hasta    string
+	// Limite pone un LIMIT en la consulta; cero es sin tope. Lo deja en cero
+	// quien no lo lea del query (ver ExportarCierres, que necesita todo).
+	Limite int
 }
 
 // Activos dice si se filtro por algo ademas del rango. Lo usa el informe para
@@ -190,6 +193,10 @@ func (s *Store) ListarTodosLosCierres(ctx context.Context, usuarioID int64, f Fi
 	q := `SELECT ` + columnasCierre + `
 		FROM cierres c ` + unionesCierre + where + `
 		ORDER BY c.fecha DESC, lower(t.nombre)`
+	if f.Limite > 0 {
+		args = append(args, f.Limite)
+		q += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
 
 	filas, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
