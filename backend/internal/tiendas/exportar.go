@@ -23,10 +23,6 @@ const MaxExportarCierres = 5000
 
 var ErrDemasiadosCierres = fmt.Errorf("hay más de %d cierres en ese rango", MaxExportarCierres)
 
-// zonaColombia es la hora de Colombia (UTC-5, sin horario de verano). Fija y
-// no con time.LoadLocation: la imagen de Docker no trae la base de zonas.
-var zonaColombia = time.FixedZone("COT", -5*60*60)
-
 // ExportarCierres responde el .xlsx.
 //
 // Solo Excel: un cierre tiene veinte columnas y un PDF con esa tabla no se

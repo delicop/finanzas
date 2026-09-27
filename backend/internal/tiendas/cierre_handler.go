@@ -139,8 +139,16 @@ func (req *cierreRequest) valida() (DatosCierre, map[string]string) {
 
 	v.Requerido("fecha", d.Fecha)
 	if d.Fecha != "" {
-		if _, err := time.Parse("2006-01-02", d.Fecha); err != nil {
+		hoja, err := time.ParseInLocation("2006-01-02", d.Fecha, zonaColombia)
+		switch {
+		case err != nil:
 			v.Check(false, "fecha", "La fecha no es válida")
+		// Un cierre es el arqueo de un dia que ya termino: una fecha por delante
+		// es siempre un dedazo, casi siempre en el año — que es justo lo que el
+		// <input type="date"> deja escribir a mano. Hoy si pasa: la hoja se llena
+		// al cerrar la caja, el mismo dia.
+		case hoja.After(hoyEnColombia()):
+			v.Check(false, "fecha", "Un cierre no puede ser de un día que todavía no llega")
 		}
 	}
 	v.MaxLargo("responsable", d.Responsable, 120)

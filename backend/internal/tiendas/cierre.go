@@ -1,6 +1,21 @@
 package tiendas
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
+
+// zonaColombia es la hora de Colombia (UTC-5, sin horario de verano). Fija y
+// no con time.LoadLocation: la imagen de Docker no trae la base de zonas.
+var zonaColombia = time.FixedZone("COT", -5*60*60)
+
+// hoyEnColombia es el dia de hoy alla, a medianoche. Tiene que ser el de
+// Colombia y no el UTC del servidor: con UTC, entre las 7 y las 12 de la noche
+// el dia de hoy ya seria "manana" y una hoja de hoy se rechazaria como futura.
+func hoyEnColombia() time.Time {
+	ahora := time.Now().In(zonaColombia)
+	return time.Date(ahora.Year(), ahora.Month(), ahora.Day(), 0, 0, 0, 0, zonaColombia)
+}
 
 // Los cinco grupos de la hoja. Son los mismos que acepta el CHECK de la base:
 // si aqui se agrega uno, hay que agregarlo alla.

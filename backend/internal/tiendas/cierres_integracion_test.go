@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"finanzas/internal/tiendas"
 )
@@ -206,6 +207,48 @@ func TestUnRenglonConMontoYSinNombreRechazaLaHoja(t *testing.T) {
 	if len(lista) != 0 {
 		t.Errorf("quedaron %d cierres, se esperaba ninguno", len(lista))
 	}
+}
+
+// Un cierre es el arqueo de un dia que ya cerro, asi que una fecha por delante
+// no se guarda: no es un caso de uso, es un dedazo — y el mas facil es el año,
+// que el <input type="date"> deja escribir a mano. El dia de hoy si entra: la
+// hoja se llena al cerrar la caja.
+//
+// El "hoy" es el de Colombia, no el UTC del servidor: por eso las fechas de
+// esta prueba se sacan de alla y no de time.Now() pelado.
+func TestUnCierreNoPuedeSerDeUnDiaQueNoLlega(t *testing.T) {
+	e := nuevoEntorno(t)
+	ana := e.crearCliente(t)
+	e.conPlan(t, ana, true)
+	tienda := e.crearTienda(t, ana, "centro")
+
+	hoja := func(fecha string) string {
+		return fmt.Sprintf(`{
+			"fecha": %q, "responsable": "Ana",
+			"qr_banco": "0", "qr_tienda": "0",
+			"datafono_reporte": "0", "datafono_tienda": "0",
+			"efectivo_billete": "0", "efectivo_moneda": "0", "efectivo_tienda": "0",
+			"venta_tienda": "0", "novedades": "", "lineas": []
+		}`, fecha)
+	}
+	hoy := time.Now().In(time.FixedZone("COT", -5*60*60))
+	ruta := fmt.Sprintf("/%d/cierres", tienda)
+
+	w := e.pedir(t, ana, "POST", ruta, hoja(hoy.AddDate(0, 0, 1).Format("2006-01-02")))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("cierre de mañana: status = %d, se esperaba 422, cuerpo %s", w.Code, w.Body)
+	}
+	var respuesta struct {
+		Campos map[string]string `json:"campos"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &respuesta); err != nil {
+		t.Fatalf("leyendo el error: %v", err)
+	}
+	if respuesta.Campos["fecha"] == "" {
+		t.Errorf("el error no señala la fecha: campos = %v", respuesta.Campos)
+	}
+
+	e.crearCierre(t, ana, tienda, hoja(hoy.Format("2006-01-02")))
 }
 
 // El cierre de otro no se ve ni se toca, aunque los dos tengan tiendas.

@@ -271,6 +271,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
               id="fecha"
               type="date"
               value={fecha}
+              max={hoyISO()}
               onChange={(e) => setFecha(e.target.value)}
             />
             {campos.fecha && <span className="error-campo">{campos.fecha}</span>}
