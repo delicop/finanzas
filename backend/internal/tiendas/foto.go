@@ -48,9 +48,14 @@ const MaxFotoBytes = 10 << 20
 
 var (
 	ErrFotoMuyGrande = errors.New("La foto supera el tamaño máximo de 10 MB")
-	ErrFotoTipo      = errors.New("Solo se aceptan imágenes (JPG, PNG, WEBP) o PDF")
-	ErrFotoVacia     = errors.New("El archivo está vacío")
-	ErrSinFoto       = errors.New("el cierre no tiene foto")
+	// ErrFotoTipo tiene que decir los mismos formatos que
+	// movimientos.ErrFacturaTipo: los dos vienen del mismo almacen
+	// (movimientos.AlmacenFacturas.Guardar), asi que si uno acepta un
+	// formato el otro tiene que anunciarlo igual. TestMensajesDeTipoDeArchivoCoinciden,
+	// en cmd/api, lo comprueba.
+	ErrFotoTipo  = errors.New("Solo se aceptan imágenes (JPG, PNG, WEBP, HEIC) o PDF")
+	ErrFotoVacia = errors.New("El archivo está vacío")
+	ErrSinFoto   = errors.New("el cierre no tiene foto")
 )
 
 /* ------------------------------- store ---------------------------------- */

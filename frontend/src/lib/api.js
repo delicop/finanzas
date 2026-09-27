@@ -143,6 +143,10 @@ export async function exportarMovimientos(filtros, formato) {
 
 // exportarCierres baja el Excel de los cierres con los mismos filtros de la
 // lista: se exporta lo que se está viendo. Mismo camino que los movimientos.
+//
+// El nombre del archivo lo decide el servidor (mismo filtro de fechas que el
+// título de adentro del Excel) y viaja en el Content-Disposition: se lee de
+// ahí en vez de rearmarlo aquí, para no tener la misma lógica en dos sitios.
 export async function exportarCierres(filtros) {
   let respuesta
   try {
@@ -162,7 +166,14 @@ export async function exportarCierres(filtros) {
       datos?.campos,
     )
   }
-  return respuesta.blob()
+  const nombre = nombreDeDisposicion(respuesta.headers.get('Content-Disposition')) ?? 'cierres.xlsx'
+  return { blob: await respuesta.blob(), nombre }
+}
+
+// nombreDeDisposicion saca el filename="..." de una cabecera Content-Disposition.
+function nombreDeDisposicion(disposicion) {
+  const coincide = disposicion?.match(/filename="([^"]+)"/)
+  return coincide?.[1] ?? null
 }
 
 function queryString(params) {

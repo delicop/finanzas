@@ -54,16 +54,20 @@ func (h *Handler) ExportarCierres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Con el filtro de tienda activo, todas las filas son de la misma: se
+	// lee el nombre de ahi para no consultarla aparte.
+	tiendaNombre := ""
+	if filtros.Activos() {
+		tiendaNombre = lista[0].TiendaNombre
+	}
+
 	var buf bytes.Buffer
-	if err := excelDeCierres(lista, filtros, &buf); err != nil {
+	if err := excelDeCierres(lista, filtros, tiendaNombre, &buf); err != nil {
 		httpx.ErrorInterno(w, r, err, "tiendas: armando el Excel de cierres")
 		return
 	}
 
-	nombre := "cierres"
-	if filtros.Desde != "" || filtros.Hasta != "" {
-		nombre += "-" + filtros.Desde + "-" + filtros.Hasta
-	}
+	nombre := nombreArchivoCierres(filtros)
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.xlsx"`, nombre))
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
@@ -115,7 +119,7 @@ func valoresDe(c Cierre) []any {
 	}
 }
 
-func excelDeCierres(lista []Cierre, filtros FiltrosCierres, destino *bytes.Buffer) error {
+func excelDeCierres(lista []Cierre, filtros FiltrosCierres, tiendaNombre string, destino *bytes.Buffer) error {
 	libro := excelize.NewFile()
 	defer libro.Close()
 
@@ -179,13 +183,13 @@ func excelDeCierres(lista []Cierre, filtros FiltrosCierres, destino *bytes.Buffe
 	fila := 1
 	poner(1, fila, "Cierres de caja", titulo)
 	fila++
-	if filtros.Desde != "" || filtros.Hasta != "" {
-		poner(1, fila, "Del "+fechaCorta(filtros.Desde)+" al "+fechaCorta(filtros.Hasta), 0)
+	if rango := fraseRango(filtros); rango != "" {
+		poner(1, fila, rango, 0)
 		fila++
 	}
 	generado := "Generado el " + time.Now().In(zonaColombia).Format("02/01/2006 15:04")
-	if filtros.Activos() {
-		generado += " · con filtros aplicados"
+	if tiendaNombre != "" {
+		generado += " · solo " + tiendaNombre
 	}
 	poner(1, fila, generado, tenue)
 	fila += 2
@@ -254,4 +258,38 @@ func fechaCorta(iso string) string {
 		return iso
 	}
 	return partes[2] + "/" + partes[1] + "/" + partes[0]
+}
+
+// fraseRango describe el filtro de fechas tal como quedo, no como si los dos
+// extremos siempre estuvieran puestos: con uno solo, "Del X al Y" deja un
+// hueco donde falta la otra fecha.
+func fraseRango(f FiltrosCierres) string {
+	switch {
+	case f.Desde != "" && f.Hasta != "":
+		return "Del " + fechaCorta(f.Desde) + " al " + fechaCorta(f.Hasta)
+	case f.Desde != "":
+		return "Desde el " + fechaCorta(f.Desde)
+	case f.Hasta != "":
+		return "Hasta el " + fechaCorta(f.Hasta)
+	default:
+		return ""
+	}
+}
+
+// nombreArchivoCierres arma el nombre del .xlsx (sin extension) a partir del
+// mismo filtro de fechas que fraseRango, para que el archivo y el titulo de
+// adentro cuenten la misma historia. Sin ningun filtro de fecha, lleva la de
+// hoy: dos exportaciones del mismo dia no se pisan en la carpeta de
+// descargas.
+func nombreArchivoCierres(f FiltrosCierres) string {
+	switch {
+	case f.Desde != "" && f.Hasta != "":
+		return "cierres-" + f.Desde + "-" + f.Hasta
+	case f.Desde != "":
+		return "cierres-desde-" + f.Desde
+	case f.Hasta != "":
+		return "cierres-hasta-" + f.Hasta
+	default:
+		return "cierres-" + time.Now().In(zonaColombia).Format("2006-01-02")
+	}
 }

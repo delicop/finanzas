@@ -30,8 +30,12 @@ var tiposPermitidos = map[string]string{
 
 var (
 	ErrFacturaMuyGrande = errors.New("La factura supera el tamaño máximo de 10 MB")
-	ErrFacturaTipo      = errors.New("Solo se aceptan imágenes (JPG, PNG, WEBP, HEIC) o PDF")
-	ErrFacturaVacia     = errors.New("El archivo está vacío")
+	// ErrFacturaTipo tiene que decir los mismos formatos que
+	// tiendas.ErrFotoTipo: los dos vienen de este mismo Guardar, asi que si
+	// aqui se acepta un formato nuevo el otro texto tiene que anunciarlo
+	// igual. TestMensajesDeTipoDeArchivoCoinciden, en cmd/api, lo comprueba.
+	ErrFacturaTipo  = errors.New("Solo se aceptan imágenes (JPG, PNG, WEBP, HEIC) o PDF")
+	ErrFacturaVacia = errors.New("El archivo está vacío")
 )
 
 // AlmacenFacturas guarda los archivos en disco local.

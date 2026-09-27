@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { cierresApi, exportarCierres, tiendasApi } from '../lib/api'
 import { guardarArchivo } from '../lib/archivos'
 import { useAuth } from '../lib/AuthContext'
-import { formatearFecha, formatearMonto, hoyISO } from '../lib/formato'
+import { formatearFecha, formatearMonto } from '../lib/formato'
 import CierreForm from '../componentes/CierreForm'
 import GraficasCierres from '../componentes/GraficasCierres'
 import Icono from '../componentes/Icono'
@@ -89,9 +89,8 @@ export default function Cierres() {
     setError('')
     setExportando(true)
     try {
-      const blob = await exportarCierres(filtros)
-      const rango = filtros.desde || filtros.hasta ? `-${filtros.desde}-${filtros.hasta}` : ''
-      guardarArchivo(blob, `cierres${rango || '-' + hoyISO()}.xlsx`)
+      const { blob, nombre } = await exportarCierres(filtros)
+      guardarArchivo(blob, nombre)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -100,6 +99,10 @@ export default function Cierres() {
   }
 
   const hayFiltros = Boolean(filtros.tienda_id || filtros.desde || filtros.hasta)
+  // Un rango invertido no es invalido para el servidor (simplemente no
+  // encuentra nada), pero avisar aqui evita que "Nada con esos filtros"
+  // parezca un error de la lista.
+  const rangoInvertido = Boolean(filtros.desde && filtros.hasta && filtros.desde > filtros.hasta)
 
   return (
     <>
@@ -172,6 +175,9 @@ export default function Cierres() {
                   value={filtros.hasta}
                   onChange={(e) => cambiarFiltro('hasta', e.target.value)}
                 />
+                {rangoInvertido && (
+                  <span className="error-campo">La fecha de inicio es posterior a la de fin</span>
+                )}
               </div>
               {hayFiltros && (
                 <button className="secundario" onClick={() => setParams({}, { replace: true })}>
