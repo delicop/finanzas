@@ -100,7 +100,6 @@ Todas las rutas bajo `/api` (menos el login) exigen el header
 | POST   | `/api/tiendas`                   | Crear                                         |
 | PUT    | `/api/tiendas/{id}`              | Renombrar                                     |
 | DELETE | `/api/tiendas/{id}`              | Eliminar (409 si ya tiene cierres)            |
-| GET    | `/api/tiendas/{id}/cierres`      | Los cierres de caja de esa tienda             |
 | POST   | `/api/tiendas/{id}/cierres`      | Nuevo cierre (uno por día y tienda)           |
 | GET    | `/api/tiendas/{id}/cierres/{cierreID}` | La hoja completa, con sus líneas        |
 | PUT    | `/api/tiendas/{id}/cierres/{cierreID}` | Reemplazar la hoja entera               |

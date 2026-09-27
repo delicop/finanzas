@@ -222,7 +222,6 @@ export const tiendasApi = {
 
 // Los cierres de caja cuelgan de su tienda: una hoja siempre es de un local.
 export const cierresApi = {
-  listar: (tiendaID) => apiFetch(`/api/tiendas/${tiendaID}/cierres`),
   // Los de todas las tiendas juntos, que es como se leen en la sección.
   // Los filtros son los mismos que acepta el servidor: tienda, rango y limite.
   todos: (filtros, senal) => apiFetch(`/api/cierres${queryString(filtros)}`, { senal }),
@@ -247,6 +246,8 @@ export const cierresApi = {
 // La foto tampoco se puede poner en un <img src="...">: ese request lo hace el
 // navegador solo y no lleva el header Authorization. Mismo camino que las
 // facturas — quien la use debe llamar URL.revokeObjectURL al terminar.
+// A diferencia de las facturas no devuelve el tipo: la foto se abre en otra
+// pestaña, y ahí el navegador ya sabe mostrar una imagen o un PDF.
 export async function descargarFotoCierre(tiendaID, cierreID) {
   const respuesta = await fetch(`${BASE_URL}/api/tiendas/${tiendaID}/cierres/${cierreID}/foto`, {
     headers: cabeceras(true),
@@ -258,7 +259,7 @@ export async function descargarFotoCierre(tiendaID, cierreID) {
   }
 
   const blob = await respuesta.blob()
-  return { url: URL.createObjectURL(blob), tipo: blob.type }
+  return { url: URL.createObjectURL(blob) }
 }
 
 export const movimientosApi = {

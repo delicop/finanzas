@@ -19,7 +19,6 @@ import (
 // router de tiendas, asi que ya pasaron por el mismo permiso del plan.
 func (h *Handler) rutasCierres() chi.Router {
 	r := chi.NewRouter()
-	r.Get("/", h.ListarCierres)
 	r.Post("/", h.CrearCierre)
 	r.Get("/{cierreID}", h.VerCierre)
 	r.Put("/{cierreID}", h.ActualizarCierre)
@@ -255,20 +254,6 @@ func normalizarMonto(v *httpx.Validador, campo, valor string) string {
 		return "0"
 	}
 	return normalizado
-}
-
-func (h *Handler) ListarCierres(w http.ResponseWriter, r *http.Request) {
-	usuarioID, tiendaID, ok := h.contextoTienda(w, r)
-	if !ok {
-		return
-	}
-
-	lista, err := h.store.ListarCierres(r.Context(), usuarioID, tiendaID)
-	if err != nil {
-		httpx.ErrorInterno(w, r, err, "tiendas: listando cierres")
-		return
-	}
-	httpx.JSON(w, http.StatusOK, lista)
 }
 
 func (h *Handler) VerCierre(w http.ResponseWriter, r *http.Request) {

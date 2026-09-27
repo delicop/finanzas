@@ -120,34 +120,6 @@ func escanearCierre(fila interface{ Scan(...any) error }) (*Cierre, error) {
 	return &c, nil
 }
 
-// ListarCierres trae las hojas de una tienda, de la mas nueva a la mas vieja.
-// Sin las lineas: la lista muestra el dia, quien respondio y si cuadro.
-func (s *Store) ListarCierres(ctx context.Context, usuarioID, tiendaID int64) ([]Cierre, error) {
-	q := `SELECT ` + columnasCierre + `
-		FROM cierres c ` + unionesCierre + `
-		WHERE c.usuario_id = $1 AND c.tienda_id = $2
-		ORDER BY c.fecha DESC`
-
-	filas, err := s.db.QueryContext(ctx, q, usuarioID, tiendaID)
-	if err != nil {
-		return nil, fmt.Errorf("listando cierres: %w", err)
-	}
-	defer filas.Close()
-
-	lista := []Cierre{}
-	for filas.Next() {
-		c, err := escanearCierre(filas)
-		if err != nil {
-			return nil, fmt.Errorf("leyendo cierre: %w", err)
-		}
-		lista = append(lista, *c)
-	}
-	if err := filas.Err(); err != nil {
-		return nil, fmt.Errorf("recorriendo cierres: %w", err)
-	}
-	return lista, nil
-}
-
 // FiltrosCierres son los del listado. Los campos vacios no filtran.
 type FiltrosCierres struct {
 	TiendaID int64

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { cierresApi, tiendasApi } from '../lib/api'
 import { formatearFecha, formatearMonto } from '../lib/formato'
 import Distintivo from '../componentes/Distintivo'
+import Metrica from '../componentes/Metrica'
 import Modal from '../componentes/Modal'
 import Vacio from '../componentes/Vacio'
 
@@ -249,21 +250,5 @@ function DetalleTienda({ tienda, onCerrar, onVerCierres }) {
         </button>
       </div>
     </Modal>
-  )
-}
-
-// La misma ficha de cifra del Resumen, para que las dos pantallas se lean
-// igual. Se copia y no se importa porque Dashboard la tiene privada; el día
-// que una tercera la necesite, se saca a un componente.
-function Metrica({ titulo, monto, nota, signo, clase = '', principal = false }) {
-  return (
-    <div className={`tarjeta metrica ${principal ? 'principal' : ''}`}>
-      <span>{titulo}</span>
-      <strong className={clase}>
-        {signo ? `${signo} ` : ''}
-        {formatearMonto(monto)}
-      </strong>
-      {nota && <span className="metrica-nota">{nota}</span>}
-    </div>
   )
 }

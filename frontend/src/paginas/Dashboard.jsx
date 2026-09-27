@@ -13,6 +13,7 @@ import PrimerosPasos from '../componentes/PrimerosPasos'
 import Distintivo from '../componentes/Distintivo'
 import Vacio from '../componentes/Vacio'
 import Icono from '../componentes/Icono'
+import Metrica from '../componentes/Metrica'
 
 export default function Dashboard() {
   const [resumen, setResumen] = useState(null)
@@ -375,33 +376,6 @@ function Contraparte({ c }) {
         </span>
       </td>
     </tr>
-  )
-}
-
-// Una cifra del encabezado.
-//
-// `signo` va aparte del monto porque es lo que carga el significado: en este
-// sistema el color ya no distingue lo que entra de lo que sale, así que el +
-// y el − tienen que estar siempre, no solo cuando se ven bien.
-//
-// `barra` es una proporción de 0 a 1 para el filete de abajo. Es lo único de
-// esta pantalla que se calcula en el navegador, y se puede: no es una cifra
-// que alguien lea, es el ancho de una línea.
-function Metrica({ titulo, monto, nota, signo, barra, clase = '', principal = false }) {
-  return (
-    <div className={`tarjeta metrica ${principal ? 'principal' : ''}`}>
-      <span>{titulo}</span>
-      <strong className={clase}>
-        {signo ? `${signo} ` : ''}
-        {formatearMonto(monto)}
-      </strong>
-      {barra !== undefined && (
-        <div className="barra-oro">
-          <i style={{ width: `${Math.round(Math.min(1, Math.max(0, barra)) * 100)}%` }} />
-        </div>
-      )}
-      {nota && <span className="metrica-nota">{nota}</span>}
-    </div>
   )
 }
 

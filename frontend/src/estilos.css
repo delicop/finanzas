@@ -3498,12 +3498,6 @@ button.boton-factura {
   color: var(--color-accent-700);
 }
 
-/* La elegida es la que esta filtrando la lista de abajo: sin una marca clara,
-   se lee como si la lista fueran todos los movimientos. */
-.ficha-tienda.elegida {
-  border-color: var(--color-accent-500);
-}
-
 .nombre-tienda {
   font-size: 15px;
   font-weight: 600;
