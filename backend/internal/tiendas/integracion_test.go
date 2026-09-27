@@ -159,6 +159,24 @@ func TestSinTiendasEnElPlanNoSePuedeEntrar(t *testing.T) {
 	if w.Code != http.StatusForbidden {
 		t.Errorf("crear sin tiendas en el plan: status = %d, se esperaba 403", w.Code)
 	}
+
+	// El permiso vive en DOS routers (Rutas y RutasTodosLosCierres). Si solo se
+	// probara uno, quitarle el middleware al otro pasaria en verde y un cliente
+	// sin la seccion seguiria leyendo y exportando sus cierres viejos.
+	global := e.rutasTodos()
+	for _, usuario := range []int64{sinPlan, conOtroPlan} {
+		for _, ruta := range []string{"/", "/exportar"} {
+			if w := e.pedirEn(t, global, usuario, "GET", ruta, ""); w.Code != http.StatusForbidden {
+				t.Errorf("/api/cierres%s sin tiendas en el plan: status = %d, se esperaba 403", ruta, w.Code)
+			}
+		}
+	}
+
+	// Y la foto, que cuelga de un Mount dentro de otro Mount: es justo donde
+	// es facil creer que el middleware llega y que no llegue.
+	if w := e.subirFoto(t, conOtroPlan, "/1/cierres/1/foto", "hoja.jpg", []byte("x")); w.Code != http.StatusForbidden {
+		t.Errorf("subir foto sin tiendas en el plan: status = %d, se esperaba 403", w.Code)
+	}
 }
 
 // Quitarle las tiendas al plan corta la seccion de una, sin esperar a que
@@ -168,8 +186,13 @@ func TestQuitarLasTiendasDelPlanCortaElAcceso(t *testing.T) {
 	cliente := e.crearCliente(t)
 	e.conPlan(t, cliente, true)
 
-	if w := e.pedir(t, cliente, "POST", "/", `{"nombre":"Centro"}`); w.Code != http.StatusCreated {
-		t.Fatalf("creando con el plan puesto: status = %d, cuerpo %s", w.Code, w.Body)
+	// Con una tienda, un cierre y su foto de verdad: sin el middleware, todas
+	// las rutas de abajo responderian 200, no un 404 que pase por casualidad.
+	tienda := e.crearTienda(t, cliente, "centro")
+	c := e.crearCierre(t, cliente, tienda, hojaDeUnDia)
+	foto := fmt.Sprintf("/%d/cierres/%d/foto", tienda, c.ID)
+	if w := e.subirFoto(t, cliente, foto, "hoja.jpg", []byte("la hoja")); w.Code != http.StatusOK {
+		t.Fatalf("subiendo la foto con el plan puesto: status = %d, cuerpo %s", w.Code, w.Body)
 	}
 
 	_, err := e.pool.ExecContext(context.Background(), `
@@ -181,6 +204,24 @@ func TestQuitarLasTiendasDelPlanCortaElAcceso(t *testing.T) {
 
 	if w := e.pedir(t, cliente, "GET", "/", ""); w.Code != http.StatusForbidden {
 		t.Errorf("después de quitarlas: status = %d, se esperaba 403", w.Code)
+	}
+
+	// Quitar la casilla cierra las DOS puertas: tambien /api/cierres.
+	global := e.rutasTodos()
+	for _, ruta := range []string{"/", "/exportar"} {
+		if w := e.pedirEn(t, global, cliente, "GET", ruta, ""); w.Code != http.StatusForbidden {
+			t.Errorf("/api/cierres%s después de quitarlas: status = %d, se esperaba 403", ruta, w.Code)
+		}
+	}
+
+	// Y las de la foto, que llegan por el Mount anidado.
+	if w := e.subirFoto(t, cliente, foto, "otra.jpg", []byte("otra hoja")); w.Code != http.StatusForbidden {
+		t.Errorf("subir foto después de quitarlas: status = %d, se esperaba 403", w.Code)
+	}
+	for _, metodo := range []string{"GET", "DELETE"} {
+		if w := e.pedir(t, cliente, metodo, foto, ""); w.Code != http.StatusForbidden {
+			t.Errorf("%s foto después de quitarlas: status = %d, se esperaba 403", metodo, w.Code)
+		}
 	}
 }
 

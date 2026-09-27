@@ -2,6 +2,7 @@ package tiendas
 
 import (
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -18,7 +19,7 @@ func hoyEnColombia() time.Time {
 }
 
 // Los cinco grupos de la hoja. Son los mismos que acepta el CHECK de la base:
-// si aqui se agrega uno, hay que agregarlo alla.
+// si aqui se agrega uno, hay que agregarlo alla (y si no, falla una prueba).
 const (
 	GrupoPagoNequi = "pago_nequi"
 	GrupoCompra    = "compra"
@@ -27,12 +28,13 @@ const (
 	GrupoVale      = "vale"
 )
 
+// Grupos son los cinco en una lista, para que GrupoValido y la prueba que la
+// compara con el CHECK (TestLosGruposDeGoYLosDeLaBaseSonLosMismos) lean la
+// misma y no cada una su copia.
+var Grupos = []string{GrupoPagoNequi, GrupoCompra, GrupoGasto, GrupoDescuento, GrupoVale}
+
 func GrupoValido(g string) bool {
-	switch g {
-	case GrupoPagoNequi, GrupoCompra, GrupoGasto, GrupoDescuento, GrupoVale:
-		return true
-	}
-	return false
+	return slices.Contains(Grupos, g)
 }
 
 // Linea es un renglon de cualquiera de las listas: una descripcion y un valor.

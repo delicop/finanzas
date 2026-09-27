@@ -39,6 +39,7 @@ tablas antes de empezar, así que **no uses la base de producción**.
 | `avisos` | Que las cifras de los resúmenes salgan de la base y no se repita un aviso |
 | `push` | El cifrado de Web Push, contra el ejemplo del RFC 8291 |
 | `recurrentes` | El calendario: meses cortos, quincenas y años bisiestos |
+| `tiendas` | Que la sección solo se abra con el plan (por sus dos routers), que cada quien vea sus tiendas y cierres, las cuentas de la hoja, que el Excel diga las mismas cifras que la API y los CHECK de los cierres |
 
 Las del `agente` no necesitan internet: levantan un servidor de mentiras que
 responde como respondería DeepSeek. El resto del chat se prueba con un
