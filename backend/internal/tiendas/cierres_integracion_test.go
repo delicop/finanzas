@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,7 +195,7 @@ func TestUnRenglonConMontoYSinNombreRechazaLaHoja(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &respuesta); err != nil {
 		t.Fatalf("leyendo el error: %v", err)
 	}
-	if respuesta.Campos["lineas.0"] == "" {
+	if respuesta.Campos["lineas.compra.0"] == "" {
 		t.Errorf("el error no señala el renglon: campos = %v", respuesta.Campos)
 	}
 
@@ -206,6 +207,43 @@ func TestUnRenglonConMontoYSinNombreRechazaLaHoja(t *testing.T) {
 	}
 	if len(lista) != 0 {
 		t.Errorf("quedaron %d cierres, se esperaba ninguno", len(lista))
+	}
+}
+
+// El error de un renglon se nombra por su grupo y su posicion dentro del grupo,
+// no por el indice en el arreglo aplanado: es la clave que busca la pantalla
+// para pintarlo debajo del renglon. Aqui el renglon largo es el segundo gasto
+// pero el cuarto del arreglo.
+func TestUnaDescripcionLargaSenalaSuRenglon(t *testing.T) {
+	e := nuevoEntorno(t)
+	ana := e.crearCliente(t)
+	e.conPlan(t, ana, true)
+	tienda := e.crearTienda(t, ana, "centro")
+
+	larga := strings.Repeat("a", 121)
+	w := e.pedir(t, ana, "POST", fmt.Sprintf("/%d/cierres", tienda), `{
+		"fecha": "2026-09-20", "responsable": "Ana",
+		"lineas": [
+			{"grupo": "compra", "descripcion": "Pan", "monto": "1000"},
+			{"grupo": "compra", "descripcion": "Leche", "monto": "2000"},
+			{"grupo": "gasto", "descripcion": "Taxi", "monto": "3000"},
+			{"grupo": "gasto", "descripcion": "`+larga+`", "monto": "4000"}
+		]
+	}`)
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("descripcion de 121: status = %d, se esperaba 422, cuerpo %s", w.Code, w.Body)
+	}
+	var respuesta struct {
+		Campos map[string]string `json:"campos"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &respuesta); err != nil {
+		t.Fatalf("leyendo el error: %v", err)
+	}
+	if respuesta.Campos["lineas.gasto.1"] == "" {
+		t.Errorf("el error no señala el segundo gasto: campos = %v", respuesta.Campos)
+	}
+	if len(respuesta.Campos) != 1 {
+		t.Errorf("se esperaba un solo campo con error, llegaron %v", respuesta.Campos)
 	}
 }
 

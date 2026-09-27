@@ -174,14 +174,21 @@ func (req *cierreRequest) valida() (DatosCierre, map[string]string) {
 		*c.destino = normalizarMonto(v, c.campo, c.origen)
 	}
 
-	for i, l := range req.Lineas {
+	// El campo del error se nombra por grupo y posicion dentro del grupo, no por
+	// el indice del arreglo: asi la pantalla lo encuentra en su lista sin tener
+	// que reconstruir en que orden se aplanaron las cinco.
+	posicion := map[string]int{}
+	for _, l := range req.Lineas {
+		n := posicion[l.Grupo]
+		posicion[l.Grupo]++
+
 		descripcion := strings.TrimSpace(l.Descripcion)
 		// Un renglon en blanco no es un error: es un renglon que no se uso.
 		if descripcion == "" && strings.TrimSpace(l.Monto) == "" {
 			continue
 		}
 
-		campo := fmt.Sprintf("lineas.%d", i)
+		campo := fmt.Sprintf("lineas.%s.%d", l.Grupo, n)
 		if !GrupoValido(l.Grupo) {
 			v.Check(false, campo, "Ese grupo no existe")
 			continue

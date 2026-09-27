@@ -143,6 +143,15 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
   // podría cuadrar una hoja que el servidor guarda descuadrada.
   const filasValidas = (grupo) => listas[grupo].filter((f) => f.descripcion.trim() !== '')
 
+  // El servidor nombra el error de un renglón por su posición dentro del grupo
+  // en lo que se envió, y lo que se envió son solo las filas con descripción:
+  // la fila i de la pantalla es la n-ésima con nombre de su lista.
+  const errorDeFila = (grupo, i) => {
+    if (listas[grupo][i].descripcion.trim() === '') return undefined
+    const n = listas[grupo].slice(0, i).filter((f) => f.descripcion.trim() !== '').length
+    return campos[`lineas.${grupo}.${n}`]
+  }
+
   const totalDe = (grupo) => filasValidas(grupo).reduce((suma, fila) => suma + num(fila.monto), 0)
 
   // La cuenta que cierra la hoja: la venta del día menos lo que salió de la
@@ -283,6 +292,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
               value={responsable}
               onChange={(e) => setResponsable(e.target.value)}
               placeholder="Quién cerró la caja"
+              maxLength={120}
             />
             {campos.responsable && <span className="error-campo">{campos.responsable}</span>}
           </div>
@@ -294,12 +304,14 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             id="qr-banco"
             valor={montos.qr_banco}
             onCambio={(v) => cambiarMonto('qr_banco', v)}
+            error={campos.qr_banco}
           />
           <FilaMonto
             etiqueta={tienda.nombre}
             id="qr-tienda"
             valor={montos.qr_tienda}
             onCambio={(v) => cambiarMonto('qr_tienda', v)}
+            error={campos.qr_tienda}
           />
           <FilaCalculada etiqueta="Diferencia" valor={qrDiferencia} alerta />
         </Bloque>
@@ -310,12 +322,14 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             id="datafono"
             valor={montos.datafono_reporte}
             onCambio={(v) => cambiarMonto('datafono_reporte', v)}
+            error={campos.datafono_reporte}
           />
           <FilaMonto
             etiqueta={tienda.nombre}
             id="datafono-tienda"
             valor={montos.datafono_tienda}
             onCambio={(v) => cambiarMonto('datafono_tienda', v)}
+            error={campos.datafono_tienda}
           />
           <FilaCalculada etiqueta="Diferencia" valor={datafonoDiferencia} alerta />
         </Bloque>
@@ -326,12 +340,14 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             id="billete"
             valor={montos.efectivo_billete}
             onCambio={(v) => cambiarMonto('efectivo_billete', v)}
+            error={campos.efectivo_billete}
           />
           <FilaMonto
             etiqueta="Moneda"
             id="moneda"
             valor={montos.efectivo_moneda}
             onCambio={(v) => cambiarMonto('efectivo_moneda', v)}
+            error={campos.efectivo_moneda}
           />
           <FilaCalculada etiqueta="Total efectivo" valor={efectivoTotal} />
           <FilaMonto
@@ -339,6 +355,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             id="efectivo-tienda"
             valor={montos.efectivo_tienda}
             onCambio={(v) => cambiarMonto('efectivo_tienda', v)}
+            error={campos.efectivo_tienda}
           />
           <FilaCalculada etiqueta="Diferencia" valor={efectivoDiferencia} alerta />
         </Bloque>
@@ -350,6 +367,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
             id="venta-tienda"
             valor={montos.venta_tienda}
             onCambio={(v) => cambiarMonto('venta_tienda', v)}
+            error={campos.venta_tienda}
           />
           <FilaCalculada etiqueta="Diferencia" valor={ventaDiferencia} alerta />
         </Bloque>
@@ -363,7 +381,8 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
                   onChange={(e) => cambiarLinea(grupo, i, 'descripcion', e.target.value)}
                   placeholder="Descripción"
                   aria-label={`${titulo}: descripción`}
-                  className={aMedias(fila) ? 'campo-a-medias' : undefined}
+                  maxLength={120}
+                  className={aMedias(fila) || errorDeFila(grupo, i) ? 'campo-a-medias' : undefined}
                 />
                 <InputMonto
                   valor={fila.monto}
@@ -380,6 +399,9 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
                 </button>
                 {aMedias(fila) && (
                   <span className="error-campo">Ponle un nombre o quita el monto</span>
+                )}
+                {errorDeFila(grupo, i) && (
+                  <span className="error-campo">{errorDeFila(grupo, i)}</span>
                 )}
               </div>
             ))}
@@ -440,6 +462,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
           rows={3}
           value={novedades}
           onChange={(e) => setNovedades(e.target.value)}
+          maxLength={2000}
           placeholder="Lo que haya que dejar anotado del día: el saldo en Nequi, un faltante, un turno raro..."
         />
         {campos.novedades && <span className="error-campo">{campos.novedades}</span>}
@@ -466,11 +489,12 @@ function Bloque({ titulo, children }) {
   )
 }
 
-function FilaMonto({ etiqueta, id, valor, onCambio }) {
+function FilaMonto({ etiqueta, id, valor, onCambio, error }) {
   return (
     <div className="fila-cierre">
       <label htmlFor={id}>{etiqueta}</label>
       <InputMonto id={id} valor={valor} onCambio={onCambio} />
+      {error && <span className="error-campo">{error}</span>}
     </div>
   )
 }

@@ -3781,6 +3781,11 @@ button.boton-factura {
   text-align: right;
 }
 
+.fila-cierre .error-campo {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
 /* Las calculadas no se escriben: van sin caja, para que se note que salen de
    las de arriba y no hay nada que llenar ahi. */
 .fila-cierre.calculada {
