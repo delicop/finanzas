@@ -47,9 +47,8 @@ type Linea struct {
 // Cierre es la hoja del arqueo de un dia.
 //
 // Los campos de arriba son lo que se escribe; los de Totales son lo que sale
-// de ellos. Las cuentas las hace Postgres al leer y no se guardan: guardar una
-// resta es guardar dos veces el mismo dato, y el dia que una cifra se corrija
-// la resta vieja quedaria mintiendo.
+// de ellos. Las cuentas las hace Postgres al leer y no se guardan (por que, en
+// docs/decisiones.md).
 type Cierre struct {
 	ID           int64  `json:"id"`
 	TiendaID     int64  `json:"tienda_id"`
@@ -115,8 +114,7 @@ type Totales struct {
 	//	Queda         = MetodosPago (lo que de verdad hay)
 	//	QuedaDiferencia = Queda - DeberiaQuedar
 	//
-	// Los pagos por Nequi NO se restan aqui: en la hoja van aparte y su
-	// plata ya viene contada en lo que reporta el banco.
+	// Los pagos por Nequi NO se restan aqui (ver docs/decisiones.md).
 	Salidas         string `json:"salidas"`
 	DeberiaQuedar   string `json:"deberia_quedar"`
 	QuedaDiferencia string `json:"queda_diferencia"`

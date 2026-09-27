@@ -37,8 +37,8 @@ type DatosCierre struct {
 const (
 	efectivoContado = `(c.efectivo_billete + c.efectivo_moneda)`
 	metodosPago     = `(c.qr_banco + c.datafono_reporte + c.efectivo_billete + c.efectivo_moneda)`
-	// Lo que salio de la caja durante el dia. Los pagos por Nequi no entran:
-	// van aparte en la hoja y su plata ya viene contada en lo del banco.
+	// Lo que salio de la caja durante el dia. Los pagos por Nequi no entran
+	// (ver docs/decisiones.md).
 	salidas       = `(coalesce(l.compra, 0) + coalesce(l.gasto, 0) + coalesce(l.descuento, 0) + coalesce(l.vale, 0))`
 	deberiaQuedar = `(c.venta_tienda - ` + salidas + `)`
 )

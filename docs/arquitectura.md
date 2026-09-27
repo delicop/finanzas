@@ -29,6 +29,7 @@ backend/
     ├── medios/       CRUD de medios de pago
     ├── movimientos/  movimientos, abonos, cuotas, facturas y el resumen
     ├── recurrentes/  lo que se repite: plantillas y lo que falta confirmar
+    ├── tiendas/      los locales del cliente y sus cierres de caja (se vende aparte)
     ├── push/         avisos al celular con la app cerrada (ver avisos.md)
     ├── dinero/       validación de montos y reparto en cuotas
     ├── registro/     bitácora de errores
@@ -63,6 +64,25 @@ Cada paquete de dominio sigue el mismo patrón de tres archivos:
 Los handlers nunca escriben SQL. Cuando haya que cambiar una consulta, se toca
 un solo archivo.
 
+`tiendas` estira ese patrón a ocho archivos, porque adentro hay **dos**
+modelos: la tienda, que es una lista como las categorías (`tienda.go`,
+`store.go`, `handler.go`), y el cierre de caja, que es la hoja entera con sus
+catorce cifras calculadas (`cierre.go`, `cierre_store.go`,
+`cierre_handler.go`). Van en el mismo paquete y no en dos porque un cierre no
+existe sin su tienda: sus rutas cuelgan del router de tiendas y heredan el mismo
+permiso del plan, y partirlos obligaría a exportar ese permiso y la tienda solo
+para que el otro paquete los use. Van en archivos aparte porque juntos serían un
+store de 550 líneas donde el CRUD de una lista queda enterrado entre las
+fórmulas de la hoja.
+
+Los otros dos son suyos por la misma razón que el `exportar` de `movimientos`:
+`foto.go` es la foto de la hoja firmada, y habla con el almacén de las facturas
+**por una interfaz** que declara aquí mismo, sin importar `movimientos` (ver
+[decisiones.md](decisiones.md#la-foto-usa-el-almacén-de-las-facturas-por-una-interfaz));
+`exportar.go` es el Excel de los cierres, y es el **único** archivo del paquete
+que convierte plata a float — Excel no guarda otra cosa —, así que tenerlo
+aparte deja esa excepción encerrada en un solo sitio.
+
 `admin` es un paquete aparte de `auth` porque responden preguntas distintas:
 `auth` contesta *"¿quién eres y puedes entrar?"*; `admin`, *"¿quiénes existen y
 qué puede hacer cada uno?"*. Juntarlos dejaría las rutas de administración
@@ -82,6 +102,7 @@ Los middlewares van en grupos anidados, y el orden importa:
 ├── /mantenimiento/errores             token propio del .env
 └── Group: RequireAuth → VerComo       todo lo privado
     ├── /categorias, /medios-pago, /movimientos, /dashboard
+    ├── /tiendas, /cierres              solo si el plan las incluye (cada uno lo revisa)
     ├── /agente                         solo si hay llave del modelo
     ├── /notificaciones                 los avisos automáticos
     └── Group: RequireAdmin
@@ -98,6 +119,14 @@ usuario observado sin enterarse de nada.
 
 Cada grupo pone su middleware **una sola vez**. Agregar una ruta dentro de un
 grupo la deja protegida sin tener que acordarse: no hay forma de olvidarlo.
+
+`/tiendas` y `/cierres` son la excepción visible: el permiso del plan no es un
+grupo del router sino un middleware **dentro** de cada uno de los dos
+sub-routers, porque lo que decide es un dato del cliente (su plan) y no del
+token. `/cierres` es el mismo handler montado por segunda vez para leer los
+cierres de todas las tiendas juntos, y por eso repite el middleware: si solo lo
+tuviera `/tiendas`, quitarle la sección a un plan dejaría al cliente leyendo y
+exportando sus cierres por la otra puerta.
 
 Además de servir HTTP, `main` arranca tres tareas de fondo con su propia
 goroutine: limpiar la bitácora de errores, limpiar el consumo del agente y
@@ -141,8 +170,17 @@ sesión y tema por props a cada componente.
 ```
 usuarios ──┬── categorias ──┐
            ├── medios_pago ─┼── movimientos
-           └── errores      ┘
+           ├── errores      ┘
+           ├── tiendas ─────┐
+           └────────────────┴── cierres ── cierre_lineas
 ```
+
+`cierres` cuelga de los dos: de `tiendas`, porque una hoja siempre es de un
+local, y de `usuarios` directamente, porque todas las consultas filtran por el
+`usuario_id` del token igual que en el resto de la app. Las cinco listas de la
+hoja (pagos por Nequi, compras, gastos, descuentos y vales) son **una** tabla,
+`cierre_lineas`, con una columna `grupo`: son la misma cosa, una descripción y
+un valor, y cinco tablas iguales se cambian mal en alguna.
 
 Las migraciones están en `backend/internal/db/migrations/` y van **embebidas
 en el binario** con `//go:embed`. La imagen final no lleva ni el código fuente

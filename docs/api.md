@@ -46,8 +46,9 @@ alguien no surtiría efecto hasta que su token expirara (hasta 24 horas).
 
 ### Eliminar una cuenta
 
-Se lleva por delante los movimientos, las categorías, los medios de pago y las
-**facturas del disco**. No hay papelera.
+Se lleva por delante los movimientos, las categorías, los medios de pago, las
+tiendas con sus cierres, y las **facturas y fotos de los cierres del disco**. No
+hay papelera.
 
 Las filas las borra el `ON DELETE CASCADE`, pero a los archivos no llega
 ninguna llave foránea: el servidor lee las rutas de las facturas **antes** de
@@ -82,7 +83,7 @@ servidor. Lo que las protege no es un filtro sino `RequireAdmin`.
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/api/admin/planes` | Planes con su conteo de clientes |
-| POST | `/api/admin/planes` | Crear (`nombre`, `precio_mensual`, `precio_anual`, `incluye_ia`) |
+| POST | `/api/admin/planes` | Crear (`nombre`, `precio_mensual`, `precio_anual`, `incluye_ia`, `incluye_tiendas`) |
 | PUT | `/api/admin/planes/{id}` | Editar todo lo anterior y `activo` |
 | DELETE | `/api/admin/planes/{id}` | Eliminar — **409** si tiene clientes |
 | PUT | `/api/admin/usuarios/{id}/plan` | Asignar el plan y cómo lo paga (`{"plan_id": 3, "ciclo": "anual"}`) o quitarlo (`null`) |
@@ -101,6 +102,7 @@ Los precios y montos son **string**, igual que en el resto de la app: columna
 | `precio_mensual` | Obligatorio. |
 | `precio_anual` | Opcional. Vacío = el plan **no se vende por año**. |
 | `incluye_ia` | Si sus clientes pueden usar el asistente. Por omisión, `false`. |
+| `incluye_tiendas` | Si sus clientes tienen la sección de [tiendas y cierres de caja](#tiendas-y-cierres-de-caja). Por omisión, `false`. |
 
 **Sin IA en el plan no hay asistente**, y **sin plan tampoco**: cada mensaje le
 cuesta plata al dueño del servidor. Se revisa en el backend en cada petición a
@@ -479,6 +481,210 @@ Confirmar sin cuerpo usa la plantilla tal cual; con cuerpo (un movimiento
 completo) se puede corregir el monto antes, que es lo que pasa con el recibo de
 la luz todos los meses. Eliminar la plantilla **no borra** los movimientos que
 ya se confirmaron: esos fueron plata que sí se movió.
+
+## Tiendas y cierres de caja
+
+Una sección **que se vende**: solo existe para los clientes cuyo plan tiene
+`incluye_tiendas`. Sin plan, o con un plan sin esa casilla, **todas** estas
+rutas responden **403** — las de `/api/tiendas` y también las de
+`/api/cierres`, que se montan aparte y revisan el plan cada una por su lado.
+Se revisa en cada petición, así que quitarle la casilla a un plan corta el
+acceso desde la siguiente. `/api/auth/me` trae `"tiendas": true|false` para
+que la app esconda el menú, pero quien lo impide es el servidor. Ver
+[decisiones.md](decisiones.md#las-secciones-que-se-venden-cuelgan-del-plan).
+
+En modo "ver como" se revisa el plan **del observado**, que es de quien son las
+tiendas. Como en todo lo demás, el admin solo puede leer.
+
+### Tiendas
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| GET | `/api/tiendas` | Los locales del cliente, con el resumen de todos sus cierres |
+| POST | `/api/tiendas` | Crear (`{"nombre": "Centro"}`) |
+| PUT | `/api/tiendas/{id}` | Renombrar |
+| DELETE | `/api/tiendas/{id}` | Eliminar — **409** si tiene cierres (204 si no) |
+
+`nombre` es obligatorio, de máximo 60 caracteres y único **dentro de la
+cuenta**, sin distinguir mayúsculas: dos clientes pueden tener cada uno su
+"Principal", pero un mismo cliente no puede tener "Centro" y "centro" (**422**
+en `campos.nombre`).
+
+Cada tienda del listado trae, además del nombre, cómo va sumando todas sus hojas:
+
+| Campo | Qué es |
+|---|---|
+| `ventas` | La suma de `venta_tienda` de todos sus cierres |
+| `salidas` | La suma de compras, gastos, descuentos y vales. Los pagos por Nequi no entran ([por qué](decisiones.md#los-pagos-por-nequi-no-son-una-salida-de-la-caja)) |
+| `queda` | `ventas − salidas` |
+| `cierres` | Cuántas hojas tiene |
+| `ultimo_cierre` | El día de la más reciente (`AAAA-MM-DD`), o `null` si todavía no tiene |
+
+Una tienda recién creada sale con todo en `"0.00"`: no desaparece de la lista.
+
+Una tienda con cierres **no se borra**: esas hojas son registros de plata y no
+pueden irse con ella. El 409 dice exactamente eso. Para quitarla de verdad hay
+que borrar primero sus cierres, uno por uno, que es una decisión que se toma
+mirando cada hoja.
+
+### El cierre de caja
+
+La hoja que se llena al final del día en cada tienda: lo que dice el banco
+contra lo que contó la tienda en cada forma de cobro, y las listas de lo que
+salió. Un cierre siempre es de un local, así que se crea y se toca **por su
+tienda**:
+
+| Método | Ruta | Qué hace |
+|---|---|---|
+| POST | `/api/tiendas/{id}/cierres` | Crear la hoja de un día (201) |
+| GET | `/api/tiendas/{id}/cierres/{cierreID}` | La hoja completa, con sus renglones |
+| PUT | `/api/tiendas/{id}/cierres/{cierreID}` | Reemplazar la hoja **entera** |
+| DELETE | `/api/tiendas/{id}/cierres/{cierreID}` | Eliminarla, con su foto (204) |
+| POST | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Adjuntar la foto de la hoja firmada (multipart, campo `foto`) |
+| GET | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Verla (`inline`) |
+| DELETE | `/api/tiendas/{id}/cierres/{cierreID}/foto` | Quitarla (204) |
+| GET | `/api/cierres` | Los de **todas** las tiendas juntos, del más nuevo al más viejo |
+| GET | `/api/cierres/exportar` | Los mismos, en Excel |
+
+#### Qué se manda
+
+El `POST` y el `PUT` reciben el mismo cuerpo: las once casillas de la hoja y sus
+renglones.
+
+```bash
+curl -X POST http://localhost:8080/api/tiendas/3/cierres \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"fecha":"2026-09-20","responsable":"Ana",
+       "qr_banco":"1250000","qr_tienda":"1250000",
+       "datafono_reporte":"1449800","datafono_tienda":"1449800",
+       "efectivo_billete":"1580000","efectivo_moneda":"35000","efectivo_tienda":"1606800",
+       "venta_tienda":"5100500","novedades":"Saldo en Nequi: 2.300.000",
+       "lineas":[{"grupo":"gasto","descripcion":"Almuerzo","monto":"46000"},
+                 {"grupo":"pago_nequi","descripcion":"Don Luis","monto":"810000"}]}'
+```
+
+| Campo | Qué es |
+|---|---|
+| `fecha` | Obligatoria, `AAAA-MM-DD`. **Hoy o antes**, con la hora de Colombia: un cierre es el arqueo de un día que ya terminó |
+| `responsable` | Quién la llenó. Opcional, máx. 120 |
+| `qr_banco`, `qr_tienda` | QR / Nequi: lo que reporta el banco y lo que contó la tienda |
+| `datafono_reporte`, `datafono_tienda` | Datáfono: lo que reporta el aparato y lo que contó la tienda |
+| `efectivo_billete`, `efectivo_moneda` | El efectivo contado, billetes y monedas aparte, como se cuenta la caja |
+| `efectivo_tienda` | El efectivo que según la tienda tendría que haber |
+| `venta_tienda` | La venta total del día según la tienda |
+| `novedades` | Texto libre, máx. 2000. Es donde va lo que no es una casilla (el saldo en Nequi, un faltante, un turno raro) |
+| `lineas` | Los renglones de las cinco listas (abajo) |
+
+Las ocho casillas de dinero son **string**, como todo el dinero de la API. Una
+casilla vacía vale cero, y el cero es un dato válido ("hoy no hubo monedas"); lo
+que no se acepta es un negativo: lo que salió va en las listas, no como un
+número en rojo arriba. Un monto malo responde **422** en el campo de esa
+casilla.
+
+Cada renglón es `{"grupo", "descripcion", "monto"}`, y `grupo` es uno de
+`pago_nequi`, `compra`, `gasto`, `descuento` o `vale`. Un renglón con todo en
+blanco se ignora — la hoja de papel también se entrega con renglones sin usar —,
+pero uno con monto y sin descripción es un error. Los errores de un renglón
+llegan como `campos["lineas.<grupo>.<n>"]`, donde `n` es su posición **dentro de
+su grupo** en lo que se mandó, empezando en 0: `lineas.gasto.2` es el tercer
+gasto. Así la pantalla lo encuentra en su lista sin reconstruir en qué orden se
+aplanaron las cinco. La descripción es de máximo 120 caracteres.
+
+**Las diferencias y los totales no se mandan**: salen de las casillas cada vez
+que se lee la hoja, y un campo que el servidor no conoce responde 400. Ver
+[decisiones.md](decisiones.md#un-cierre-guarda-lo-escrito-no-lo-calculado).
+
+El `PUT` reemplaza la hoja **entera**, renglones incluidos: los que no vengan en
+el cuerpo se borran. Se guarda como quedó en pantalla, no renglón por renglón.
+Crear y editar van en una transacción: o queda la hoja completa, o no queda
+nada.
+
+#### Qué devuelve
+
+Un cierre trae las casillas tal como se escribieron (con `tienda_id` y
+`tienda_nombre`), `foto` (`null` o `{"nombre", "tipo", "url"}`), `lineas` y
+`totales`. `lineas` solo viene llena al pedir **una** hoja (o al crearla o
+editarla); en `/api/cierres` va vacía, `[]`.
+
+`totales` son las casillas que la hoja de papel tiene calculadas. Las calcula
+Postgres sobre `NUMERIC`, y salen como string:
+
+| Campo | Cómo se calcula |
+|---|---|
+| `qr_diferencia` | `qr_tienda − qr_banco` |
+| `datafono_diferencia` | `datafono_tienda − datafono_reporte` |
+| `efectivo_total` | `efectivo_billete + efectivo_moneda`: lo contado |
+| `efectivo_diferencia` | `efectivo_total − efectivo_tienda` |
+| `metodos_pago` | `qr_banco + datafono_reporte + efectivo_total`: lo que de verdad entró, según quien lo reporta |
+| `venta_diferencia` | `metodos_pago − venta_tienda` |
+| `pagos_nequi` | El total de esa lista |
+| `compras`, `gastos`, `descuentos`, `vales` | El total de cada lista |
+| `salidas` | `compras + gastos + descuentos + vales`. Los pagos por Nequi **no** entran |
+| `deberia_quedar` | `venta_tienda − salidas` |
+| `queda_diferencia` | `metodos_pago − deberia_quedar`: **la cifra que cierra la hoja** |
+
+**El signo de las diferencias.** Todas restan en el mismo sentido: el lado de la
+tienda (lo que contó o lo que hay) **menos** el lado contra el que se compara.
+Una diferencia **negativa** quiere decir que ese lado quedó **corto**:
+
+- `efectivo_diferencia < 0` — en la caja hay menos efectivo del que la tienda
+  dice que debería haber. **Falta plata.**
+- `queda_diferencia < 0` — después de restar lo que salió, hay menos de lo que
+  la venta dice que tendría que quedar. **Falta plata.** Positiva, sobra. En
+  cero, el día cuadra.
+- `qr_diferencia` y `datafono_diferencia` < 0 — la tienda anotó menos de lo que
+  reporta el banco o el datáfono.
+- `venta_diferencia` casi siempre es negativa, y no es un faltante: lo cobrado es
+  menos que lo vendido **porque** durante el día salió plata de la caja. Por eso
+  la cifra que responde "¿cuadró?" es `queda_diferencia`, que ya descuenta las
+  salidas.
+
+#### El listado y el Excel
+
+`GET /api/cierres` acepta estos filtros, todos opcionales:
+
+| Filtro | Qué hace |
+|---|---|
+| `tienda_id` | Solo los de esa tienda. Un valor que no sea un número responde **400** |
+| `desde`, `hasta` | Rango de días, `AAAA-MM-DD`, los dos incluidos. Una fecha inválida responde **422** en su campo |
+| `limite` | Cuántos traer. Sin él, todos; por encima de 100 se queda en 100 |
+
+Vienen ordenados por día (el más nuevo primero) y, dentro del mismo día, por el
+nombre de la tienda.
+
+`GET /api/cierres/exportar` acepta los mismos filtros menos `limite` —exporta el
+rango entero— y responde un `.xlsx` con `Content-Disposition: attachment`: una
+fila por hoja, con las casillas, los totales de las listas, lo que salió, lo
+que debería quedar, lo que hay y la diferencia. Solo Excel: una tabla de veinte
+columnas no se lee en un PDF. Los montos van como números para que se puedan
+sumar. Sin cierres en el rango, o con más de 5.000, responde **422**.
+
+#### La foto
+
+La hoja firmada, en el mismo almacén y con las mismas reglas que las facturas:
+JPG, PNG, WEBP, HEIC o PDF, máximo 10 MB, y el tipo se detecta **leyendo el
+archivo**. Subir una foto a un cierre que ya tiene reemplaza la anterior (y
+borra el archivo viejo); la respuesta es el cierre completo, con su `foto`.
+
+La ruta en disco no sale nunca: `foto.url` es el endpoint, que va detrás del
+mismo login que todo lo demás. Como pasa con las facturas, un `<img src>` no
+sirve y la app la baja con `fetch`.
+
+| Código | Cuándo |
+|---|---|
+| 413 | El archivo pasa de 10 MB |
+| 422 | Tipo no aceptado o archivo vacío, en `campos.foto` |
+| 404 | El cierre no es tuyo, o no tiene foto (al verla o quitarla) |
+
+#### Códigos de estas rutas
+
+| Código | Significa |
+|---|---|
+| 400 | Un id de la URL, o `tienda_id`, que no es un número |
+| 403 | El plan no incluye las tiendas, en **cualquiera** de estas rutas |
+| 404 | Lo ajeno: la tienda de otro, el cierre de otro, o un cierre tuyo colgado de otra tienda tuya. Nunca se distingue "no existe" de "no es tuyo" |
+| 409 | Borrar una tienda que tiene cierres |
+| 422 | Datos inválidos, y también **un día repetido**: una tienda tiene una sola hoja por día, y el segundo cierre del mismo día responde en `campos.fecha` |
 
 ## Avisos al celular (Web Push)
 

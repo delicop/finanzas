@@ -23,7 +23,7 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 //
 // El LATERAL suma las listas de CADA cierre (compras, gastos, descuentos y
 // vales) y el GROUP BY las junta por tienda. Los pagos por Nequi no entran,
-// igual que en la hoja: su plata ya viene contada en lo del banco.
+// igual que en la hoja (ver docs/decisiones.md).
 //
 // LEFT en los dos: una tienda recien creada sale en ceros, no desaparece.
 func (s *Store) Listar(ctx context.Context, usuarioID int64) ([]Tienda, error) {

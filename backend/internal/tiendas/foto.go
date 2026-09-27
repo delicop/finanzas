@@ -28,14 +28,9 @@ type ArchivoSubido struct {
 	Tipo   string // el mime REAL, detectado leyendo los bytes
 }
 
-// Archivos es todo lo que este paquete necesita del almacen.
-//
-// Es una interfaz y no el tipo concreto para no importar el paquete de los
-// movimientos entero: la foto de un cierre y la foto de una factura son el
-// mismo problema (validar tipo y tamaño, escribir con nombre aleatorio,
-// no dejar salir la ruta de su carpeta) y comparten el mismo almacen, pero
-// aqui no hace falta saber nada de facturas. Quien conecta los dos es el
-// router, que ya conoce a los dos paquetes.
+// Archivos es todo lo que este paquete necesita del almacen de las facturas.
+// Es una interfaz para no importar movimientos; el adaptador vive en el
+// router (por que, en docs/decisiones.md).
 type Archivos interface {
 	Guardar(archivo multipart.File, encabezado *multipart.FileHeader) (ArchivoSubido, error)
 	Abrir(rutaRelativa string) (*os.File, error)

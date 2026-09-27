@@ -118,9 +118,8 @@ func (s *Store) CrearPlan(ctx context.Context, d DatosPlan) (*Plan, error) {
 //
 // Quitar la IA corta el asistente a todos los clientes del plan desde ya: se
 // revisa en cada mensaje, no al iniciar sesion. Lo mismo con las tiendas: al
-// quitarlas, la seccion desaparece del menu y la API responde 403. Las tiendas
-// que ya creo el cliente no se borran; vuelven a aparecer si se le devuelve el
-// plan.
+// quitarlas, la seccion desaparece del menu y la API responde 403, pero no se
+// borra nada (ver docs/decisiones.md).
 //
 // Quitar el precio anual se rechaza si alguien lo esta pagando por año: ese
 // cliente quedaria con un ciclo que su plan ya no ofrece y sin precio que

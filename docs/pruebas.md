@@ -81,6 +81,25 @@ Las que más valen:
 - **`TestElModeloPuedeRedactarPeroNoInventarCifras`** — que un aviso nunca
   salga con un número que el modelo se imaginó.
 - **`TestNoSeVenDatosDeOtroUsuario`** — que adivinar un id ajeno no sirva.
+- **`TestElCierreDeOtroNoSeVeNiSeEdita`** — que el cierre de otro no se pueda
+  ver ni borrar por **ninguno** de los dos caminos cruzados: con la tienda
+  ajena en la URL, y colgándolo de una tienda propia. El segundo es el que se
+  olvida: un store que revisara que la tienda de la URL es tuya y después
+  buscara el cierre solo por su id lo dejaría pasar, y el primero seguiría en
+  verde.
+- **`TestElCierreCalculaSusDiferenciasYTotales`** — que las catorce cifras de
+  la hoja salgan de las casillas escritas, sobre una hoja real que cuadra en
+  cero, y que los pagos por Nequi no entren en lo que salió. Es la que impide
+  que un día alguien decida guardar las restas "para no calcularlas cada vez"
+  (ver [decisiones.md](decisiones.md#un-cierre-guarda-lo-escrito-no-lo-calculado)).
+- **`TestSinTiendasEnElPlanNoSePuedeEntrar`** — que el permiso del plan se
+  cumpla en los **dos** routers de la sección (`/api/tiendas` y `/api/cierres`)
+  y en la foto, que cuelga de un `Mount` dentro de otro. Probando solo uno,
+  quitarle el middleware al otro pasaría en verde.
+- **`TestLasCifrasDelExcelSonLasDeLaAPI`** — que el Excel de los cierres diga
+  al centavo lo mismo que la pantalla. Entre los dos está el único `ParseFloat`
+  del paquete; si se corre una columna, el archivo que va al contador miente y
+  ninguna otra prueba lo ve.
 
 ## Comandos útiles
 

@@ -165,7 +165,7 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
 
   // La cuenta que cierra la hoja: la venta del día menos lo que salió de la
   // caja tiene que dar lo que hay en caja y bancos. Los pagos por Nequi no se
-  // restan: van aparte y su plata ya viene contada en lo que reporta el banco.
+  // restan (ver docs/decisiones.md).
   const salidas = totalDe('compra') + totalDe('gasto') + totalDe('descuento') + totalDe('vale')
   const deberiaQuedar = num(montos.venta_tienda) - salidas
   const quedaDiferencia = metodosPago - deberiaQuedar

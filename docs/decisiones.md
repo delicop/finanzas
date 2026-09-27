@@ -57,6 +57,28 @@ movimientos **falla** y devuelve un 409 con un mensaje claro.
 Un `CASCADE` que se lleva por delante registros de dinero es un desastre
 silencioso.
 
+### Una tienda con cierres no se borra, pero su dueño sí
+
+La llave de `cierres` hacia `tiendas` no dice ni `CASCADE` ni `RESTRICT`: se
+queda con la regla por defecto, `NO ACTION`, y es a propósito. Las dos cosas que
+tienen que pasar son:
+
+- Borrar una tienda que tiene cierres **falla** (el store lo traduce a un 409).
+  Esas hojas son registros de plata; no pueden irse en silencio detrás de un
+  "eliminar" sobre el nombre de un local.
+- Borrar al **usuario** tiene que funcionar. `usuarios` borra en cascada sus
+  tiendas y, por su propio `usuario_id`, sus cierres, todo en la misma
+  sentencia.
+
+`RESTRICT` cumple lo primero y rompe lo segundo: se revisa **fila por fila,
+en el momento**, así que al borrar la cuenta ve una tienda que todavía tiene
+cierres —aunque esos cierres se vayan a ir un instante después en la misma
+sentencia— y revienta. `NO ACTION` se revisa **al final de la sentencia**, cuando
+los cierres ya se fueron por su lado, y no encuentra nada que reclamar. La
+diferencia entre las dos es solo *cuándo* se mira, y aquí es todo lo que
+importa. Si alguien la "corrige" a `RESTRICT` porque parece más explícita, el
+panel deja de poder eliminar a cualquier cliente que haya llenado una hoja.
+
 ## Todas las consultas filtran por `usuario_id`
 
 Si el id viniera de la URL, cualquiera con un token válido podría leer o borrar
@@ -278,6 +300,46 @@ normalización, "2026-03-01" y "2026-03-15" serían dos periodos distintos para
 la base y el índice no serviría de nada. Un doble clic en "registrar pago" no
 puede inflar los ingresos, y no porque el frontend deshabilite el botón.
 
+### Las secciones que se venden cuelgan del plan
+
+El asistente (`incluye_ia`) y las tiendas (`incluye_tiendas`) son casillas **del
+plan**, no del cliente. Cambiarle la casilla a un plan aplica de una a todos sus
+clientes; con una casilla por usuario, subir un plan para que incluya las
+tiendas sería recorrer a sus clientes uno por uno, y el que se quede sin tocar
+paga por algo que no tiene — o tiene algo que nadie le cobra. Así, lo que un
+cliente puede usar es exactamente lo que dice el plan que paga, y no hay una
+segunda lista que se pueda desincronizar de la primera.
+
+El precio de esa decisión es que no se le puede regalar la sección a un cliente
+suelto: hay que darle un plan que la incluya, aunque sea un plan de un solo
+cliente. Es más trabajo a propósito, porque deja la excepción escrita donde se
+ve — en la lista de planes, con su precio — y no escondida en una casilla de la
+ficha de alguien.
+
+El permiso se revisa **en cada petición**, por lo mismo que el rol no viaja en
+el JWT: quitarle la sección a un plan tiene que cortar el acceso en la
+siguiente petición, no cuando venza el token. Los paquetes que la usan
+(`agente`, `tiendas`) reciben el permiso como una función que arma el router, así
+que ninguno de los dos sabe cómo se venden los planes.
+
+### Quitarle las tiendas al plan no las borra
+
+Si el plan de un cliente deja de incluir las tiendas —porque se le cambió de
+plan o porque se le quitó la casilla al suyo—, la sección desaparece del menú y
+la API responde 403 en todas sus rutas. Pero **sus tiendas y sus cierres se
+quedan en la base**, intactos, y vuelven a aparecer tal cual el día que se le
+devuelva el plan.
+
+Quitar la casilla es una decisión de cobro, no de datos. Las hojas son el
+arqueo de días que sí pasaron; que un mes no se haya pagado el plan no puede
+llevarse por delante el registro de la caja de ese local, y un cambio de plan
+que borrara cosas convertiría cada ajuste de precios en algo que da miedo tocar.
+
+Mientras tanto nadie las ve: ni el cliente, ni por `/api/cierres`, ni el admin
+en modo "ver como" (se revisa el plan del observado). Se van de verdad solo con
+la cuenta, que se lleva las filas por `CASCADE` y las fotos del disco igual que
+las facturas.
+
 ## Los medios por defecto se siembran al crear la cuenta
 
 La migración que introdujo `medios_pago` sembró Efectivo, Transferencia y Otro
@@ -429,3 +491,83 @@ de proponer, que cubre el caso real sin una pantalla más.
 
 El riesgo que queda es que "Carlos M" y "Carlos" sigan siendo dos. Es un riesgo
 asumido a cambio de no pedir permiso para escribir un nombre.
+
+## Los cierres de caja
+
+El cierre es la hoja de papel del arqueo diario de una tienda, pasada a la app.
+No tiene nada que ver con `movimientos`: es la caja de un local, no las finanzas
+personales del cliente, y ninguna cifra de una hoja entra al balance.
+
+### Un cierre guarda lo escrito, no lo calculado
+
+La tabla `cierres` guarda las casillas que se **escriben** (lo que reporta el
+banco, lo que contó la tienda, la venta del día) y los renglones de las listas.
+Las catorce cifras que la hoja de papel tiene calculadas —las diferencias, los
+totales de cada lista, lo que salió, lo que debería quedar— **no son columnas**:
+las calcula Postgres en el `SELECT`, cada vez que se lee (`columnasCierre`, en
+`cierre_store.go`). Lo mismo el resumen de cada tienda en el listado.
+
+Guardar una resta es guardar dos veces el mismo dato. El día que una cifra se
+corrige —y en una hoja de caja pasa: se escribió 1.500.000 donde era
+1.050.000—, la resta guardada se queda con el valor viejo y la hoja pasa a decir
+dos cosas a la vez, sin que nada avise cuál es la buena. Calculada al leer, no
+hay nada que pueda quedar desfasado.
+
+Es la misma idea de `estado` en las deudas, con una diferencia que explica por
+qué allá sí se guarda: por `estado` se filtra y se indexa, así que vale tenerlo
+en una columna —recalculado en la misma transacción—. Por una diferencia de caja
+no se filtra nunca. Si mañana una pantalla necesita una cifra nueva, va al
+`SELECT`, no a una columna.
+
+El frontend hace las mismas cuentas para pintarlas mientras se escribe, pero no
+las manda: el cuerpo del `POST` no tiene dónde ponerlas, y un campo que el
+servidor no conoce se rechaza. `TestElCierreCalculaSusDiferenciasYTotales` es la
+que lo sostiene.
+
+### Los pagos por Nequi no son una salida de la caja
+
+La hoja tiene cinco listas, y solo cuatro restan: compras, gastos, descuentos y
+vales son `salidas`, lo que salió de la caja durante el día. La quinta, los
+pagos por Nequi, va aparte en la hoja y **no entra en ninguna resta**: su plata
+ya viene contada en lo que reporta el banco (`qr_banco`), que es parte de
+`metodos_pago`. Restarla otra vez la contaría dos veces, y un día que cuadra
+saldría descuadrado justo por el total de esa lista.
+
+La lista existe porque está en el papel y porque sirve para revisar; su total
+sale en `pagos_nequi` y en su propia columna del Excel. Lo que no hace es mover
+`salidas`, `deberia_quedar` ni `queda_diferencia`.
+
+La regla se aplica en tres sitios que tienen que decir lo mismo: la fórmula de
+`salidas` en `cierre_store.go`, el resumen por tienda en `store.go`, y la cuenta
+que `CierreForm.jsx` pinta mientras se escribe. Si alguno la cambia y los otros
+no, la pantalla muestra un día cuadrado que el servidor guarda descuadrado.
+
+### La foto usa el almacén de las facturas por una interfaz
+
+La foto de la hoja firmada y la foto de una factura son el mismo problema:
+detectar el tipo leyendo los bytes, escribir con un nombre aleatorio, no dejar
+que una ruta se salga de su carpeta. Eso ya estaba resuelto y probado en
+`movimientos.AlmacenFacturas`, y escribirlo dos veces es tener dos sitios donde
+se puede equivocar. La foto usa el mismo almacén y hereda todo lo de las
+[facturas](#facturas), incluido el orden de borrado: primero la fila, después el
+archivo.
+
+Pero `tiendas` no importa `movimientos`. Declara una interfaz pequeña,
+`Archivos`, con lo único que necesita (`Guardar`, `Abrir`, `Eliminar`) y con sus
+propios tipos y errores. Quien la cumple es un adaptador, `fotosDeCierres`, que
+vive en `cmd/api/router.go`:
+
+- No en `tiendas`, porque entonces ese paquete dependería del de los
+  movimientos solo para guardar un archivo, y arrastraría todo lo demás.
+- No en `movimientos`, porque entonces las facturas tendrían que saber que
+  existen los cierres.
+- En el router, porque es el único sitio que **ya** conoce a los dos. Ahí
+  también se traducen los errores: el cliente de un cierre no tiene por qué leer
+  que "la factura" es muy grande. Que los dos mensajes de tipo de archivo anuncien
+  los mismos formatos lo revisa `TestMensajesDeTipoDeArchivoCoinciden`.
+
+Es el patrón para la próxima vez que dos paquetes compartan una pieza: quien la
+usa declara la interfaz con lo que necesita, y el router hace el puente. Es lo
+mismo que ya pasa con el permiso del plan y con las fotos que `admin` borra al
+eliminar una cuenta: el paquete recibe una función o una interfaz y no sabe de
+dónde sale.

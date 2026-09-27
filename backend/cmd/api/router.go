@@ -241,12 +241,9 @@ func nuevoRouter(d dependencias) http.Handler {
 }
 
 // fotosDeCierres conecta el almacen de las facturas con las fotos de los
-// cierres: son el mismo problema y comparten carpeta, pero cada paquete habla
-// de lo suyo. La traduccion vive aqui, que es el unico sitio que conoce a los
-// dos, y no dentro de ninguno de ellos.
-//
-// Tambien traduce los errores: el cliente de un cierre no tiene por que leer
-// que "la factura" es muy grande.
+// cierres, y traduce sus errores: el cliente de un cierre no tiene por que
+// leer que "la factura" es muy grande. Por que vive aqui y no en ninguno de
+// los dos paquetes, en docs/decisiones.md.
 type fotosDeCierres struct{ almacen *movimientos.AlmacenFacturas }
 
 func (f fotosDeCierres) Guardar(archivo multipart.File, encabezado *multipart.FileHeader) (tiendas.ArchivoSubido, error) {
