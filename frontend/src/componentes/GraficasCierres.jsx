@@ -7,10 +7,12 @@ import { formatearFechaCorta, formatearMonto } from '../lib/formato'
 // filtras por este mes, las gráficas son de este mes. No piden nada al
 // servidor — lo que se ve es lo que hay.
 //
-// Los colores son los mismos del dinero en toda la app (verde lo que entra,
-// rojo lo que sale) y en oscuro cambian a un paso más apagado: los tonos
-// claros se despegan del fondo y dejan de distinguirse entre sí para quien no
-// ve bien los colores. Están comprobados para daltonismo en los dos temas.
+// Donde una serie es plata que entra o que sale, lleva los colores del dinero
+// (verde y rojo) y además un lugar fijo: ventas a la izquierda, lo que salió a
+// la derecha; lo que sobró arriba del cero, lo que faltó abajo. En "Por local"
+// ninguna línea es entrada ni salida, así que ahí no hay verde ni rojo: cada
+// local lleva su tono, su trazo, su forma de punto y su nombre al final de la
+// línea. Ninguna gráfica se lee solo por el color.
 
 // Una línea que dice qué muestra cada gráfica, debajo de ella.
 const PIES = {
@@ -278,14 +280,49 @@ export default function GraficasCierres({ cierres }) {
   )
 }
 
+// Más de cuatro líneas cruzándose ya no se leen, y la quinta repetiría el
+// tono y el trazo de la primera. Van los cuatro locales que más vendieron (ya
+// vienen ordenados así) y el resto junto en una línea aparte que lo dice.
+const MAX_LOCALES = 4
+
+function seriesDeLocales(tiendas) {
+  const series = tiendas.slice(0, MAX_LOCALES).map((t, i) => ({
+    id: t.id,
+    nombre: t.nombre,
+    clase: `serie-${i}`,
+    forma: i,
+    nombres: [t.nombre],
+  }))
+  const resto = tiendas.slice(MAX_LOCALES)
+  if (resto.length) {
+    series.push({
+      id: 'resto',
+      nombre: resto.length === 1 ? resto[0].nombre : `Otros ${resto.length} locales`,
+      clase: 'serie-resto',
+      forma: 'resto',
+      nombres: resto.map((t) => t.nombre),
+    })
+  }
+  return series
+}
+
+// La muestra de la leyenda es un pedazo de la misma línea, con su trazo.
+function MuestraLinea({ clase }) {
+  return (
+    <svg className={`muestra-linea ${clase}`} viewBox="0 0 24 8" aria-hidden="true">
+      <line x1="2" y1="4" x2="22" y2="4" className="linea-serie" />
+    </svg>
+  )
+}
+
 function Leyenda({ vista, tiendas }) {
   if (vista === 'local') {
     return (
       <div className="leyenda-grafica">
-        {tiendas.map((t, i) => (
-          <span key={t.id}>
-            <i className={`muestra-grafica linea serie-${i % 4}`} />
-            {t.nombre}
+        {seriesDeLocales(tiendas).map((s) => (
+          <span key={s.id}>
+            <MuestraLinea clase={s.clase} />
+            {s.nombre}
           </span>
         ))}
       </div>
@@ -415,27 +452,71 @@ function DiaADia({ dias, globoProps }) {
 
 /* ------------------------------ C: por local --------------------------- */
 
+// El punto de cada serie tiene su forma: círculo, cuadrado, rombo y
+// triángulo. Con el trazo, es la segunda señal para quien no distingue tonos.
+function Punto({ forma, x, y }) {
+  if (forma === 1) return <rect x={x - 4} y={y - 4} width="8" height="8" className="punto-serie" />
+  if (forma === 2) return <path d={`M${x} ${y - 5.5} L${x + 5.5} ${y} L${x} ${y + 5.5} L${x - 5.5} ${y} Z`} className="punto-serie" />
+  if (forma === 3) return <path d={`M${x} ${y - 5.5} L${x + 5} ${y + 4} L${x - 5} ${y + 4} Z`} className="punto-serie" />
+  return <circle cx={x} cy={y} r={forma === 'resto' ? 3 : 4.5} className="punto-serie" />
+}
+
+// Los nombres al final de las líneas no se pueden montar uno encima de otro:
+// se ordenan por altura y se separan lo justo, sin salirse del lienzo.
+function separarRotulos(rotulos, arriba, fondo, aire = 15) {
+  const orden = [...rotulos].sort((a, b) => a.y - b.y)
+  orden.forEach((r, i) => {
+    r.yRotulo = Math.max(r.y, arriba + 4, i ? orden[i - 1].yRotulo + aire : -Infinity)
+  })
+  for (let i = orden.length - 1; i >= 0; i--) {
+    const techo = i === orden.length - 1 ? fondo : orden[i + 1].yRotulo - aire
+    orden[i].yRotulo = Math.min(orden[i].yRotulo, techo)
+  }
+  return rotulos
+}
+
+// Un nombre largo no cabe en el margen: se corta con puntos suspensivos, y el
+// completo sigue en la leyenda y en el globo.
+const recortar = (texto, max = 17) => (texto.length > max ? `${texto.slice(0, max - 1)}…` : texto)
+
 function PorLocal({ dias, tiendas, globoProps }) {
-  const enX = (i, paso) => CAJA.izq + i * paso + paso / 2
-  const paso = CAJA.ancho / Math.max(dias.length, 1)
+  // A la derecha queda aire para el nombre de cada local al final de su línea.
+  const caja = { izq: 78, der: 676, arriba: 14, fondo: 248 }
+  caja.alto = caja.fondo - caja.arriba
+  caja.ancho = caja.der - caja.izq
+  const paso = caja.ancho / Math.max(dias.length, 1)
+  const enX = (i) => caja.izq + i * paso + paso / 2
 
   // Una serie por tienda, con el día en blanco cuando esa tienda no cerró:
-  // unir dos días salteados dibujaría una venta que no existió.
-  const series = tiendas.map((t) => ({
-    ...t,
+  // unir dos días salteados dibujaría una venta que no existió. La de "los
+  // demás" suma los que sí cerraron ese día.
+  const series = seriesDeLocales(tiendas).map((s) => ({
+    ...s,
     puntos: dias.map((d) => {
-      const suyo = d.tiendas.find((x) => x.nombre === t.nombre)
-      return suyo ? suyo.ventas : null
+      const suyos = d.tiendas.filter((x) => s.nombres.includes(x.nombre))
+      return suyos.length ? suyos.reduce((suma, x) => suma + x.ventas, 0) : null
     }),
   }))
 
   const esc = escala(Math.max(...series.flatMap((s) => s.puntos.map((p) => p ?? 0)), 0))
-  const enY = (v) => CAJA.fondo - (v / esc.tope) * CAJA.alto
+  const enY = (v) => caja.fondo - (v / esc.tope) * caja.alto
+
+  const rotulos = separarRotulos(
+    series
+      .map((s) => {
+        const ultimo = s.puntos.findLastIndex((v) => v !== null)
+        return ultimo < 0 ? null : { id: s.id, x: enX(ultimo), y: enY(s.puntos[ultimo]) }
+      })
+      .filter(Boolean),
+    caja.arriba,
+    caja.fondo,
+  )
+  const rotuloDe = (id) => rotulos.find((r) => r.id === id)
 
   return (
     <svg viewBox="0 0 820 300" role="group" aria-label="Ventas de cada local, día por día">
-      <EjeY escalado={esc} />
-      {series.map((s, indice) => {
+      <EjeY escalado={esc} caja={caja} />
+      {series.map((s) => {
         const tramos = []
         let tramo = []
         s.puntos.forEach((v, i) => {
@@ -443,13 +524,14 @@ function PorLocal({ dias, tiendas, globoProps }) {
             if (tramo.length) tramos.push(tramo)
             tramo = []
           } else {
-            tramo.push([enX(i, paso), enY(v)])
+            tramo.push([enX(i), enY(v)])
           }
         })
         if (tramo.length) tramos.push(tramo)
+        const rotulo = rotuloDe(s.id)
 
         return (
-          <g key={s.id} className={`serie-${indice % 4}`}>
+          <g key={s.id} className={s.clase}>
             {tramos.map((t, i) => (
               <path
                 key={i}
@@ -457,10 +539,11 @@ function PorLocal({ dias, tiendas, globoProps }) {
                 className="linea-serie"
               />
             ))}
-            {s.puntos.map((v, i) =>
-              v === null ? null : (
-                <circle key={i} cx={enX(i, paso)} cy={enY(v)} r="4.5" className="punto-serie" />
-              ),
+            {s.puntos.map((v, i) => (v === null ? null : <Punto key={i} forma={s.forma} x={enX(i)} y={enY(v)} />))}
+            {rotulo && (
+              <text x={caja.der + 12} y={rotulo.yRotulo + 4} className="rotulo-serie" aria-hidden="true">
+                {recortar(s.nombre)}
+              </text>
             )}
           </g>
         )
@@ -469,10 +552,10 @@ function PorLocal({ dias, tiendas, globoProps }) {
       {dias.map((d, i) => (
         <Zona
           key={d.fecha}
-          x={CAJA.izq + i * paso}
-          y={CAJA.arriba}
+          x={caja.izq + i * paso}
+          y={caja.arriba}
           width={paso}
-          height={CAJA.alto}
+          height={caja.alto}
           primera={i === 0}
           globoProps={globoProps}
           dato={{
@@ -481,7 +564,7 @@ function PorLocal({ dias, tiendas, globoProps }) {
           }}
         />
       ))}
-      <EjeDias dias={dias} paso={paso} />
+      <EjeDias dias={dias} paso={paso} caja={caja} />
     </svg>
   )
 }

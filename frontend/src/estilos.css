@@ -3546,22 +3546,28 @@ button.boton-factura {
 
 /* ---------- las gráficas de los cierres ---------- */
 
-/* Los colores de las series. Son los mismos del dinero en la app; en oscuro
-   bajan un paso porque los claros se despegan del fondo y dos series dejan de
-   distinguirse para quien no ve bien los colores. Comprobados para daltonismo
-   en los dos temas. */
+/* Los colores de las series de dinero. Son los mismos del dinero en la app;
+   en oscuro bajan un paso porque los claros se despegan del fondo.
+
+   Los de "Por local" son otros: ahí cada línea es un local, no una entrada ni
+   una salida, y un local en rojo parecería estar perdiendo plata. Salen de los
+   tonos fríos de los distintivos. El color no va solo: cada serie tiene
+   además su trazo y su forma de punto (abajo). */
 :root {
   --serie-ventas: var(--verde);
   --serie-gastos: var(--rojo);
   --serie-tercera: var(--color-accent-600);
-  --serie-cuarta: var(--color-neutral-600);
+  --local-1: var(--dist-1);
+  --local-2: var(--dist-3);
+  --local-3: var(--dist-5);
+  --local-4: var(--color-neutral-700);
+  --local-resto: var(--color-neutral-500);
 }
 
 [data-tema='oscuro'] {
   --serie-ventas: #1f9c79;
   --serie-gastos: #ff4451;
   --serie-tercera: #8073e6;
-  --serie-cuarta: var(--color-neutral-400);
 }
 
 .tabs-grafica {
@@ -3640,6 +3646,8 @@ button.boton-factura {
 
 .linea-serie {
   fill: none;
+  stroke: var(--tono-serie);
+  stroke-dasharray: var(--trazo-serie, none);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -3648,33 +3656,42 @@ button.boton-factura {
 /* El aro del color de la tarjeta donde dos líneas se cruzan: sin él, en el
    cruce no se sabe cuál va por encima. */
 .punto-serie {
+  fill: var(--tono-serie);
   stroke: var(--color-surface);
   stroke-width: 2;
 }
 
-.serie-0 .linea-serie {
-  stroke: var(--serie-ventas);
+/* Cada local: su tono, su trazo y (en el JSX) su forma de punto. Pasada a
+   escala de grises la gráfica se sigue leyendo. */
+.serie-0 {
+  --tono-serie: var(--local-1);
 }
-.serie-0 .punto-serie {
-  fill: var(--serie-ventas);
+.serie-1 {
+  --tono-serie: var(--local-2);
+  --trazo-serie: 8 4;
 }
-.serie-1 .linea-serie {
-  stroke: var(--serie-tercera);
+.serie-2 {
+  --tono-serie: var(--local-3);
+  --trazo-serie: 2 4;
 }
-.serie-1 .punto-serie {
-  fill: var(--serie-tercera);
+.serie-3 {
+  --tono-serie: var(--local-4);
+  --trazo-serie: 12 3 2 3;
 }
-.serie-2 .linea-serie {
-  stroke: var(--serie-gastos);
+/* Los demás locales juntos: más delgada y gris, para que no compita. */
+.serie-resto {
+  --tono-serie: var(--local-resto);
+  --trazo-serie: 1 3;
 }
-.serie-2 .punto-serie {
-  fill: var(--serie-gastos);
+.serie-resto .linea-serie {
+  stroke-width: 1.5;
 }
-.serie-3 .linea-serie {
-  stroke: var(--serie-cuarta);
-}
-.serie-3 .punto-serie {
-  fill: var(--serie-cuarta);
+
+/* El nombre al final de la línea: con él no hace falta ir a la leyenda. */
+.rotulo-serie {
+  fill: var(--tono-serie);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* La zona sensible es del ancho de la columna: acertarle a una barra de 9px
@@ -3721,25 +3738,24 @@ button.boton-factura {
   display: inline-block;
 }
 
-.muestra-grafica.linea {
-  height: 3px;
-  border-radius: 2px;
-}
-
-.muestra-grafica.ventas,
-.muestra-grafica.serie-0 {
+.muestra-grafica.ventas {
   background: var(--serie-ventas);
 }
-.muestra-grafica.gastos,
-.muestra-grafica.serie-2 {
+.muestra-grafica.gastos {
   background: var(--serie-gastos);
 }
-.muestra-grafica.tercera,
-.muestra-grafica.serie-1 {
+.muestra-grafica.tercera {
   background: var(--serie-tercera);
 }
-.muestra-grafica.serie-3 {
-  background: var(--serie-cuarta);
+
+/* La muestra de "Por local" es un pedazo de la línea, con su mismo trazo. */
+.muestra-linea {
+  width: 24px;
+  height: 8px;
+  flex: none;
+}
+.muestra-linea .linea-serie {
+  stroke-width: 2.5;
 }
 
 /* El globo del cursor. Va fijo a la pantalla: dentro del SVG tendría que
