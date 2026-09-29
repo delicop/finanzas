@@ -25,6 +25,7 @@ import (
 	"finanzas/internal/medios"
 	"finanzas/internal/movimientos"
 	"finanzas/internal/recurrentes"
+	"finanzas/internal/suscripciones"
 )
 
 // Estas pruebas corren contra un Postgres DE VERDAD, porque lo que se está
@@ -175,7 +176,11 @@ func nuevoEntorno(t *testing.T, limiteDiario int) *entorno {
 		store:       store,
 		recurrentes: recurrentesStore,
 		proveedor:   proveedor,
-		handler:     agente.NewHandler(store, proveedor, catalogo, limiteDiario, auth.NewStore(pool).TieneIA),
+		handler: agente.NewHandler(store, proveedor, catalogo, limiteDiario,
+			func(ctx context.Context, id int64) (bool, error) {
+				c, err := suscripciones.NewStore(pool).DelUsuario(ctx, id)
+				return c.IA, err
+			}),
 		movimientos: movimientosStore,
 		categoria:   categoria.ID,
 		efectivo:    efectivo.ID,

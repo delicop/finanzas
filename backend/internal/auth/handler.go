@@ -15,13 +15,30 @@ import (
 type Handler struct {
 	store    *Store
 	tokens   *TokenManager
+	casillas CasillasDePlan
 	limitado *limitador
 }
 
-func NewHandler(store *Store, tokens *TokenManager) *Handler {
+// Casillas son las secciones del plan de un usuario que la ficha necesita
+// mostrar.
+type Casillas struct {
+	IA      bool
+	Tiendas bool
+}
+
+// CasillasDePlan responde por las casillas del plan de un usuario. En la app
+// es suscripciones.Store.DelUsuario: auth no sabe de planes, solo pregunta.
+//
+// Es una funcion y no el store entero, igual que tiendas.Handler recibe
+// Permiso (tiendas/handler.go), para que este paquete no dependa de como se
+// venden los planes y las pruebas puedan pasar una propia.
+type CasillasDePlan func(ctx context.Context, usuarioID int64) (Casillas, error)
+
+func NewHandler(store *Store, tokens *TokenManager, casillas CasillasDePlan) *Handler {
 	return &Handler{
-		store:  store,
-		tokens: tokens,
+		store:    store,
+		tokens:   tokens,
+		casillas: casillas,
 		// 10 intentos fallidos por IP cada 15 minutos. Suficiente margen para
 		// quien se equivoca tecleando, y letal para un script de fuerza bruta
 		// (960 intentos por dia contra un bcrypt de costo 12).
@@ -75,16 +92,12 @@ type usuarioJSON struct {
 
 // fichaDe arma lo que el frontend sabe de su usuario.
 func (h *Handler) fichaDe(ctx context.Context, u *Usuario) (usuarioJSON, error) {
-	ia, err := h.store.TieneIA(ctx, u.ID)
-	if err != nil {
-		return usuarioJSON{}, err
-	}
-	tiendas, err := h.store.TieneTiendas(ctx, u.ID)
+	c, err := h.casillas(ctx, u.ID)
 	if err != nil {
 		return usuarioJSON{}, err
 	}
 	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol,
-		IA: ia, Tiendas: tiendas}, nil
+		IA: c.IA, Tiendas: c.Tiendas}, nil
 }
 
 // POST /api/auth/login

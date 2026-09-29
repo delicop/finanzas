@@ -325,16 +325,15 @@ func TestNoSeQuitaElAnualSiAlguienLoPaga(t *testing.T) {
 func TestLaIASaleDelPlan(t *testing.T) {
 	e := nuevoEntorno(t)
 	ctx := context.Background()
-	usuarios := auth.NewStore(e.pool)
 
-	if ia, err := usuarios.TieneIA(ctx, e.cliente); err != nil || ia {
-		t.Fatalf("sin plan: ia=%v err=%v, se esperaba false", ia, err)
+	if c, err := e.store.DelUsuario(ctx, e.cliente); err != nil || c.IA {
+		t.Fatalf("sin plan: ia=%v err=%v, se esperaba false", c.IA, err)
 	}
 
 	pro := e.crearPlan(t, suscripciones.DatosPlan{Nombre: "Pro", PrecioMensual: "20000", IncluyeIA: true})
 	e.asignar(t, pro.ID, suscripciones.CicloMensual)
-	if ia, _ := usuarios.TieneIA(ctx, e.cliente); !ia {
-		t.Error("con un plan con IA, TieneIA dio false")
+	if c, _ := e.store.DelUsuario(ctx, e.cliente); !c.IA {
+		t.Error("con un plan con IA, DelUsuario dio ia=false")
 	}
 
 	if _, err := e.store.ActualizarPlan(ctx, pro.ID, suscripciones.DatosPlan{
@@ -342,8 +341,8 @@ func TestLaIASaleDelPlan(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("quitando la IA: %v", err)
 	}
-	if ia, _ := usuarios.TieneIA(ctx, e.cliente); ia {
-		t.Error("tras quitarle la IA al plan, TieneIA sigue en true")
+	if c, _ := e.store.DelUsuario(ctx, e.cliente); c.IA {
+		t.Error("tras quitarle la IA al plan, DelUsuario sigue con ia=true")
 	}
 }
 

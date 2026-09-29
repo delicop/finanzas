@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"mime/multipart"
@@ -98,7 +99,14 @@ func nuevoRouter(d dependencias) http.Handler {
 	// Nada de variables globales: asi cada pieza es testeable por separado.
 	authStore := auth.NewStore(pool)
 	tokens := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTExpiry)
-	authHandler := auth.NewHandler(authStore, tokens)
+	// El lado negocio (planes, cobros, el tablero del dueno) se construye aqui
+	// arriba porque auth tambien lo necesita: la ficha de /me pregunta por las
+	// casillas del plan, y quien las responde es suscripciones, no auth.
+	suscripcionesStore := suscripciones.NewStore(pool)
+	authHandler := auth.NewHandler(authStore, tokens, func(ctx context.Context, id int64) (auth.Casillas, error) {
+		c, err := suscripcionesStore.DelUsuario(ctx, id)
+		return auth.Casillas{IA: c.IA, Tiendas: c.Tiendas}, err
+	})
 
 	mediosStore := medios.NewStore(pool)
 	categoriasStore := categorias.NewStore(pool)
@@ -133,20 +141,26 @@ func nuevoRouter(d dependencias) http.Handler {
 			// en dos.
 			ConRecurrentes(d.recurrentes, recurrentes.NuevoConfirmador(d.recurrentes, movimientosStore))
 		// El permiso es el plan del cliente: sin IA en el plan, no hay chat.
-		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario, authStore.TieneIA)
+		agenteHandler = agente.NewHandler(d.agente, d.proveedor, catalogo, cfg.LLM.LimiteDiario,
+			func(ctx context.Context, id int64) (bool, error) {
+				c, err := suscripcionesStore.DelUsuario(ctx, id)
+				return c.IA, err
+			})
 	}
 
 	// Las tiendas son una seccion que se vende: el handler recibe el permiso
 	// (el plan del cliente) igual que el del asistente, y sin el no deja pasar
 	// a nadie.
-	tiendasHandler := tiendas.NewHandler(tiendasStore, authStore.TieneTiendas,
-		fotosDeCierres{d.almacen})
+	tiendasHandler := tiendas.NewHandler(tiendasStore, func(ctx context.Context, id int64) (bool, error) {
+		c, err := suscripcionesStore.DelUsuario(ctx, id)
+		return c.Tiendas, err
+	}, fotosDeCierres{d.almacen})
 
 	avisosHandler := avisos.NewHandler(d.avisos)
 
 	// El lado negocio: planes, cobros y el tablero del dueno. Va bajo /admin
 	// porque es lo mismo que administrar el servidor, no una seccion aparte.
-	negocioHandler := suscripciones.NewHandler(suscripciones.NewStore(pool))
+	negocioHandler := suscripciones.NewHandler(suscripcionesStore)
 
 	// --- Rutas ---
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {

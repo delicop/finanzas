@@ -98,6 +98,12 @@ type ResumenPlan struct {
 	Cobrado     string `json:"cobrado"`
 }
 
+// CasillasDePlan son las secciones que el plan de un cliente incluye.
+type CasillasDePlan struct {
+	IA      bool
+	Tiendas bool
+}
+
 var (
 	ErrNoEncontrado    = errors.New("no encontrado")
 	ErrNombreDuplicado = errors.New("ya existe un plan con ese nombre")

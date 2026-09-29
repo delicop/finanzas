@@ -27,8 +27,9 @@ type Handler struct {
 	permiso Permiso
 }
 
-// Permiso responde si un usuario puede usar el asistente. En la app es
-// auth.Store.TieneIA: el plan del cliente lo incluye o no.
+// Permiso responde si un usuario puede usar el asistente. En la app se arma
+// en router.go a partir de suscripciones.Store.DelUsuario: el plan del
+// cliente lo incluye o no.
 //
 // Es una funcion y no el store entero para que este paquete no dependa de
 // como se venden los planes, y para que las pruebas puedan pasar una propia.

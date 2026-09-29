@@ -294,6 +294,27 @@ func (s *Store) ListarPagos(ctx context.Context, periodo string) ([]Pago, error)
 	return lista, nil
 }
 
+// DelUsuario responde por todas las casillas del plan de un usuario en una
+// sola consulta: quien pregunta casi siempre las necesita todas a la vez (la
+// ficha de /me), y son dos columnas de la misma fila.
+func (s *Store) DelUsuario(ctx context.Context, usuarioID int64) (CasillasDePlan, error) {
+	const q = `
+		SELECT coalesce(p.incluye_ia, false), coalesce(p.incluye_tiendas, false)
+		FROM usuarios u
+		LEFT JOIN planes p ON p.id = u.plan_id
+		WHERE u.id = $1`
+
+	var c CasillasDePlan
+	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&c.IA, &c.Tiendas)
+	if errors.Is(err, sql.ErrNoRows) {
+		return CasillasDePlan{}, nil
+	}
+	if err != nil {
+		return CasillasDePlan{}, fmt.Errorf("consultando las casillas del plan: %w", err)
+	}
+	return c, nil
+}
+
 /* ----------------------------- resumen ---------------------------------- */
 
 // Resumen arma el tablero del negocio para un mes.
