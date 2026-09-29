@@ -28,6 +28,11 @@ const (
 	GrupoVale      = "vale"
 )
 
+// MaxLineasCierre: el tope de renglones de una hoja, sumando las cinco
+// listas. La de papel tiene doce; cien deja sitio de sobra para un dia
+// raro y le pone un techo a lo que una peticion puede pedirle a la base.
+const MaxLineasCierre = 100
+
 // Grupos son los cinco en una lista, para que GrupoValido y la prueba que la
 // compara con el CHECK (TestLosGruposDeGoYLosDeLaBaseSonLosMismos) lean la
 // misma y no cada una su copia.

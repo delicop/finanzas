@@ -35,7 +35,7 @@ func (s *Store) Listar(ctx context.Context, usuarioID int64) ([]Tienda, error) {
 		       count(c.id),
 		       max(c.fecha)
 		FROM tiendas t
-		LEFT JOIN cierres c ON c.tienda_id = t.id
+		LEFT JOIN cierres c ON c.tienda_id = t.id AND c.usuario_id = t.usuario_id
 		LEFT JOIN LATERAL (
 			SELECT coalesce(sum(monto) FILTER (
 			           WHERE grupo IN ('compra', 'gasto', 'descuento', 'vale')

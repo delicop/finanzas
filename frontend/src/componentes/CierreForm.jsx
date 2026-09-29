@@ -388,6 +388,8 @@ export default function CierreForm({ tiendas, tiendaID, cierre, onCerrar, onGuar
           <FilaCalculada etiqueta="Diferencia" valor={ventaDiferencia} alerta />
         </Bloque>
 
+        {campos.lineas && <div className="alerta">{campos.lineas}</div>}
+
         {LISTAS.map(([grupo, titulo]) => (
           <Bloque key={grupo} titulo={titulo}>
             {listas[grupo].map((fila, i) => (

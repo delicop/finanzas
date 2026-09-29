@@ -63,18 +63,21 @@ type entorno struct {
 func nuevoEntorno(t *testing.T) *entorno {
 	t.Helper()
 	pool := abrirBasePrueba(t)
-	authStore := auth.NewStore(pool)
+	plan := suscripciones.NewStore(pool)
 	// El mismo permiso que monta el router de verdad: el plan del cliente. El
 	// almacen de las fotos es una carpeta temporal que Go borra al terminar:
 	// la prueba escribe archivos de verdad sin ensuciar nada.
 	almacen := almacenTemporal{t.TempDir()}
-	handler := tiendas.NewHandler(tiendas.NewStore(pool), authStore.TieneTiendas, almacen)
+	handler := tiendas.NewHandler(tiendas.NewStore(pool), func(ctx context.Context, id int64) (bool, error) {
+		c, err := plan.DelUsuario(ctx, id)
+		return c.Tiendas, err
+	}, almacen)
 	return &entorno{
 		pool:    pool,
 		handler: handler,
 		rutas:   handler.Rutas(),
 		admin:   admin.NewStore(pool),
-		plan:    suscripciones.NewStore(pool),
+		plan:    plan,
 		almacen: almacen,
 	}
 }

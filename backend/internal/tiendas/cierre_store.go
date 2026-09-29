@@ -345,15 +345,33 @@ func (s *Store) ActualizarCierre(ctx context.Context, usuarioID, tiendaID, id in
 	return s.CierrePorID(ctx, usuarioID, tiendaID, id)
 }
 
+// guardarLineas inserta todos los renglones en una sola sentencia con
+// unnest, en vez de un ExecContext por renglon: con el tope de
+// MaxLineasCierre eso podian ser cien idas y vueltas a Postgres dentro de
+// una misma transaccion.
 func guardarLineas(ctx context.Context, tx *sql.Tx, cierreID int64, lineas []Linea) error {
+	if len(lineas) == 0 {
+		return nil
+	}
+
 	const q = `
 		INSERT INTO cierre_lineas (cierre_id, grupo, descripcion, monto, orden)
-		VALUES ($1, $2, $3, $4::numeric, $5)`
+		SELECT $1, g, d, m::numeric, o
+		FROM unnest($2::text[], $3::text[], $4::text[], $5::int[]) AS t(g, d, m, o)`
 
+	grupos := make([]string, len(lineas))
+	descripciones := make([]string, len(lineas))
+	montos := make([]string, len(lineas))
+	orden := make([]int32, len(lineas))
 	for i, l := range lineas {
-		if _, err := tx.ExecContext(ctx, q, cierreID, l.Grupo, l.Descripcion, l.Monto, i); err != nil {
-			return fmt.Errorf("guardando la linea %q del cierre: %w", l.Descripcion, err)
-		}
+		grupos[i] = l.Grupo
+		descripciones[i] = l.Descripcion
+		montos[i] = l.Monto
+		orden[i] = int32(i)
+	}
+
+	if _, err := tx.ExecContext(ctx, q, cierreID, grupos, descripciones, montos, orden); err != nil {
+		return fmt.Errorf("guardando las lineas del cierre: %w", err)
 	}
 	return nil
 }

@@ -21,8 +21,9 @@ type Handler struct {
 	archivos Archivos
 }
 
-// Permiso responde si un usuario puede usar las tiendas. En la app es
-// auth.Store.TieneTiendas: el plan del cliente las incluye o no.
+// Permiso responde si un usuario puede usar las tiendas. En la app se arma
+// en router.go a partir de suscripciones.Store.DelUsuario: el plan del
+// cliente las incluye o no.
 //
 // Es una funcion y no el store entero, igual que en el agente, para que este
 // paquete no dependa de como se venden los planes y para que las pruebas

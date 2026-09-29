@@ -1,6 +1,7 @@
 package tiendas_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -199,8 +200,12 @@ func TestUnRenglonConMontoYSinNombreRechazaLaHoja(t *testing.T) {
 		t.Errorf("el error no señala el renglon: campos = %v", respuesta.Campos)
 	}
 
-	// Y no quedo media hoja guardada: la lista de la tienda sigue vacia.
-	w = e.pedir(t, ana, "GET", ruta, "")
+	// Y no quedo media hoja guardada: el listado (que vive en /api/cierres,
+	// no colgado de la tienda) sigue vacio.
+	w = e.pedirEn(t, e.rutasTodos(), ana, "GET", "/", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("listando los cierres: status = %d, cuerpo %s", w.Code, w.Body)
+	}
 	var lista []tiendas.Cierre
 	if err := json.Unmarshal(w.Body.Bytes(), &lista); err != nil {
 		t.Fatalf("listando los cierres: %v", err)
@@ -357,6 +362,90 @@ func TestEditarReemplazaLaHojaEntera(t *testing.T) {
 	}
 	if editado.Responsable != "Beto" {
 		t.Errorf("responsable = %q, se esperaba Beto", editado.Responsable)
+	}
+}
+
+// hojaConRenglones arma una hoja con n renglones, todos del mismo grupo y con
+// una descripcion que delata su posicion, para poder comprobar despues que
+// llegaron completos y en orden.
+func hojaConRenglones(n int) string {
+	lineas := make([]string, n)
+	for i := range lineas {
+		lineas[i] = fmt.Sprintf(`{"grupo":"gasto","descripcion":"Gasto %03d","monto":"1000"}`, i)
+	}
+	return fmt.Sprintf(`{
+		"fecha": "2026-09-20", "responsable": "Ana",
+		"qr_banco": "0", "qr_tienda": "0",
+		"datafono_reporte": "0", "datafono_tienda": "0",
+		"efectivo_billete": "0", "efectivo_moneda": "0", "efectivo_tienda": "0",
+		"venta_tienda": "0", "novedades": "",
+		"lineas": [%s]
+	}`, strings.Join(lineas, ","))
+}
+
+// El tope de renglones existe para que nadie mande una hoja de veinte mil:
+// pasado el limite, la hoja entera se rechaza senalando el campo "lineas".
+func TestUnaHojaConMasDeCienRenglonesSeRechaza(t *testing.T) {
+	e := nuevoEntorno(t)
+	ana := e.crearCliente(t)
+	e.conPlan(t, ana, true)
+	tienda := e.crearTienda(t, ana, "centro")
+
+	w := e.pedir(t, ana, "POST", fmt.Sprintf("/%d/cierres", tienda), hojaConRenglones(101))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("101 renglones: status = %d, se esperaba 422, cuerpo %s", w.Code, w.Body)
+	}
+	var respuesta struct {
+		Campos map[string]string `json:"campos"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &respuesta); err != nil {
+		t.Fatalf("leyendo el error: %v", err)
+	}
+	if respuesta.Campos["lineas"] == "" {
+		t.Errorf("el error no señala el campo lineas: campos = %v", respuesta.Campos)
+	}
+}
+
+// Justo en el tope, la hoja se guarda entera y en el mismo orden en que se
+// escribio: es lo que protege el cambio a una sola sentencia con unnest.
+func TestUnaHojaConCienRenglonesSeGuardaEnOrden(t *testing.T) {
+	e := nuevoEntorno(t)
+	ana := e.crearCliente(t)
+	e.conPlan(t, ana, true)
+	tienda := e.crearTienda(t, ana, "centro")
+
+	c := e.crearCierre(t, ana, tienda, hojaConRenglones(100))
+	if len(c.Lineas) != 100 {
+		t.Fatalf("quedaron %d líneas, se esperaban 100", len(c.Lineas))
+	}
+	for i, l := range c.Lineas {
+		esperada := fmt.Sprintf("Gasto %03d", i)
+		if l.Descripcion != esperada {
+			t.Errorf("línea %d = %q, se esperaba %q", i, l.Descripcion, esperada)
+		}
+	}
+}
+
+// El cierre y su tienda tienen que ser de la MISMA cuenta. La llave compuesta
+// de la migracion 29 lo garantiza en la base y no solo en la CTE que inserta:
+// un UPDATE a mano o un bug futuro no podrian cruzarlos.
+func TestUnCierreNoPuedeQuedarDeUnaTiendaDeOtroUsuario(t *testing.T) {
+	e := nuevoEntorno(t)
+	ana := e.crearCliente(t)
+	beto := e.crearCliente(t)
+	e.conPlan(t, ana, true)
+	e.conPlan(t, beto, true)
+
+	tiendaDeBeto := e.crearTienda(t, beto, "centro")
+
+	// Se salta el store a proposito, como hace un INSERT a mano por psql: es
+	// el caso que decisiones.md usa para justificar los CHECK de los
+	// prestamos, y aqui es la base la que tiene que rechazarlo.
+	_, err := e.pool.ExecContext(context.Background(), `
+		INSERT INTO cierres (usuario_id, tienda_id, fecha, venta_tienda)
+		VALUES ($1, $2, '2026-09-20', 0)`, ana, tiendaDeBeto)
+	if err == nil {
+		t.Fatal("se pudo crear un cierre de Ana colgado de una tienda de Beto")
 	}
 }
 

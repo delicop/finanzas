@@ -200,6 +200,11 @@ func (req *cierreRequest) valida() (DatosCierre, map[string]string) {
 		*c.destino = normalizarMonto(v, c.campo, c.origen)
 	}
 
+	if len(req.Lineas) > MaxLineasCierre {
+		v.Check(false, "lineas", fmt.Sprintf("Una hoja no puede tener más de %d renglones", MaxLineasCierre))
+		return DatosCierre{}, v.Campos
+	}
+
 	// El campo del error se nombra por grupo y posicion dentro del grupo, no por
 	// el indice del arreglo: asi la pantalla lo encuentra en su lista sin tener
 	// que reconstruir en que orden se aplanaron las cinco.
