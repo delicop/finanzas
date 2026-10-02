@@ -1,0 +1,67 @@
+# La app en un servidor con IP pública (VPS). Se suma al compose de siempre:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Para no escribir los dos -f cada vez, en el .env del servidor:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#
+# Qué cambia frente a desarrollo:
+#
+#  - El frontend es el build estático servido por nginx (target: prod), sin
+#    Node ni hot-reload.
+#  - Lo único abierto a internet es el proxy (80 y 443). Postgres, la API y
+#    nginx quedan en la red interna de Docker. Ojo: un puerto publicado por
+#    Docker se salta a ufw, así que cerrarlo en el firewall no alcanza; por eso
+#    se quitan de aquí.
+#  - Todo sale por una sola dirección: el proxy manda /api y /uploads al
+#    backend y el resto al frontend. Sin CORS y sin mezclar https con http.
+#
+# SITIO (en el .env) decide cómo escucha el proxy:
+#
+#   SITIO=:80                 solo la IP, por HTTP. La contraseña viaja sin
+#                             cifrar y la app no se puede instalar en el celular.
+#   SITIO=finanzas.midominio.com
+#                             Caddy pide el certificado solo (Let's Encrypt) y
+#                             renueva. El dominio tiene que apuntar ya a la IP.
+
+services:
+  db:
+    ports: !reset []
+
+  backend:
+    ports: !reset []
+
+  frontend:
+    build:
+      target: prod
+      args:
+        # Vacío = la app llama a "/api" en la misma dirección desde la que se
+        # abrió, y el proxy lo lleva al backend. Sirve igual con IP o dominio.
+        VITE_API_URL: ''
+    ports: !reset []
+    # Sin el código montado: la imagen ya trae el build adentro.
+    volumes: !reset []
+
+  proxy:
+    image: caddy:2-alpine
+    container_name: finanzas-proxy
+    restart: unless-stopped
+    environment:
+      SITIO: ${SITIO:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Aquí guarda Caddy los certificados. Sin el volumen los pediría de nuevo
+      # en cada reinicio y Let's Encrypt termina bloqueando por exceso.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  caddy_data:
+  caddy_config:

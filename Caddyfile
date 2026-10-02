@@ -1,0 +1,16 @@
+# El proxy de producción (docker-compose.prod.yml).
+#
+# SITIO sale del .env: ":80" para entrar por la IP sin certificado, o el
+# dominio para que Caddy saque el certificado solo.
+#
+# Caddy ya envía X-Forwarded-For al backend; el límite de intentos de login lo
+# usa para ver la IP real del cliente y no la del proxy.
+
+{$SITIO::80} {
+	encode gzip
+
+	@api path /api/* /uploads/* /health
+	reverse_proxy @api backend:8080
+
+	reverse_proxy frontend:80
+}
