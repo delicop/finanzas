@@ -191,6 +191,9 @@ export const authApi = {
   me: () => apiFetch('/api/auth/me'),
   cambiarPassword: (actual, nueva) =>
     apiFetch('/api/auth/password', { metodo: 'POST', body: { actual, nueva } }),
+  // "Ya vi la guía, no la vuelvas a abrir sola". Se guarda en el servidor para
+  // que valga en todos los aparatos de esa persona.
+  marcarGuiaVista: () => apiFetch('/api/auth/guia-vista', { metodo: 'POST' }),
 }
 
 export const categoriasApi = {

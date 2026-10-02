@@ -57,6 +57,7 @@ func (h *Handler) Rutas() chi.Router {
 		priv.Use(RequireAuth(h.tokens, h.store))
 		priv.Get("/me", h.Me)
 		priv.Post("/password", h.CambiarPassword)
+		priv.Post("/guia-vista", h.MarcarGuiaVista)
 	})
 
 	return r
@@ -88,6 +89,9 @@ type usuarioJSON struct {
 	// Si su plan incluye la sección de tiendas. Igual que IA: esto solo
 	// decide qué se dibuja, la puerta la cuida el backend en cada petición.
 	Tiendas bool `json:"tiendas"`
+	// Si ya vio la guia de bienvenida. Con esto la app sabe si abrirla sola,
+	// sin depender del navegador desde el que entre.
+	GuiaVista bool `json:"guia_vista"`
 }
 
 // fichaDe arma lo que el frontend sabe de su usuario.
@@ -96,8 +100,42 @@ func (h *Handler) fichaDe(ctx context.Context, u *Usuario) (usuarioJSON, error) 
 	if err != nil {
 		return usuarioJSON{}, err
 	}
-	return usuarioJSON{ID: u.ID, Email: u.Email, Nombre: u.Nombre, Rol: u.Rol,
-		IA: c.IA, Tiendas: c.Tiendas}, nil
+	guiaVista, err := h.store.GuiaVista(ctx, u.ID)
+	if err != nil {
+		return usuarioJSON{}, err
+	}
+	return usuarioJSON{
+		ID:        u.ID,
+		Email:     u.Email,
+		Nombre:    u.Nombre,
+		Rol:       u.Rol,
+		IA:        c.IA,
+		Tiendas:   c.Tiendas,
+		GuiaVista: guiaVista,
+	}, nil
+}
+
+// POST /api/auth/guia-vista
+//
+// "No me la vuelvas a mostrar". No recibe cuerpo ni se puede deshacer desde la
+// app: la guia sigue estando a un toque del boton de ayuda, asi que no hace
+// falta una forma de volver a pedir que se abra sola.
+//
+// Un admin observando otra cuenta no llega aqui: VerComo rechaza cualquier
+// metodo que no sea GET mientras va la cabecera.
+func (h *Handler) MarcarGuiaVista(w http.ResponseWriter, r *http.Request) {
+	usuarioID, ok := httpx.UsuarioID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "No autenticado")
+		return
+	}
+
+	if err := h.store.MarcarGuiaVista(r.Context(), usuarioID); err != nil {
+		httpx.ErrorInterno(w, r, err, "guia-vista: marcando")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // POST /api/auth/login

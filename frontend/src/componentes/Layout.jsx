@@ -10,7 +10,7 @@ import AvisosCelular from './AvisosCelular'
 import InstalarApp, { AvisoSinConexion } from './InstalarApp'
 import ModalPassword from './ModalPassword'
 import Notificaciones from './Notificaciones'
-import Tutorial, { marcarTutorialVisto, tutorialVisto } from './Tutorial'
+import Tutorial from './Tutorial'
 import { useAlAbrirTutorial } from '../lib/eventos'
 import Icono from './Icono'
 
@@ -43,7 +43,17 @@ const SECCIONES_ADMIN = [
 ]
 
 export default function Layout({ children }) {
-  const { usuario, logout, esAdmin, verComo, dejarDeObservar, conIA, conTiendas } = useAuth()
+  const {
+    usuario,
+    logout,
+    esAdmin,
+    verComo,
+    dejarDeObservar,
+    conIA,
+    conTiendas,
+    guiaVista,
+    marcarGuiaVista,
+  } = useAuth()
   const { tema, alternar } = useTema()
   const esMovil = useEsMovil()
   const enLinea = useEnLinea()
@@ -54,17 +64,17 @@ export default function Layout({ children }) {
   // La guía solo es para quien lleva finanzas propias: el admin sin observar
   // no tiene categorías ni medios, y observando no puede crear nada.
   const conGuia = !esAdmin && !verComo
-  // La primera vez que alguien entra, la guía se abre sola. Después, con el
-  // botón de ayuda o desde los primeros pasos del Resumen.
-  const [viendoTutorial, setViendoTutorial] = useState(
-    () => conGuia && !tutorialVisto(usuario.id),
-  )
-  useAlAbrirTutorial(() => setViendoTutorial(true))
+  // Quién la pidió: 'automatico' cuando se abrió sola al entrar (y entonces
+  // trae el chulito de "no volver a mostrarla"), 'manual' con el botón de
+  // ayuda, null cerrada. Que se abra sola lo decide el SERVIDOR, no el
+  // navegador: así no vuelve a salir en el celular después de verla en el
+  // computador.
+  const [tutorial, setTutorial] = useState(null)
+  useAlAbrirTutorial(() => setTutorial('manual'))
 
-  function cerrarTutorial() {
-    marcarTutorialVisto(usuario.id)
-    setViendoTutorial(false)
-  }
+  useEffect(() => {
+    if (conGuia && !guiaVista) setTutorial('automatico')
+  }, [conGuia, guiaVista])
 
   // El contador de la campana. Se consulta al entrar y cada cinco minutos:
   // los avisos los genera una tarea del servidor cada varias horas, así que
@@ -155,7 +165,7 @@ export default function Layout({ children }) {
           {conGuia && !esMovil && (
             <button
               className="boton-tema"
-              onClick={() => setViendoTutorial(true)}
+              onClick={() => setTutorial('manual')}
               title="Cómo funciona"
               aria-label="Cómo funciona"
             >
@@ -250,7 +260,14 @@ export default function Layout({ children }) {
           Solo si el plan lo incluye (conIA ya es falso mirando otra cuenta). */}
       {conIA && <BurbujaAsistente />}
 
-      {viendoTutorial && conGuia && <Tutorial conIA={conIA} onCerrar={cerrarTutorial} />}
+      {tutorial && conGuia && (
+        <Tutorial
+          conIA={conIA}
+          automatico={tutorial === 'automatico'}
+          onNoMostrarMas={marcarGuiaVista}
+          onCerrar={() => setTutorial(null)}
+        />
+      )}
 
       {cambiandoPassword && <ModalPassword onCerrar={() => setCambiandoPassword(false)} />}
 

@@ -4910,3 +4910,20 @@ div.con-distintivo {
   align-items: center;
   gap: var(--space-3);
 }
+
+/* El chulito de "no volver a mostrarla", solo cuando la guía se abrió sola. */
+.tutorial-no-mostrar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  color: var(--tenue);
+  cursor: pointer;
+}
+
+.tutorial-no-mostrar input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}

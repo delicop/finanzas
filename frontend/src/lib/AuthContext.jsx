@@ -41,6 +41,14 @@ export function AuthProvider({ children }) {
     setUsuario(null)
   }, [])
 
+  // "No volver a mostrar la guía". Se anota en el servidor y, sin esperar la
+  // respuesta, también aquí: si la petición falla (sin señal), lo peor que
+  // pasa es que la guía vuelva a salir la próxima vez.
+  const marcarGuiaVista = useCallback(() => {
+    setUsuario((u) => (u ? { ...u, guia_vista: true } : u))
+    authApi.marcarGuiaVista().catch(() => {})
+  }, [])
+
   const observar = useCallback((objetivo) => {
     verComoStorage.set(objetivo)
     setVerComo(objetivo)
@@ -71,10 +79,14 @@ export function AuthProvider({ children }) {
       // cliente manda el plan de ÉL, que es de quien son las tiendas que se
       // verían: el backend ya responde por esa cuenta, no por la del admin.
       conTiendas: verComo ? verComo.plan_tiendas === true : usuario?.tiendas === true,
+      // Si ya vio la guía de bienvenida. Lo dice el servidor (/me), así que
+      // vale en cualquier navegador y aparato suyo.
+      guiaVista: usuario?.guia_vista === true,
+      marcarGuiaVista,
       observar,
       dejarDeObservar,
     }),
-    [usuario, cargando, login, logout, verComo, observar, dejarDeObservar],
+    [usuario, cargando, login, logout, verComo, marcarGuiaVista, observar, dejarDeObservar],
   )
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>

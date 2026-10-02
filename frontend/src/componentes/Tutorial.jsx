@@ -14,26 +14,10 @@ import { useEsMovil } from '../lib/useEsMovil'
 //
 // Cada paso trae el botón que lleva a la sección de la que habla: leer y
 // después tener que buscar dónde se hace es justo como la gente se pierde.
-
-const CLAVE = 'finanzas:tutorial-visto:'
-
-// Guardado por usuario y en este navegador. Si el almacenamiento falla (modo
-// privado, datos borrados) lo peor que pasa es que la guía vuelva a salir.
-export function tutorialVisto(usuarioID) {
-  try {
-    return localStorage.getItem(CLAVE + usuarioID) === '1'
-  } catch {
-    return true
-  }
-}
-
-export function marcarTutorialVisto(usuarioID) {
-  try {
-    localStorage.setItem(CLAVE + usuarioID, '1')
-  } catch {
-    // Sin almacenamiento no hay cómo recordarlo; no es grave.
-  }
-}
+//
+// Cuando se abre sola trae el chulito "No volver a mostrarla", marcado. Quien
+// la cierre así no la vuelve a ver sin pedirla, en ningún aparato: eso se
+// guarda en el servidor (ver onNoMostrarMas), no en el navegador.
 
 // Las cinco formas en que se mueve la plata, con un ejemplo de cada una.
 // Los nombres son los mismos del formulario (MovimientoForm).
@@ -75,14 +59,25 @@ const TIPOS = [
   },
 ]
 
-export default function Tutorial({ conIA, onCerrar }) {
+export default function Tutorial({ conIA, automatico = false, onNoMostrarMas, onCerrar }) {
   const [paso, setPaso] = useState(0)
+  // Marcado de entrada: lo normal es verla una vez. Quien quiera volver a
+  // encontrarla abierta mañana lo desmarca.
+  const [noMostrarMas, setNoMostrarMas] = useState(true)
   const navigate = useNavigate()
   const esMovil = useEsMovil()
 
+  // Una sola salida para todas las formas de cerrar (la ×, Escape, el fondo,
+  // "Empezar" y los botones que llevan a una sección): si no, el chulito
+  // valdría solo cuando se cierra por donde uno espera.
+  function cerrar() {
+    if (automatico && noMostrarMas) onNoMostrarMas?.()
+    onCerrar()
+  }
+
   function ir(ruta) {
     navigate(ruta)
-    onCerrar()
+    cerrar()
   }
 
   const pasos = [
@@ -208,7 +203,7 @@ export default function Tutorial({ conIA, onCerrar }) {
   const esUltimo = paso === pasos.length - 1
 
   return (
-    <Modal titulo={actual.titulo} onCerrar={onCerrar}>
+    <Modal titulo={actual.titulo} onCerrar={cerrar}>
       <div className="tutorial-puntos" aria-label={`Paso ${paso + 1} de ${pasos.length}`}>
         {pasos.map((p, i) => (
           <button
@@ -229,9 +224,20 @@ export default function Tutorial({ conIA, onCerrar }) {
         </button>
       )}
 
+      {automatico && (
+        <label className="tutorial-no-mostrar">
+          <input
+            type="checkbox"
+            checked={noMostrarMas}
+            onChange={(e) => setNoMostrarMas(e.target.checked)}
+          />
+          No volver a mostrarla al entrar
+        </label>
+      )}
+
       <div className="acciones-modal tutorial-acciones">
         {paso === 0 ? (
-          <button className="enlace" onClick={onCerrar}>
+          <button className="enlace" onClick={cerrar}>
             Ya sé cómo funciona
           </button>
         ) : (
@@ -240,7 +246,7 @@ export default function Tutorial({ conIA, onCerrar }) {
           </button>
         )}
         {esUltimo ? (
-          <button onClick={onCerrar}>Empezar</button>
+          <button onClick={cerrar}>Empezar</button>
         ) : (
           <button onClick={() => setPaso(paso + 1)}>Siguiente</button>
         )}

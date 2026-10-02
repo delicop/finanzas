@@ -137,3 +137,37 @@ func (s *Store) ActualizarPassword(ctx context.Context, id int64, passwordHash s
 	}
 	return nil
 }
+
+// GuiaVista dice si esta persona ya vio la guia de bienvenida.
+//
+// Vive en la base y no en el navegador a proposito: es un dato de la persona.
+// Guardado en localStorage, la guia volvia a salir en cada aparato y cada vez
+// que alguien limpiaba los datos del navegador.
+func (s *Store) GuiaVista(ctx context.Context, usuarioID int64) (bool, error) {
+	const q = `SELECT guia_vista_en IS NOT NULL FROM usuarios WHERE id = $1`
+
+	var vista bool
+	err := s.db.QueryRowContext(ctx, q, usuarioID).Scan(&vista)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, ErrNoEncontrado
+	}
+	if err != nil {
+		return false, fmt.Errorf("consultando guia vista: %w", err)
+	}
+	return vista, nil
+}
+
+// MarcarGuiaVista anota que ya la vio. Solo la primera vez: la fecha que
+// interesa es cuando empezo, no la ultima vez que abrio la guia a mano.
+func (s *Store) MarcarGuiaVista(ctx context.Context, usuarioID int64) error {
+	const q = `
+		UPDATE usuarios
+		SET guia_vista_en = now()
+		WHERE id = $1
+		  AND guia_vista_en IS NULL`
+
+	if _, err := s.db.ExecContext(ctx, q, usuarioID); err != nil {
+		return fmt.Errorf("marcando guia vista: %w", err)
+	}
+	return nil
+}
