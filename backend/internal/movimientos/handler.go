@@ -609,6 +609,9 @@ func (h *Handler) SubirFactura(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r, cancel := httpx.PermitirSubidaLenta(w, r)
+	defer cancel()
+
 	// Doble freno de tamano: MaxBytesReader corta la conexion si el cuerpo
 	// entero se pasa, y ParseMultipartForm limita cuanto se guarda en RAM
 	// (el resto va a archivos temporales). Sin el primero, un cliente podria

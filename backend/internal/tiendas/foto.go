@@ -181,6 +181,9 @@ func (h *Handler) SubirFoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r, cancel := httpx.PermitirSubidaLenta(w, r)
+	defer cancel()
+
 	// Doble freno de tamaño: MaxBytesReader corta la conexión si el cuerpo
 	// entero se pasa, y ParseMultipartForm limita cuánto se guarda en RAM.
 	r.Body = http.MaxBytesReader(w, r.Body, MaxFotoBytes+(1<<20))

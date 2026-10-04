@@ -4,6 +4,7 @@ import { entradaAMonto, finDeMes, hoyISO, montoAEntrada, sumarDias } from '../li
 import CubrirFaltante, { CUBRIR_VACIO, cuerpoCubrir } from './CubrirFaltante'
 import InputMonto from './InputMonto'
 import Modal from './Modal'
+import { reducirImagen } from '../lib/imagen'
 
 const VACIO = {
   categoria_id: '',
@@ -465,9 +466,11 @@ export default function MovimientoForm({
           id="factura"
           type="file"
           accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
-          onChange={(e) => {
-            setArchivo(e.target.files?.[0] ?? null)
+          onChange={async (e) => {
+            // La foto de la cámara pesa 4-6 MB: achicada sube rápido por datos.
+            const elegido = e.target.files?.[0] ?? null
             setQuitarFactura(false)
+            setArchivo(elegido && (await reducirImagen(elegido)))
           }}
         />
         {campos.factura && <span className="error-campo">{campos.factura}</span>}
