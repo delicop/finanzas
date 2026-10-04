@@ -1,4 +1,5 @@
 .env
+docs/servidor.md
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/bin/
