@@ -65,6 +65,39 @@ type ResumenCategoria struct {
 	//         + traslados_entraron - traslados_salieron
 	Balance     string `json:"balance"`
 	Movimientos int    `json:"movimientos"`
+
+	// Medios dice en que medio esta ese balance: "de los $5.000.000 de
+	// Negocio, $2.000.000 estan en efectivo y $3.000.000 en Nequi". La suma
+	// de sus saldos es exactamente Balance (ver SaldoMedioCategoria).
+	Medios []SaldoMedioCategoria `json:"medios"`
+}
+
+// SaldoMedioCategoria es la parte del balance de una categoria que esta en
+// un medio. Sale de los mismos flujos que ResumenMedio, cortados ademas por
+// categoria, y por eso cuadra con el balance sin hacer nada especial:
+//
+//	recibi       -> + monto        en su medio
+//	pague        -> - monto        en su medio
+//	preste       -> - monto        en el medio con que se presto
+//	                + cada abono   en el medio con que lo devolvieron
+//	                  = - saldo    (lo que resta "por cobrar")
+//	me_prestaron -> + monto - cada abono = + saldo (lo que suma "por pagar")
+//	traslado     -> - monto en origen (su categoria, su medio)
+//	                + monto en destino (su categoria, su medio)
+//
+// Dentro de una misma categoria un traslado se cancela, igual que en el
+// balance; entre categorias es traslados_salieron en una y entraron en la
+// otra. Sumados todos los medios de una categoria da su Balance.
+//
+// Un saldo puede ser NEGATIVO y es real: la categoria gasto por Nequi plata
+// que habia entrado a Nequi por otra categoria. El medio en conjunto no esta
+// en rojo (eso no se deja, ver fondos.go); la categoria si le debe a ese
+// medio.
+type SaldoMedioCategoria struct {
+	// MedioID es nil en la parte de los movimientos sin medio registrado.
+	MedioID *int64 `json:"medio_id"`
+	Nombre  string `json:"nombre"`
+	Saldo   string `json:"saldo"`
 }
 
 // ResumenMedio responde "¿dónde está la plata?": cuánto hay en cada medio
@@ -159,7 +192,7 @@ const saldosCTE = `
 	FROM movimientos m
 	WHERE m.usuario_id = $1`
 
-// Resumen arma el dashboard con cuatro consultas.
+// Resumen arma el dashboard con cinco consultas.
 //
 // Se podria hacer en una sola con CTEs, pero varias consultas simples se leen
 // y se depuran mucho mejor, y con el volumen de una app personal la diferencia
@@ -215,7 +248,7 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 	defer filas.Close()
 
 	for filas.Next() {
-		var rc ResumenCategoria
+		rc := ResumenCategoria{Medios: []SaldoMedioCategoria{}}
 		if err := filas.Scan(&rc.CategoriaID, &rc.Nombre, &rc.Recibido, &rc.Pagado,
 			&rc.PorCobrar, &rc.PorPagar, &rc.Recuperado, &rc.Abonado,
 			&rc.TrasladosEntraron, &rc.TrasladosSalieron, &rc.Balance, &rc.Movimientos); err != nil {
@@ -331,6 +364,60 @@ func (s *Store) Resumen(ctx context.Context, usuarioID int64) (*Resumen, error) 
 	}
 	if err := filasMedios.Err(); err != nil {
 		return nil, fmt.Errorf("recorriendo medios: %w", err)
+	}
+
+	// 3b) En que medio esta el balance de cada categoria.
+	//
+	// Son los mismos flujos de arriba, agrupados ademas por categoria: si
+	// esto tuviera su propia version de "que entra y que sale", el modal de
+	// la categoria y las fichas de los medios podrian contar distinto.
+	//
+	// Los saldos en cero no se muestran: un medio por el que paso plata pero
+	// ya no queda nada no responde "¿donde esta?". Los negativos si (ver
+	// SaldoMedioCategoria). "Sin registrar" va al final, como en las fichas.
+	const porCategoriaYMedio = `
+		WITH flujos AS (` + flujosSQL + `)
+		SELECT f.categoria_id,
+		       f.medio_id,
+		       coalesce(mp.nombre, 'Sin registrar'),
+		       sum(f.entro - f.salio)::numeric(14,2)::text
+		FROM flujos f
+		LEFT JOIN medios_pago mp ON mp.id = f.medio_id
+		GROUP BY f.categoria_id, f.medio_id, mp.nombre
+		HAVING sum(f.entro - f.salio)::numeric(14,2) <> 0
+		ORDER BY f.categoria_id, f.medio_id IS NULL, sum(f.entro - f.salio) DESC, lower(mp.nombre)`
+
+	// Las categorias ya estan cargadas: aqui solo se reparte cada fila a la
+	// suya.
+	indice := make(map[int64]int, len(resumen.Categorias))
+	for i, rc := range resumen.Categorias {
+		indice[rc.CategoriaID] = i
+	}
+
+	filasCatMedio, err := s.db.QueryContext(ctx, porCategoriaYMedio, usuarioID)
+	if err != nil {
+		return nil, fmt.Errorf("resumen por categoria y medio: %w", err)
+	}
+	defer filasCatMedio.Close()
+
+	for filasCatMedio.Next() {
+		var (
+			categoriaID int64
+			medioID     sql.NullInt64
+			sm          SaldoMedioCategoria
+		)
+		if err := filasCatMedio.Scan(&categoriaID, &medioID, &sm.Nombre, &sm.Saldo); err != nil {
+			return nil, fmt.Errorf("leyendo medio de categoria: %w", err)
+		}
+		if medioID.Valid {
+			sm.MedioID = &medioID.Int64
+		}
+		if i, ok := indice[categoriaID]; ok {
+			resumen.Categorias[i].Medios = append(resumen.Categorias[i].Medios, sm)
+		}
+	}
+	if err := filasCatMedio.Err(); err != nil {
+		return nil, fmt.Errorf("recorriendo medios por categoria: %w", err)
 	}
 
 	// 4) Con quien hay cuentas pendientes, en los dos sentidos.

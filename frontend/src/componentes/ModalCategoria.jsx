@@ -14,6 +14,7 @@ import {
 import { useAlGuardarMovimiento } from '../lib/eventos'
 import Modal from './Modal'
 import EtiquetaTipo from './EtiquetaTipo'
+import Distintivo from './Distintivo'
 
 // Cuántos se traen de una vez. Es para mirar, no para trabajar: para editar o
 // filtrar está la pantalla de Movimientos, a un clic.
@@ -57,6 +58,8 @@ export default function ModalCategoria({ categoria: c, onCerrar }) {
           {formatearMonto(c.balance)}
         </strong>
       </div>
+
+      <DondeEsta medios={c.medios} />
 
       <dl className="tarjeta-cat-datos">
         <div>
@@ -116,6 +119,37 @@ export default function ModalCategoria({ categoria: c, onCerrar }) {
         <Link to={`/movimientos?categoria_id=${c.categoria_id}`}>Ver y editar en Movimientos →</Link>
       </div>
     </Modal>
+  )
+}
+
+// "Dónde está": el balance de arriba, partido por medio de pago. Sumados dan
+// el balance exacto (lo calcula el servidor). Con un solo medio igual se
+// muestra, porque responde la pregunta; sin ninguno, no hay nada que decir.
+//
+// Un saldo en rojo no es un error: la categoría gastó por ese medio plata que
+// había entrado por otra.
+function DondeEsta({ medios }) {
+  if (!medios?.length) return null
+  return (
+    <section className="detalle-cat-medios" aria-label="Dónde está el balance">
+      <span className="tenue">Dónde está</span>
+      <ul>
+        {medios.map((m) => {
+          const sinRegistrar = !m.medio_id
+          return (
+            <li key={m.medio_id ?? 'sin'} className={sinRegistrar ? 'sin-registrar' : ''}>
+              <span className="con-distintivo">
+                {!sinRegistrar && <Distintivo nombre={m.nombre} clase="medio" />}
+                <span className="detalle-cat-medio-nombre">{m.nombre}</span>
+              </span>
+              <span className={`fig ${Number(m.saldo) >= 0 ? 'positivo' : 'negativo'}`}>
+                {formatearMonto(m.saldo)}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 

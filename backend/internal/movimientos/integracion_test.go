@@ -1213,3 +1213,136 @@ func TestPagarUnaDeudaSinFondosPreguntaDeDonde(t *testing.T) {
 		t.Errorf("un abono que entra no debería pedir fondos: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// En qué medio está el balance de cada categoría
+// ---------------------------------------------------------------------------
+
+// "Negocio tiene $710.000": ¿dónde? Cada pedazo tiene que caer en su medio, y
+// sumados tienen que dar el balance de la categoría, sin un peso de más.
+func TestBalanceDeCategoriaPorMedio(t *testing.T) {
+	e := nuevoEntorno(t)
+	ctx := context.Background()
+
+	casa, err := categorias.NewStore(e.pool).Crear(ctx, e.usuarioID, "Casa")
+	if err != nil {
+		t.Fatalf("creando categoría: %v", err)
+	}
+	vacia, err := categorias.NewStore(e.pool).Crear(ctx, e.usuarioID, "Viajes")
+	if err != nil {
+		t.Fatalf("creando categoría: %v", err)
+	}
+	nequi, err := medios.NewStore(e.pool).Crear(ctx, e.usuarioID, "Nequi")
+	if err != nil {
+		t.Fatalf("creando medio: %v", err)
+	}
+
+	// El orden importa: ningún medio puede quedar en rojo en el camino.
+	e.crear(t, movimientos.Datos{Tipo: movimientos.TipoRecibi, Monto: "1000000", Fecha: "2026-09-01", MedioPagoID: ptr(e.efectivo)})
+
+	// Traslado dentro de Negocio: cambia de medio, no de categoría.
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoTraslado, Monto: "300000", Fecha: "2026-09-02",
+		MedioPagoID: ptr(e.efectivo), MedioCobroID: ptr(nequi.ID),
+	})
+
+	// Casa paga por Nequi con plata que entró a Nequi por Negocio: en Casa
+	// ese medio queda en negativo, y es cierto.
+	e.crear(t, movimientos.Datos{
+		CategoriaID: casa.ID, Tipo: movimientos.TipoPague, Monto: "100000", Fecha: "2026-09-03",
+		MedioPagoID: ptr(nequi.ID),
+	})
+
+	// Préstamo en efectivo que devuelven en parte por Nequi.
+	p := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoPreste, Monto: "200000", Fecha: "2026-09-04",
+		AQuien: ptr("Carlos"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.efectivo),
+	})
+	if _, err := e.store.Abonar(ctx, e.usuarioID, p.ID, movimientos.AbonoDatos{
+		Monto: "50000", Fecha: "2026-09-05", MedioID: ptr(nequi.ID),
+	}); err != nil {
+		t.Fatalf("Abonar al préstamo: %v", err)
+	}
+
+	// Deuda propia que entra por Transferencia y se paga en parte en efectivo.
+	d := e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoMePrestaron, Monto: "150000", Fecha: "2026-09-06",
+		AQuien: ptr("Lucía"), Estado: ptr(movimientos.EstadoPendiente), MedioPagoID: ptr(e.banco),
+	})
+	if _, err := e.store.Abonar(ctx, e.usuarioID, d.ID, movimientos.AbonoDatos{
+		Monto: "40000", Fecha: "2026-09-07", MedioID: ptr(e.efectivo),
+	}); err != nil {
+		t.Fatalf("Abonar a la deuda propia: %v", err)
+	}
+
+	// De Negocio en efectivo a Casa por Transferencia: cambia las dos cosas.
+	e.crear(t, movimientos.Datos{
+		Tipo: movimientos.TipoTraslado, Monto: "250000", Fecha: "2026-09-08",
+		MedioPagoID: ptr(e.efectivo), MedioCobroID: ptr(e.banco),
+		CategoriaDestinoID: ptr(casa.ID),
+	})
+
+	// Un ingreso de Casa sin medio registrado.
+	e.crear(t, movimientos.Datos{CategoriaID: casa.ID, Tipo: movimientos.TipoRecibi, Monto: "80000", Fecha: "2026-09-09"})
+
+	// Y en Casa el efectivo entra y sale por lo mismo: saldo cero, no se lista.
+	e.crear(t, movimientos.Datos{CategoriaID: casa.ID, Tipo: movimientos.TipoRecibi, Monto: "30000", Fecha: "2026-09-10", MedioPagoID: ptr(e.efectivo)})
+	e.crear(t, movimientos.Datos{CategoriaID: casa.ID, Tipo: movimientos.TipoPague, Monto: "30000", Fecha: "2026-09-10", MedioPagoID: ptr(e.efectivo)})
+
+	r := e.resumen(t)
+
+	// Negocio: efectivo 1.000.000 - 300.000 - 200.000 - 40.000 - 250.000;
+	// Nequi 300.000 + 50.000; Transferencia lo que le prestaron.
+	// Balance: 1.000.000 - 150.000 por cobrar + 110.000 por pagar - 250.000.
+	// Casa: el -100.000 de Nequi va antes que "Sin registrar" aunque sea
+	// menor: "Sin registrar" siempre va al final.
+	esperado := map[int64][][2]string{
+		e.categoria: {{"Nequi", "350000.00"}, {"Efectivo", "210000.00"}, {"Transferencia", "150000.00"}},
+		casa.ID:     {{"Transferencia", "250000.00"}, {"Nequi", "-100000.00"}, {"Sin registrar", "80000.00"}},
+		vacia.ID:    {},
+	}
+	balances := map[int64]string{e.categoria: "710000.00", casa.ID: "230000.00", vacia.ID: "0.00"}
+
+	for _, c := range r.Categorias {
+		quiero, ok := esperado[c.CategoriaID]
+		if !ok {
+			continue
+		}
+		if c.Balance != balances[c.CategoriaID] {
+			t.Errorf("%s: balance = %s, se esperaba %s", c.Nombre, c.Balance, balances[c.CategoriaID])
+		}
+		// [] y no null: el cliente no debería tener que preguntar.
+		if c.Medios == nil {
+			t.Errorf("%s: medios es nil, se esperaba una lista (aunque vacía)", c.Nombre)
+		}
+
+		obtenido := make([][2]string, 0, len(c.Medios))
+		for _, m := range c.Medios {
+			obtenido = append(obtenido, [2]string{m.Nombre, m.Saldo})
+			if (m.MedioID == nil) != (m.Nombre == "Sin registrar") {
+				t.Errorf("%s: medio_id de %q = %v", c.Nombre, m.Nombre, m.MedioID)
+			}
+		}
+		if fmt.Sprint(obtenido) != fmt.Sprint(quiero) {
+			t.Errorf("%s: medios = %v, se esperaba %v", c.Nombre, obtenido, quiero)
+		}
+
+		// La suma la hace Postgres, igual que en sumarSaldos.
+		partes := []string{"0"}
+		for _, m := range c.Medios {
+			partes = append(partes, fmt.Sprintf("(%s)", m.Saldo))
+		}
+		var suma string
+		consulta := "SELECT (" + strings.Join(partes, " + ") + ")::numeric(14,2)::text"
+		if err := e.pool.QueryRowContext(ctx, consulta).Scan(&suma); err != nil {
+			t.Fatalf("sumando saldos de %s: %v", c.Nombre, err)
+		}
+		if suma != c.Balance {
+			t.Errorf("%s: la suma por medio (%s) no da el balance (%s)", c.Nombre, suma, c.Balance)
+		}
+		delete(esperado, c.CategoriaID)
+	}
+	for id := range esperado {
+		t.Errorf("la categoría %d no apareció en el resumen", id)
+	}
+}

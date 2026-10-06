@@ -391,6 +391,10 @@ type rubroParaModelo struct {
 	PorCobrar string `json:"por_cobrar"`
 	PorPagar  string `json:"por_pagar"`
 	Balance   string `json:"balance"`
+	// Medios responde "¿en que medio esta la plata de Negocio?". Sus saldos
+	// suman el balance; uno negativo es real (gasto por ahi plata de otra
+	// categoria).
+	Medios []medioParaModelo `json:"medios"`
 }
 
 // contraparteParaModelo es con quien hay cuentas pendientes, en los dos
@@ -433,14 +437,19 @@ func (c *Catalogo) resumen(ctx context.Context, usuarioID int64) (string, error)
 		salida.Medios = append(salida.Medios, medioParaModelo{Nombre: m.Nombre, Saldo: m.Saldo})
 	}
 	for _, cat := range resumen.Categorias {
-		salida.Categorias = append(salida.Categorias, rubroParaModelo{
+		rubro := rubroParaModelo{
 			Nombre:    cat.Nombre,
 			Recibido:  cat.Recibido,
 			Pagado:    cat.Pagado,
 			PorCobrar: cat.PorCobrar,
 			PorPagar:  cat.PorPagar,
 			Balance:   cat.Balance,
-		})
+			Medios:    []medioParaModelo{},
+		}
+		for _, m := range cat.Medios {
+			rubro.Medios = append(rubro.Medios, medioParaModelo{Nombre: m.Nombre, Saldo: m.Saldo})
+		}
+		salida.Categorias = append(salida.Categorias, rubro)
 	}
 	salida.Contrapartes = contrapartesParaModelo(resumen.Contrapartes)
 

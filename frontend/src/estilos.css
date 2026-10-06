@@ -4192,6 +4192,44 @@ button.wa-voz.hablando {
   font-size: 24px;
 }
 
+/* "Dónde está": el balance partido por medio. Compacto a propósito: responde
+   una pregunta, no es otra tabla que leer. */
+.detalle-cat-medios ul {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+}
+
+.detalle-cat-medios li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px 0;
+  font-size: 14px;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.detalle-cat-medios li:last-child {
+  border-bottom: none;
+}
+
+.detalle-cat-medio-nombre {
+  overflow-wrap: anywhere;
+}
+
+.detalle-cat-medios .fig {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+/* "Sin registrar" no es un medio: sin circulito, en gris, y corrido para que
+   el nombre quede alineado con los de arriba. */
+.detalle-cat-medios .sin-registrar .detalle-cat-medio-nombre {
+  padding-left: calc(26px + var(--space-2));
+  color: var(--color-neutral-700);
+}
+
 .lista-detalle {
   list-style: none;
   margin: 0;

@@ -41,46 +41,56 @@ import (
 // cambia el total. Cada abono genera la suya, con SU medio: asi "presto en
 // efectivo, me pagaron la mitad por transferencia" queda bien en los dos
 // saldos. `abono` distingue esas filas de las del movimiento en si.
+//
+// `categoria_id` dice de QUE categoria es cada flujo, para el "¿en que medio
+// esta la plata de Negocio?" del resumen. Las dos filas de un traslado llevan
+// cada una la suya: sale de la de origen y entra a la de destino (la misma si
+// no cambia de categoria). Un abono no tiene categoria propia: es de la de su
+// movimiento. Quien no la necesita simplemente no la mira; todos los usos
+// eligen sus columnas por nombre.
 const flujosSQL = `
 	-- Ingresos
-	SELECT medio_pago_id AS medio_id, monto AS entro, 0::numeric AS salio, id, false AS abono
+	SELECT medio_pago_id AS medio_id, monto AS entro, 0::numeric AS salio, id, false AS abono,
+	       categoria_id
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'recibi'
 
 	UNION ALL
 
 	-- Gastos
-	SELECT medio_pago_id, 0::numeric, monto, id, false
+	SELECT medio_pago_id, 0::numeric, monto, id, false, categoria_id
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'pague'
 
 	UNION ALL
 
 	-- Prestar saca la plata del medio con el que se presto, la
 	-- devuelvan despues o no.
-	SELECT medio_pago_id, 0::numeric, monto, id, false
+	SELECT medio_pago_id, 0::numeric, monto, id, false, categoria_id
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'preste'
 
 	UNION ALL
 
 	-- Que te presten la mete por el medio con el que te la dieron.
-	SELECT medio_pago_id, monto, 0::numeric, id, false
+	SELECT medio_pago_id, monto, 0::numeric, id, false, categoria_id
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'me_prestaron'
 
 	UNION ALL
 
-	-- Un traslado sale del origen...
-	SELECT medio_pago_id, 0::numeric, monto, id, false
+	-- Un traslado sale del origen, en su categoria...
+	SELECT medio_pago_id, 0::numeric, monto, id, false, categoria_id
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'traslado'
 
 	UNION ALL
 
-	-- ...y entra al destino, por el mismo monto. Se cancelan.
-	SELECT medio_cobro_id, monto, 0::numeric, id, false
+	-- ...y entra al destino, por el mismo monto, en la categoria destino si
+	-- la hay. Se cancelan.
+	SELECT medio_cobro_id, monto, 0::numeric, id, false,
+	       coalesce(categoria_destino_id, categoria_id)
 	FROM movimientos WHERE usuario_id = $1 AND tipo = 'traslado'
 
 	UNION ALL
 
 	-- Cada abono de un prestamo ENTRA por su propio medio.
-	SELECT a.medio_id, a.monto, 0::numeric, m.id, true
+	SELECT a.medio_id, a.monto, 0::numeric, m.id, true, m.categoria_id
 	FROM abonos a
 	JOIN movimientos m ON m.id = a.movimiento_id
 	WHERE a.usuario_id = $1 AND m.tipo = 'preste'
@@ -88,7 +98,7 @@ const flujosSQL = `
 	UNION ALL
 
 	-- Y cada abono de una deuda propia SALE por el suyo.
-	SELECT a.medio_id, 0::numeric, a.monto, m.id, true
+	SELECT a.medio_id, 0::numeric, a.monto, m.id, true, m.categoria_id
 	FROM abonos a
 	JOIN movimientos m ON m.id = a.movimiento_id
 	WHERE a.usuario_id = $1 AND m.tipo = 'me_prestaron'
